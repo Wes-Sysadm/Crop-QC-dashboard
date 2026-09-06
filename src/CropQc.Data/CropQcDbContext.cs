@@ -18,6 +18,10 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomSealEvent> RoomSealEvents => Set<RoomSealEvent>();
+    public DbSet<HarvestWatchDeployment> HarvestWatchDeployments => Set<HarvestWatchDeployment>();
+    public DbSet<HarvestWatchStatusHistory> HarvestWatchStatusHistories => Set<HarvestWatchStatusHistory>();
+    public DbSet<HarvestWatchInboundMessage> HarvestWatchInboundMessages => Set<HarvestWatchInboundMessage>();
+    public DbSet<HarvestWatchMailboxCursor> HarvestWatchMailboxCursors => Set<HarvestWatchMailboxCursor>();
     public DbSet<GrowerLot> GrowerLots => Set<GrowerLot>();
     public DbSet<CanonicalGrower> CanonicalGrowers => Set<CanonicalGrower>();
     public DbSet<CanonicalGrowerAlias> CanonicalGrowerAliases => Set<CanonicalGrowerAlias>();
@@ -244,7 +248,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAuth(modelBuilder);
-        ConfigureMasterData(modelBuilder, IsPostgreSqlProvider());
+        ConfigureMasterData(modelBuilder, IsPostgreSqlProvider(), IsSqliteProvider());
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
         ConfigureCommercialPacks(modelBuilder);
         ConfigureRunProjections(modelBuilder);
@@ -342,6 +346,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     private bool IsPostgreSqlProvider() =>
         Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsSqliteProvider() =>
+        Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
 
     private static void ConfigureRunProjections(ModelBuilder modelBuilder)
     {
@@ -983,7 +990,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         });
     }
 
-    private static void ConfigureMasterData(ModelBuilder modelBuilder, bool isPostgreSqlProvider)
+    private static void ConfigureMasterData(ModelBuilder modelBuilder, bool isPostgreSqlProvider, bool isSqliteProvider)
     {
         modelBuilder.Entity<Warehouse>(entity =>
         {
@@ -1035,6 +1042,60 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 isPostgreSqlProvider
                     ? "\"Action\" IN ('Seal', 'SealScheduled', 'ScheduleChanged', 'ScheduleCanceled', 'Unseal')"
                     : "[Action] IN ('Seal', 'SealScheduled', 'ScheduleChanged', 'ScheduleCanceled', 'Unseal')"));
+        });
+
+        modelBuilder.Entity<HarvestWatchDeployment>(entity =>
+        {
+            entity.Property(x => x.HarvestWatchCode).HasMaxLength(5).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.DeployerEmailSnapshot).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.WarehouseCodeSnapshot).HasMaxLength(25).IsRequired();
+            entity.Property(x => x.RoomCodeSnapshot).HasMaxLength(150).IsRequired();
+            entity.Property(x => x.VarietySnapshot).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.CorrelationToken).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.VerificationEmailMessageId).HasMaxLength(255);
+            entity.Property(x => x.VerificationEmailError).HasMaxLength(1000);
+            entity.Property(x => x.VerifiedByEmail).HasMaxLength(320);
+            entity.Property(x => x.LastReplyMessageId).HasMaxLength(255);
+            entity.Property(x => x.ErrorNotificationMessageId).HasMaxLength(255);
+            entity.HasIndex(x => x.CorrelationToken).IsUnique();
+            entity.HasIndex(x => new { x.HarvestWatchCode, x.IsActive }).HasFilter(isPostgreSqlProvider ? "\"IsActive\" = TRUE" : "[IsActive] = 1").IsUnique();
+            entity.HasIndex(x => new { x.RoomId, x.IsActive });
+            entity.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DeployedByUser).WithMany().HasForeignKey(x => x.DeployedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RemovedByUser).WithMany().HasForeignKey(x => x.RemovedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_HarvestWatchDeployments_Code",
+                isPostgreSqlProvider
+                    ? "\"HarvestWatchCode\" ~ '^[0-9]{5}$'"
+                    : isSqliteProvider
+                        ? "\"HarvestWatchCode\" NOT GLOB '*[^0-9]*' AND length(\"HarvestWatchCode\") = 5"
+                        : "[HarvestWatchCode] NOT LIKE '%[^0-9]%' AND LEN([HarvestWatchCode]) = 5"));
+        });
+
+        modelBuilder.Entity<HarvestWatchStatusHistory>(entity =>
+        {
+            entity.Property(x => x.PreviousStatus).HasMaxLength(40);
+            entity.Property(x => x.NewStatus).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Source).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.InboundMessageId).HasMaxLength(255);
+            entity.Property(x => x.ChangedByEmail).HasMaxLength(320);
+            entity.Property(x => x.Note).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.HarvestWatchDeploymentId, x.ChangedAt });
+            entity.HasOne(x => x.HarvestWatchDeployment).WithMany(x => x.StatusHistory).HasForeignKey(x => x.HarvestWatchDeploymentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<HarvestWatchInboundMessage>(entity =>
+        {
+            entity.Property(x => x.GmailMessageId).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.SenderEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Subject).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.BodyExcerpt).HasMaxLength(4000).IsRequired();
+            entity.Property(x => x.Outcome).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.GmailMessageId).IsUnique();
+            entity.HasIndex(x => x.HarvestWatchDeploymentId);
+            entity.HasOne(x => x.HarvestWatchDeployment).WithMany().HasForeignKey(x => x.HarvestWatchDeploymentId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<GrowerLot>(entity =>

@@ -12,7 +12,9 @@ namespace CropQc.Web.Services;
 public interface IGoogleCredentialStore
 {
     Task SaveFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken);
+    Task SaveMailboxFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken) => SaveFromAuthenticationPropertiesAsync(user, properties, cancellationToken);
     Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken);
+    Task<GoogleAccessTokenResult> GetMailboxAccessTokenAsync(User user, CancellationToken cancellationToken) => GetAccessTokenAsync(user, cancellationToken);
     Task<GoogleCredentialDiagnostic> GetDiagnosticAsync(User user, CancellationToken cancellationToken);
 }
 
@@ -22,7 +24,7 @@ public sealed record GoogleAccessTokenResult(string? AccessToken, string? Error,
     public static GoogleAccessTokenResult Reconnect(string error) => new(null, error, true);
 }
 
-public sealed record GoogleCredentialDiagnostic(bool CredentialPresent, bool GmailSendPermissionGranted);
+public sealed record GoogleCredentialDiagnostic(bool CredentialPresent, bool GmailSendPermissionGranted, bool GmailReadPermissionGranted = false);
 
 public sealed class GoogleCredentialStore(
     CropQcDbContext dbContext,
@@ -32,10 +34,17 @@ public sealed class GoogleCredentialStore(
     ILogger<GoogleCredentialStore> logger,
     IPerformanceExternalCallCounter externalCallCounter) : IGoogleCredentialStore
 {
-    private const string ProviderName = "Google";
+    public const string OrdinaryProviderName = "Google";
+    public const string HarvestWatchMailboxProviderName = "GoogleHarvestWatchMailbox";
     private readonly IDataProtector protector = dataProtectionProvider.CreateProtector("CropQc.GoogleOAuthTokens.v1");
 
     public async Task SaveFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken)
+        => await SaveAsync(user, properties, OrdinaryProviderName, cancellationToken);
+
+    public async Task SaveMailboxFromAuthenticationPropertiesAsync(User user, AuthenticationProperties properties, CancellationToken cancellationToken)
+        => await SaveAsync(user, properties, HarvestWatchMailboxProviderName, cancellationToken);
+
+    private async Task SaveAsync(User user, AuthenticationProperties properties, string provider, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
         var accessToken = properties.GetTokenValue("access_token");
@@ -50,14 +59,14 @@ public sealed class GoogleCredentialStore(
         var now = DateTimeOffset.UtcNow;
 
         var credential = await dbContext.UserGoogleCredentials
-            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == ProviderName, cancellationToken);
+            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == provider, cancellationToken);
 
         if (credential is null)
         {
             credential = new UserGoogleCredential
             {
                 UserId = user.Id,
-                Provider = ProviderName,
+                Provider = provider,
                 CreatedAt = now
             };
             dbContext.UserGoogleCredentials.Add(credential);
@@ -80,14 +89,20 @@ public sealed class GoogleCredentialStore(
     }
 
     public async Task<GoogleAccessTokenResult> GetAccessTokenAsync(User user, CancellationToken cancellationToken)
+        => await GetTokenAsync(user, OrdinaryProviderName, requireReadScope: false, cancellationToken);
+
+    public async Task<GoogleAccessTokenResult> GetMailboxAccessTokenAsync(User user, CancellationToken cancellationToken)
+        => await GetTokenAsync(user, HarvestWatchMailboxProviderName, requireReadScope: true, cancellationToken);
+
+    private async Task<GoogleAccessTokenResult> GetTokenAsync(User user, string provider, bool requireReadScope, CancellationToken cancellationToken)
     {
         await EnsureSchemaAsync(cancellationToken);
         var credential = await dbContext.UserGoogleCredentials
-            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == ProviderName, cancellationToken);
+            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == provider, cancellationToken);
 
-        if (credential is null || !HasGmailScope(credential.Scope))
+        if (credential is null || !HasGmailSendScope(credential.Scope) || requireReadScope && !HasGmailReadScope(credential.Scope))
         {
-            return GoogleAccessTokenResult.Reconnect("Gmail permission is required. Please reconnect Google/Gmail.");
+            return GoogleAccessTokenResult.Reconnect(requireReadScope ? "HarvestWatch mailbox permission is required. Please reconnect the dedicated mailbox." : "Gmail permission is required. Please reconnect Google/Gmail.");
         }
 
         if (!string.IsNullOrWhiteSpace(credential.AccessTokenEncrypted)
@@ -125,11 +140,11 @@ public sealed class GoogleCredentialStore(
         await EnsureSchemaAsync(cancellationToken);
         var credential = await dbContext.UserGoogleCredentials
             .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == ProviderName, cancellationToken);
+            .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == OrdinaryProviderName, cancellationToken);
 
         return credential is null
             ? new GoogleCredentialDiagnostic(false, false)
-            : new GoogleCredentialDiagnostic(true, HasGmailScope(credential.Scope));
+            : new GoogleCredentialDiagnostic(true, HasGmailSendScope(credential.Scope), HasGmailReadScope(credential.Scope));
     }
 
     private async Task<GoogleTokenRefreshResult> RefreshAccessTokenAsync(string refreshToken, CancellationToken cancellationToken)
@@ -186,9 +201,14 @@ public sealed class GoogleCredentialStore(
         }
     }
 
-    private static bool HasGmailScope(string scope) =>
+    private static bool HasGmailSendScope(string scope) =>
         scope.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(x => string.Equals(x, GmailScopes.Send, StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasGmailReadScope(string scope) =>
+        scope.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(x => string.Equals(x, GmailScopes.Readonly, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x, "https://mail.google.com/", StringComparison.OrdinalIgnoreCase));
 
     private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
     {
