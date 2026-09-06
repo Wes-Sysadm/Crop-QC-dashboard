@@ -22,7 +22,7 @@ public sealed record GoogleAccessTokenResult(string? AccessToken, string? Error,
     public static GoogleAccessTokenResult Reconnect(string error) => new(null, error, true);
 }
 
-public sealed record GoogleCredentialDiagnostic(bool CredentialPresent, bool GmailSendPermissionGranted);
+public sealed record GoogleCredentialDiagnostic(bool CredentialPresent, bool GmailSendPermissionGranted, bool GmailReadPermissionGranted = false);
 
 public sealed class GoogleCredentialStore(
     CropQcDbContext dbContext,
@@ -85,7 +85,7 @@ public sealed class GoogleCredentialStore(
         var credential = await dbContext.UserGoogleCredentials
             .SingleOrDefaultAsync(x => x.UserId == user.Id && x.Provider == ProviderName, cancellationToken);
 
-        if (credential is null || !HasGmailScope(credential.Scope))
+        if (credential is null || !HasGmailSendScope(credential.Scope))
         {
             return GoogleAccessTokenResult.Reconnect("Gmail permission is required. Please reconnect Google/Gmail.");
         }
@@ -129,7 +129,7 @@ public sealed class GoogleCredentialStore(
 
         return credential is null
             ? new GoogleCredentialDiagnostic(false, false)
-            : new GoogleCredentialDiagnostic(true, HasGmailScope(credential.Scope));
+            : new GoogleCredentialDiagnostic(true, HasGmailSendScope(credential.Scope), HasGmailReadScope(credential.Scope));
     }
 
     private async Task<GoogleTokenRefreshResult> RefreshAccessTokenAsync(string refreshToken, CancellationToken cancellationToken)
@@ -186,9 +186,14 @@ public sealed class GoogleCredentialStore(
         }
     }
 
-    private static bool HasGmailScope(string scope) =>
+    private static bool HasGmailSendScope(string scope) =>
         scope.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(x => string.Equals(x, GmailScopes.Send, StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasGmailReadScope(string scope) =>
+        scope.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(x => string.Equals(x, GmailScopes.Readonly, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x, "https://mail.google.com/", StringComparison.OrdinalIgnoreCase));
 
     private async Task EnsureSchemaAsync(CancellationToken cancellationToken)
     {

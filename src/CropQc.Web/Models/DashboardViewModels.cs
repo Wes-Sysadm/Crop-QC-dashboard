@@ -153,6 +153,39 @@ public sealed class RoomDetailViewModel
     public bool CanReverseTreatment { get; set; }
     public bool CanManageRoomSeals { get; set; }
     public IReadOnlyList<RoomSealHistoryItemViewModel> SealHistory { get; set; } = [];
+    public HarvestWatchRoomViewModel HarvestWatch { get; set; } = new();
+}
+
+public sealed class HarvestWatchRoomViewModel
+{
+    public bool IsEligible { get; set; }
+    public bool CanManage { get; set; }
+    public string? IneligibleReason { get; set; }
+    public IReadOnlyList<HarvestWatchDeploymentViewModel> Deployments { get; set; } = [];
+    public HarvestWatchDeployForm Form { get; set; } = new();
+}
+
+public sealed class HarvestWatchDeploymentViewModel
+{
+    public long Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Status { get; set; } = "";
+    public DateTimeOffset DeployedAt { get; set; }
+    public string DeployedBy { get; set; } = "";
+    public DateTimeOffset? VerifiedAt { get; set; }
+    public string? VerificationEmailWarning { get; set; }
+}
+
+public sealed class HarvestWatchDeployForm
+{
+    public int RoomId { get; set; }
+    public List<string> Codes { get; set; } = ["", "", ""];
+    public bool ConfirmMoreThanThree { get; set; }
+}
+
+public sealed class HarvestWatchRetireForm
+{
+    public string? Note { get; set; }
 }
 
 public sealed class RoomTreatmentApplyForm

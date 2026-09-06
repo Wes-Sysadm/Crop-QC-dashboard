@@ -269,8 +269,8 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("pg_advisory_xact_lock", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
-        Assert.Equal("20260905012129_ScopeInventoryIdentityCorrectionsToReceipts", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(909, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal("20260906025535_AddHarvestWatchDeployments", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal(979, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]
