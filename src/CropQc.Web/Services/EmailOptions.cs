@@ -317,9 +317,11 @@ public static class EmailOptionsFactory
 public sealed class GmailOptions
 {
     public string SendScope { get; init; } = GmailScopes.Send;
+    public string ReadScope { get; init; } = GmailScopes.Readonly;
 }
 
 public static class GmailScopes
 {
     public const string Send = "https://www.googleapis.com/auth/gmail.send";
+    public const string Readonly = "https://www.googleapis.com/auth/gmail.readonly";
 }

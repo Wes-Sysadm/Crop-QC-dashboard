@@ -104,7 +104,8 @@ public sealed class DashboardDataService(
     IVarietyColorService? varietyColorService = null,
     IRoomInventoryLossService? roomInventoryLossService = null,
     IRoomTreatmentService? roomTreatmentService = null,
-    IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null) : IDashboardDataService
+    IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null,
+    IHarvestWatchService? harvestWatchService = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private const int MaximumLotEvidenceLinks = 8;
@@ -120,6 +121,7 @@ public sealed class DashboardDataService(
         ?? new InventoryDeductionInvariantService(dbContext, NullLogger<InventoryDeductionInvariantService>.Instance);
     private IRoomInventoryLossService? RoomInventoryLosses { get; } = roomInventoryLossService;
     private IRoomTreatmentService? RoomTreatments { get; } = roomTreatmentService;
+    private IHarvestWatchService? HarvestWatch { get; } = harvestWatchService;
 
     private async Task<IReadOnlyList<GrowerLot>> GetReceivingGrowerLotsAsync(CancellationToken cancellationToken) =>
         reviewedGrowerLotPolicy is null
@@ -521,6 +523,10 @@ public sealed class DashboardDataService(
                     "Current inventory is shown, but exact treatment/source allocation could not be resolved. Transfer is disabled for this room until the inventory identity is reviewed.");
             }
 
+            var harvestWatch = HarvestWatch is null
+                ? new HarvestWatchRoomViewModel()
+                : await HarvestWatch.GetRoomDataAsync(roomId, httpContextAccessor.HttpContext?.User ?? new ClaimsPrincipal(), cancellationToken);
+
             return new RoomDetailViewModel
             {
                 Summary = summary,
@@ -573,6 +579,8 @@ public sealed class DashboardDataService(
                 CanManageRoomSeals = canManageRoomSeals
                 ,
                 SealHistory = sealHistory
+                ,
+                HarvestWatch = harvestWatch
                 ,
                 DataWarning = treatmentWarning
             };

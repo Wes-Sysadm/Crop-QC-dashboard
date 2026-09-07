@@ -315,13 +315,13 @@ public sealed class RoomSealingTests
     [Fact]
     public void Application_gate_targets_latest_migration_and_909_objects()
     {
-        Assert.Equal("20260905012129_ScopeInventoryIdentityCorrectionsToReceipts", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
+        Assert.Equal("20260906025535_AddHarvestWatchDeployments", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DatabaseStartupDiagnostics.cs"));
         Assert.Contains("RoomSealEvents.RoomCodeSnapshot", source);
         Assert.Contains("RoomSealEvents.EffectiveAt", source);
         Assert.Contains("Rooms.SealRecordedAt", source);
         Assert.Contains("FK_Rooms_Users_SealedByUserId", source);
-        Assert.Equal(909, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(979, source.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]

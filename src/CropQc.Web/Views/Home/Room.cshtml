@@ -139,6 +139,46 @@
     </section>
 }
 
+@if (Model.HarvestWatch.IsEligible)
+{
+    <section class="panel" id="harvestwatch">
+        <h2>HarvestWatch</h2>
+        @if (Model.HarvestWatch.Deployments.Count == 0)
+        {
+            <p class="muted">No HarvestWatch devices deployed.</p>
+        }
+        else
+        {
+            <div class="table-wrap"><table><thead><tr><th>Code</th><th>Status</th><th>Deployed</th><th>Verified</th><th>Action</th></tr></thead><tbody>
+            @foreach (var deployment in Model.HarvestWatch.Deployments)
+            {
+                var statusClass = deployment.Status is "ErrorFailedToRead" or "ErrorLowReading" ? "error" : deployment.Status == "PendingVerification" ? "warning" : "ready";
+                <tr><td><strong>@deployment.Code</strong></td><td><span class="status @statusClass">@HarvestWatchDisplay.Status(deployment.Status)</span>@if (!string.IsNullOrWhiteSpace(deployment.VerificationEmailWarning)) { <br /><small class="notice warning">Verification email pending: @deployment.VerificationEmailWarning</small> }</td><td>@BusinessTime.FormatPacific(deployment.DeployedAt)<br /><small>@deployment.DeployedBy</small></td><td>@BusinessTime.FormatPacific(deployment.VerifiedAt)</td><td>@if (Model.HarvestWatch.CanManage) { <form method="post" action="/Rooms/@Model.Summary?.RoomId/HarvestWatch/@deployment.Id/Retire" onsubmit="return confirm('Retire this HarvestWatch deployment? Its history will remain available.');">@Html.AntiForgeryToken()<button class="danger-button" type="submit">Retire</button></form> }</td></tr>
+            }
+            </tbody></table></div>
+        }
+        @if (Model.HarvestWatch.CanManage)
+        {
+            <form method="post" action="/Rooms/@Model.Summary?.RoomId/HarvestWatch/Deploy" class="stack-form" id="harvestwatch-deploy-form" data-active-deployments="@Model.HarvestWatch.ActiveDeploymentCount">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="RoomId" value="@Model.HarvestWatch.Form.RoomId" />
+                <div id="harvestwatch-code-rows">
+                @for (var index = 0; index < Model.HarvestWatch.Form.Codes.Count; index++)
+                {
+                    <label>HarvestWatch code @(index + 1) <input name="Codes[@index]" value="@Model.HarvestWatch.Form.Codes[index]" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" /></label>
+                }
+                </div>
+                <button class="secondary-button" type="button" id="harvestwatch-add-code">Add another</button>
+                <label id="harvestwatch-warning" class="notice warning" hidden><input type="checkbox" name="ConfirmMoreThanThree" value="true" /> More than 3 HarvestWatch devices are being deployed in this room. Confirm that this is intentional.</label>
+                <button class="button" type="submit">Deploy HarvestWatch</button>
+            </form>
+            <script>
+            (() => { const form = document.getElementById('harvestwatch-deploy-form'); const rows = document.getElementById('harvestwatch-code-rows'); const add = document.getElementById('harvestwatch-add-code'); const warning = document.getElementById('harvestwatch-warning'); const confirmation = warning?.querySelector('input[type="checkbox"]'); if (!form || !rows || !add || !warning || !confirmation) return; const active = Number(form.dataset.activeDeployments || 0); const update = () => { const validNew = [...rows.querySelectorAll('input')].filter(input => /^\d{5}$/.test(input.value.trim())).length; const requiresConfirmation = active + validNew > 3; warning.hidden = !requiresConfirmation; if (!requiresConfirmation) confirmation.checked = false; }; add.addEventListener('click', () => { const index = rows.querySelectorAll('input').length; const label = document.createElement('label'); label.textContent = `HarvestWatch code ${index + 1} `; const input = document.createElement('input'); input.name = `Codes[${index}]`; input.inputMode = 'numeric'; input.pattern = '[0-9]{5}'; input.maxLength = 5; input.addEventListener('input', update); label.append(input); rows.append(label); update(); }); rows.querySelectorAll('input').forEach(input => input.addEventListener('input', update)); update(); })();
+            </script>
+        }
+    </section>
+}
+
 <section class="panel" id="current-treatment-status">
     <h2>Current Treatment Status</h2>
     <p class="muted">This follows the fruit currently in the room. It is separate from treatments historically applied in this room.</p>

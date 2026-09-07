@@ -153,6 +153,35 @@ if (googleAuthOptions.IsGoogleConfigured)
             return Task.CompletedTask;
         };
     });
+    authenticationBuilder.AddCookie(HarvestWatchConstants.MailboxExternalCookieScheme);
+    authenticationBuilder.AddGoogle(HarvestWatchConstants.MailboxAuthenticationScheme, options =>
+    {
+        options.ClientId = googleAuthOptions.ClientId!;
+        options.ClientSecret = googleAuthOptions.ClientSecret!;
+        options.CallbackPath = "/signin-harvestwatch-mailbox";
+        options.SaveTokens = true;
+        options.Scope.Add(gmailOptions.SendScope);
+        options.Scope.Add(gmailOptions.ReadScope);
+        options.AccessType = "offline";
+        options.SignInScheme = HarvestWatchConstants.MailboxExternalCookieScheme;
+        options.Events.OnCreatingTicket = async context =>
+        {
+            var email = context.Principal?.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
+            if (!string.Equals(email, HarvestWatchConstants.VerificationRecipient, StringComparison.OrdinalIgnoreCase))
+            {
+                context.Fail("Only the dedicated HarvestWatch mailbox can grant Gmail read access.");
+                return;
+            }
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<CropQcDbContext>();
+            var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email && x.IsActive, context.HttpContext.RequestAborted);
+            if (user is null) { context.Fail("The dedicated HarvestWatch mailbox is not an active Crop QC user."); return; }
+            await context.HttpContext.RequestServices.GetRequiredService<IGoogleCredentialStore>()
+                .SaveMailboxFromAuthenticationPropertiesAsync(user, context.Properties, context.HttpContext.RequestAborted);
+            await context.HttpContext.RequestServices.GetRequiredService<IHarvestWatchService>()
+                .ResumeBlockedOutboundEmailsAsync(context.HttpContext.RequestAborted);
+            context.Properties.StoreTokens(Array.Empty<AuthenticationToken>());
+        };
+    });
 }
 builder.Services.AddAuthorization(options =>
 {
@@ -276,6 +305,8 @@ builder.Services.AddScoped<ITr508901InventoryRepairService, Tr508901InventoryRep
 builder.Services.AddScoped<IRoomInventoryReconciliationService, RoomInventoryReconciliationService>();
 builder.Services.AddScoped<IRoomInventoryLossService, RoomInventoryLossService>();
 builder.Services.AddScoped<IRoomSealingService, RoomSealingService>();
+builder.Services.AddScoped<IHarvestWatchService, HarvestWatchService>();
+builder.Services.AddScoped<IHarvestWatchEmailDispatcher, HarvestWatchEmailDispatcher>();
 builder.Services.AddScoped<RoomTreatmentService>();
 builder.Services.AddScoped<IRoomTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
 builder.Services.AddScoped<IReceivingTreatmentService>(sp => sp.GetRequiredService<RoomTreatmentService>());
@@ -342,6 +373,8 @@ builder.Services.AddHostedService<EbsDailyBinsEmailHostedService>();
 builder.Services.AddHostedService<BackupNotificationHostedService>();
 builder.Services.AddHostedService<RuntimeMemoryTelemetryHostedService>();
 builder.Services.AddHostedService<RunSheetRefreshHostedService>();
+builder.Services.AddHostedService<HarvestWatchMailboxHostedService>();
+builder.Services.AddHostedService<HarvestWatchOutboundEmailHostedService>();
 builder.Services.AddSingleton(CreateFileStorageOptions(builder.Configuration));
 builder.Services.AddSingleton(CreateGoogleDriveStorageOptions(builder.Configuration));
 builder.Services.AddSingleton<IFileStorageService>(services => CreateFileStorageService(
@@ -733,7 +766,7 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
 
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
-    const string releaseMigration = "20260905012129_ScopeInventoryIdentityCorrectionsToReceipts";
+    const string releaseMigration = "20260906025535_AddHarvestWatchDeployments";
     var schemaReady = await DatabaseStartupDiagnostics.VerifyRequiredSchemaAsync(
         app.Services, app.Configuration, app.Environment, releaseMigration);
     await using var readinessScope = app.Services.CreateAsyncScope();
@@ -785,7 +818,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
     {
         success = releaseReady,
         expectedMigration = releaseMigration,
-        expectedSchemaObjects = 909,
+        expectedSchemaObjects = 979,
         schemaReady,
         inventory = new
         {
@@ -1183,7 +1216,8 @@ static RunSheetReconciliationOptions CreateRunSheetReconciliationOptions(IConfig
 static GmailOptions CreateGmailOptions(IConfiguration configuration) =>
     new()
     {
-        SendScope = configuration["Google:Gmail:SendScope"] ?? GmailScopes.Send
+        SendScope = configuration["Google:Gmail:SendScope"] ?? GmailScopes.Send,
+        ReadScope = configuration["Google:Gmail:ReadScope"] ?? GmailScopes.Readonly
     };
 
 static void LogEmailConfiguration(WebApplication app)
