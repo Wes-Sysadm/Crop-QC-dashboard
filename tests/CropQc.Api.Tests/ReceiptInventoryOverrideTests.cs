@@ -960,6 +960,102 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
+    public async Task Fully_consumed_aggregate_history_allows_receipt_scoped_identity_correction_without_resurrecting_inventory()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 10, includeHistory: true);
+        var receipt = await fixture.Db.Receipts.SingleAsync(x => x.Id == OverrideFixture.ReceiptId);
+        var originalAdjustment = await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .SingleAsync(x => x.ReceiptId == receipt.Id);
+        var originalAdjustmentFingerprint = (originalAdjustment.Id, originalAdjustment.ReceiptId,
+            originalAdjustment.GrowerLotId, originalAdjustment.LotNumber, originalAdjustment.ChangeAmount,
+            originalAdjustment.AdjustmentAt, originalAdjustment.CreatedAt);
+        var originalBinsRun = await fixture.Db.BinsRunEntries.AsNoTracking().SingleAsync(x => x.Id == 8705);
+        var originalBinsRunFingerprint = (originalBinsRun.Id, originalBinsRun.ReceiptId,
+            originalBinsRun.ActualRunId, originalBinsRun.BinsRun, originalBinsRun.GrowerLotId);
+        var target = new GrowerLot
+        {
+            Id = OverrideFixture.GrowerLotId + 7,
+            Grower = "Corrected Grower",
+            LotNumber = "G-3152",
+            IsActive = true,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var otherReceipt = new Receipt
+        {
+            Id = OverrideFixture.SecondReceiptId,
+            CropYear = receipt.CropYear,
+            ReceivedAt = receipt.ReceivedAt,
+            CompuTechReceiptId = "OTHER-SAME-IDENTITY",
+            ReceiptType = receipt.ReceiptType,
+            WarehouseId = receipt.WarehouseId,
+            RoomId = receipt.RoomId,
+            FruitProfileId = receipt.FruitProfileId,
+            GrowerLotId = receipt.GrowerLotId,
+            GrowerNumber = receipt.GrowerNumber,
+            GrowerName = receipt.GrowerName,
+            LotCode = receipt.LotCode,
+            BinCount = 25,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        fixture.Db.AddRange(target, otherReceipt);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        // The receipt's original RoomInventoryAdjustment remains durable history,
+        // while later aggregate activity has consumed the physical source position.
+        fixture.SetCurrentSnapshots(fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 0));
+        var preview = await fixture.Service.GetPreviewAsync(OverrideFixture.ReceiptId, CancellationToken.None);
+        Assert.True(preview!.HistoricalIdentityCorrectionIsZeroCurrent);
+        Assert.Equal((0, 10), (preview.CurrentInventory, preview.ConsumedBins));
+        var form = fixture.Form(10, Guid.NewGuid().ToString("D"));
+        form.ExpectedInventoryStateToken = preview.InventoryStateToken;
+        form.GrowerLotId = target.Id;
+        form.GrowerNumber = target.LotNumber;
+        form.GrowerName = target.Grower;
+        form.LotCode = target.LotNumber;
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+        var rerun = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.True(rerun.WasIdempotent);
+        var corrected = await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == receipt.Id);
+        Assert.Equal((target.Id, target.LotNumber, target.LotNumber, target.Grower, 10),
+            (corrected.GrowerLotId, corrected.GrowerNumber, corrected.LotCode, corrected.GrowerName, corrected.BinCount));
+        var operation = await fixture.Db.ReceiptInventoryOverrides.Include(x => x.InventoryAdjustments).SingleAsync();
+        Assert.Equal(ReceiptInventoryOverrideActionTypes.InventoryReclassification, operation.ActionType);
+        Assert.Equal((0, 0, 0), (operation.CurrentInventoryBefore, operation.CurrentInventoryAfter, operation.ExpectedAdjustmentCount));
+        Assert.Empty(operation.InventoryAdjustments);
+        var correction = await fixture.Db.InventoryIdentityCorrections.Include(x => x.InventoryAdjustments)
+            .SingleAsync(x => x.CorrectedReceiptId == receipt.Id);
+        Assert.True(correction.IsComplete);
+        Assert.Equal((0, 0), (correction.ExpectedAdjustmentCount, correction.ExpectedTreatmentMovementCount));
+        Assert.Empty(correction.InventoryAdjustments);
+        Assert.Contains("\"historicalOnly\":true", correction.SourceIdentitySnapshotJson);
+        var retainedAdjustment = await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .SingleAsync(x => x.Id == originalAdjustment.Id);
+        Assert.Equal(originalAdjustmentFingerprint, (retainedAdjustment.Id, retainedAdjustment.ReceiptId,
+            retainedAdjustment.GrowerLotId, retainedAdjustment.LotNumber, retainedAdjustment.ChangeAmount,
+            retainedAdjustment.AdjustmentAt, retainedAdjustment.CreatedAt));
+        var retainedBinsRun = await fixture.Db.BinsRunEntries.AsNoTracking().SingleAsync(x => x.Id == originalBinsRun.Id);
+        Assert.Equal(originalBinsRunFingerprint, (retainedBinsRun.Id, retainedBinsRun.ReceiptId,
+            retainedBinsRun.ActualRunId, retainedBinsRun.BinsRun, retainedBinsRun.GrowerLotId));
+        Assert.Equal(receipt.Id, (await fixture.Db.QcSamples.AsNoTracking().SingleAsync(x => x.Id == 8702)).ReceiptId);
+        Assert.Equal(OverrideFixture.GrowerLotId,
+            (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.SecondReceiptId)).GrowerLotId);
+        Assert.Equal(0, fixture.Ledger.CurrentSnapshots.Sum(x => x.CurrentBins));
+        Assert.Single(await fixture.Db.AuditLogs.Where(x => x.EntityName == nameof(ReceiptInventoryOverride)).ToListAsync());
+        var edit = await fixture.Dashboard(fixture.AdminPrincipal).GetReceiptEditAsync(receipt.Id, CancellationToken.None);
+        Assert.Null(edit.DataWarning);
+        Assert.Equal((target.Id, target.LotNumber, target.LotNumber, target.Grower),
+            (edit.Form.GrowerLotId, edit.Form.GrowerNumber, edit.Form.LotCode, edit.Form.GrowerName));
+        var readiness = await fixture.Invariant.VerifyReadinessAsync(CancellationToken.None);
+        Assert.True(readiness.IsReady, string.Join("; ", readiness.Issues.Where(x => x.BlocksDeployment).Select(x => x.Code)));
+    }
+
+    [Fact]
     public async Task Receipt_scoped_reconciliation_repairs_legacy_missing_current_grower_lot_without_rewriting_history()
     {
         await using var fixture = await OverrideFixture.CreateAsync(initialBins: 64);
@@ -1298,6 +1394,9 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Contains("AcknowledgeNegativeInventory", editView);
         Assert.Contains("Review Bin Count Override", editView);
         Assert.Contains("Changing the bin count of a saved Receipt requires an override.", editView);
+        Assert.Contains("Changing the Grower/Lot identity of a saved Receipt requires an audited identity correction.", editView);
+        Assert.Contains("Receipt Identity Correction Review", editView);
+        Assert.Contains("Apply Receipt Correction", editView);
         Assert.Contains("Where is the additional inventory now?", editView);
         Assert.Contains("TrueUpAllocations[", editView);
         Assert.Contains("positiveTrueUpAllocation", editView);
