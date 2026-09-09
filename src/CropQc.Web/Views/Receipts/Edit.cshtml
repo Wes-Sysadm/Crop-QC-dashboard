@@ -88,8 +88,13 @@
                      data-original-room="@form.RoomId" data-original-crop-year="@form.CropYear"
                      data-original-grower-lot="@form.GrowerLotId" data-original-grower-number="@form.GrowerNumber"
                      data-original-fruit-profile="@form.FruitProfileId">
-                <h2 id="overrideReviewTitle">Admin Inventory Override</h2>
+                <h2 id="overrideReviewTitle">Receipt Correction Review</h2>
                 <p id="savedReceiptBinCountWarning" class="notice warning" hidden>Changing the bin count of a saved Receipt requires an override.</p>
+                <p id="savedReceiptIdentityWarning" class="notice warning" hidden>Changing the Grower/Lot identity of a saved Receipt requires an audited identity correction. Historical inventory operations will be retained, and the correction will proceed only when current inventory is safe.</p>
+                @if (preview.HistoricalIdentityCorrectionIsZeroCurrent)
+                {
+                    <p class="notice">The original receipt position is already at zero. An identity correction will update the Receipt only and will not create, move, or restore inventory.</p>
+                }
                 <p class="notice warning">This is an audited inventory operation, not a normal receipt edit. Historical runs and transfers will not be rewritten.</p>
                 <dl class="summary-list">
                     <dt>Receipt</dt><dd id="overrideReceipt">@form.CompuTechReceiptId</dd>
@@ -168,11 +173,11 @@
                 <input type="hidden" name="ExpectedPositiveTrueUpStateToken" value="@preview.PositiveTrueUpStateToken" />
                 <input type="hidden" name="OperationKey" value="@preview.OperationKey" />
                 <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000"></textarea></div>
-                <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm that this correction will change inventory and create a durable Receipt Admin Override.</label>
+                <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm this audited Receipt correction and its durable Receipt Admin Override record.</label>
                 <input type="hidden" name="ConfirmInventoryChange" value="false" />
                 <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
                 <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
-                <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Override</button>
+                <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Receipt Correction</button>
             </section>
         }
         <div class="button-row">
@@ -268,8 +273,11 @@
                 reviewOverrideButton.hidden = !binCountChanged;
                 saveReceiptButton.hidden = binCountChanged || identityChanged;
                 overrideSection.hidden = binCountChanged ? !overrideReviewRequested : !identityChanged;
-                document.getElementById("overrideReviewTitle").textContent = binCountChanged ? "Bin Count Override Review" : "Admin Inventory Override";
+                document.getElementById("overrideReviewTitle").textContent = binCountChanged
+                    ? "Bin Count Override Review"
+                    : identityChanged ? "Receipt Identity Correction Review" : "Receipt Correction Review";
                 document.getElementById("savedReceiptBinCountWarning").hidden = !binCountChanged;
+                document.getElementById("savedReceiptIdentityWarning").hidden = !identityChanged;
                 document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
                 const delta = Number.isFinite(proposed) ? proposed - original : null;
                 document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;

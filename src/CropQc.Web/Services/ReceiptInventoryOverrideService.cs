@@ -51,6 +51,12 @@ public sealed class ReceiptInventoryOverrideService(
         if (receipt is null) return null;
 
         var state = await GetInventoryStateAsync(receipt, cancellationToken);
+        var historicalOnlyIdentityCorrection = state.HasExactReceiptProvenance
+            && CanApplyHistoricalOnlyIdentityCorrection(
+                state,
+                await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken));
+        IReadOnlyList<InventoryBalance> currentBalances = historicalOnlyIdentityCorrection ? [] : state.Balances;
+        var currentInventory = historicalOnlyIdentityCorrection ? 0 : state.Total;
         var inventoryStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
         var trueUpState = await GetPositiveTrueUpStateAsync(receipt, cancellationToken);
         var counts = await GetOperationalCountsAsync(receipt, cancellationToken);
@@ -63,9 +69,10 @@ public sealed class ReceiptInventoryOverrideService(
             InventoryStateToken = inventoryStateToken,
             PositiveTrueUpStateToken = trueUpState.StateToken,
             ReceiptBinCount = receipt.BinCount,
-            CurrentInventory = state.Total,
-            ConsumedBins = receipt.BinCount - state.Total,
-            Balances = state.Balances.Select(ToViewModel).ToList(),
+            CurrentInventory = currentInventory,
+            ConsumedBins = receipt.BinCount - currentInventory,
+            Balances = currentBalances.Select(ToViewModel).ToList(),
+            HistoricalIdentityCorrectionIsZeroCurrent = historicalOnlyIdentityCorrection,
             BinsRunCount = counts.BinsRuns,
             ActualRunCount = counts.ActualRuns,
             TransferCount = counts.Transfers,
@@ -206,6 +213,8 @@ public sealed class ReceiptInventoryOverrideService(
                 return await RollbackAsync(transaction, Failed("Inventory identity and receiving-room corrections must be completed as separate administrator operations."), cancellationToken);
 
             IReadOnlyList<RoomInventoryLedgerSnapshot> sourceIdentitySnapshots = [];
+            IReadOnlyList<InventoryBalance> historicalIdentityBalances = [];
+            var historicalOnlyIdentityCorrection = false;
             RoomInventoryLedgerSnapshot? locationSource = null;
             var sourceCustodyBins = 0;
             InventoryIdentityCorrection? identityCorrection = null;
@@ -219,6 +228,7 @@ public sealed class ReceiptInventoryOverrideService(
                     return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
                 var ledgerSnapshots = await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken);
                 var attributable = new List<RoomInventoryLedgerSnapshot>();
+                var cannotAttributeCurrentBalance = false;
                 foreach (var balance in state.Balances.Where(x => x.CurrentBins > 0))
                 {
                     var candidates = ledgerSnapshots.Where(x => x.WarehouseId == balance.WarehouseId
@@ -226,15 +236,35 @@ public sealed class ReceiptInventoryOverrideService(
                         && x.GrowerLotId == balance.GrowerLotId && x.FruitProfileId == balance.FruitProfileId
                         && Same(x.Lot, balance.Lot) && x.CurrentBins >= balance.CurrentBins).ToList();
                     if (candidates.Count != 1)
-                        return await RollbackAsync(transaction, Failed("The Receipt's current inventory position cannot be attributed exactly. Reconcile Receipt provenance before changing identity."), cancellationToken);
+                    {
+                        cannotAttributeCurrentBalance = true;
+                        break;
+                    }
                     attributable.Add(candidates[0] with { CurrentBins = balance.CurrentBins });
+                }
+                if (cannotAttributeCurrentBalance)
+                {
+                    if (!CanApplyHistoricalOnlyIdentityCorrection(state, ledgerSnapshots))
+                    {
+                        return await RollbackAsync(transaction, Failed(
+                            "The Receipt has current inventory that cannot be attributed exactly. Reconcile Receipt provenance before changing identity."), cancellationToken);
+                    }
+
+                    // Historical aggregate operations can fully consume a receipt's source
+                    // position without carrying ReceiptId. The receipt identity may still be
+                    // corrected, but only as a receipt-scoped, zero-current operation: no
+                    // ledger or treatment row is rewritten or synthesized.
+                    historicalOnlyIdentityCorrection = true;
+                    historicalIdentityBalances = state.Balances.ToList();
+                    attributable.Clear();
+                    state = new InventoryState([], HasExactReceiptProvenance: true);
                 }
                 sourceIdentitySnapshots = attributable;
                 var currentStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
                 if (string.IsNullOrWhiteSpace(form.ExpectedInventoryStateToken)
                     || !string.Equals(form.ExpectedInventoryStateToken, currentStateToken, StringComparison.Ordinal))
                     return await RollbackAsync(transaction, Conflict("Inventory moved or changed after this override was reviewed. Refresh the Receipt and review the correction again."), cancellationToken);
-                if (sourceIdentitySnapshots.Count == 0)
+                if (sourceIdentitySnapshots.Count == 0 && !historicalOnlyIdentityCorrection)
                     return await RollbackAsync(transaction, Failed("No current inventory remains under the obsolete identity."), cancellationToken);
                 state = new InventoryState(sourceIdentitySnapshots.Select(ToBalance).ToList(), HasExactReceiptProvenance: true);
             }
@@ -355,7 +385,14 @@ public sealed class ReceiptInventoryOverrideService(
                         CreatedByUser = administrator,
                         CreatedByUserId = administrator.Id,
                         CreatedAt = now,
-                        SourceIdentitySnapshotJson = JsonSerializer.Serialize(new { Identity = sourceKey, ReceiptId = receipt.Id, State = state.Balances.Select(ToViewModel) }, JsonOptions),
+                        SourceIdentitySnapshotJson = JsonSerializer.Serialize(new
+                        {
+                            Identity = sourceKey,
+                            ReceiptId = receipt.Id,
+                            State = state.Balances.Select(ToViewModel),
+                            HistoricalOnly = historicalOnlyIdentityCorrection,
+                            HistoricalSourceState = historicalIdentityBalances.Select(ToViewModel)
+                        }, JsonOptions),
                         TargetIdentitySnapshotJson = JsonSerializer.Serialize(targetKey, JsonOptions),
                         IsComplete = false,
                         IsActive = true
@@ -680,6 +717,21 @@ public sealed class ReceiptInventoryOverrideService(
                 ?? "Current inventory lineage can no longer be allocated to this Receipt exactly after operational movement. Reconcile Receipt provenance before changing quantity or voiding the Receipt. No inventory change was made.";
         }
         return null;
+    }
+
+    private static bool CanApplyHistoricalOnlyIdentityCorrection(
+        InventoryState receiptState,
+        IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots)
+    {
+        var balances = receiptState.Balances.Where(x => x.CurrentBins > 0).ToList();
+        return balances.Count > 0 && balances.All(balance =>
+            ledgerSnapshots.Where(snapshot => snapshot.WarehouseId == balance.WarehouseId
+                    && snapshot.RoomId == balance.RoomId
+                    && snapshot.CropYear == balance.CropYear
+                    && snapshot.GrowerLotId == balance.GrowerLotId
+                    && snapshot.FruitProfileId == balance.FruitProfileId
+                    && Same(snapshot.Lot, balance.Lot))
+                .Sum(snapshot => snapshot.CurrentBins) == 0);
     }
 
     private async Task<PositiveTrueUpState> GetPositiveTrueUpStateAsync(

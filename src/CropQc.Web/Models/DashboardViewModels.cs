@@ -1717,6 +1717,7 @@ public sealed class ReceiptInventoryOverridePreviewViewModel
     public int BinsRunCount { get; set; }
     public int ActualRunCount { get; set; }
     public int TransferCount { get; set; }
+    public bool HistoricalIdentityCorrectionIsZeroCurrent { get; set; }
     public bool HasPriorOverride { get; set; }
     public int CurrentCanonicalInventory { get; set; }
     public IReadOnlyList<ReceiptInventoryTrueUpPositionViewModel> TrueUpPositions { get; set; } = [];
