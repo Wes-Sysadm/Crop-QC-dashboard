@@ -9,7 +9,7 @@ public sealed record ReceiptQuantityCheck(long ReceiptId, int WarehouseId, int R
     public long Difference => ReceiptBins - LedgerBins;
 }
 
-public sealed record ReceiptQuantityReconciliation(DateTimeOffset From, IReadOnlyList<ReceiptQuantityCheck> Receipts)
+public sealed record ReceiptQuantityReconciliation(int CropYear, IReadOnlyList<ReceiptQuantityCheck> Receipts)
 {
     public int ReceiptCount => Receipts.Count;
     public long ReceiptTotal => Receipts.Sum(x => (long)x.ReceiptBins);
@@ -48,10 +48,8 @@ public sealed record InventoryConservationReport(
 }
 
 /// <summary>Read-only quantity accounting. Unknown categories are reported and fail the release gate.</summary>
-public sealed class InventoryConservationReportService(CropQcDbContext db, IRoomInventoryLedgerQueryService ledger)
+public sealed class InventoryConservationReportService(CropQcDbContext db, IRoomInventoryLedgerQueryService ledger, int cropYear)
 {
-    public static readonly DateTimeOffset ModernReceivingFrom = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-
     public static bool IsKnownMovement(string type) => type is
         "ReceiptAdd" or "ReceiptEdit" or "ReceiptAdminOverride" or "StartingInventoryImport"
         or "BinsRun" or "BinsRunReversal" or "Depletion" or "DepletionReversal"
@@ -63,23 +61,22 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
 
     public async Task<ReceiptQuantityReconciliation> ReconcileReceiptsAsync(CancellationToken cancellationToken)
     {
-        // Filter the time boundary in memory as SQLite cannot compare DateTimeOffset.
-        // Selection deliberately excludes historical DS/LS, deleted, and test receipts.
-        var receipts = (await db.Receipts.AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.IsTestData && x.ReceiptType == "Truck receipt")
-            .Select(x => new { x.Id, x.WarehouseId, x.BinCount, x.ReceivedAt }).ToListAsync(cancellationToken))
-            .Where(x => x.ReceivedAt >= ModernReceivingFrom).ToList();
+        // Crop identity, not a calendar cutoff, defines the complete receiving gate.
+        var receipts = await db.Receipts.AsNoTracking()
+            .Where(x => !x.IsDeleted && !x.IsTestData && x.ReceiptType == "Truck receipt"
+                && x.CropYear == cropYear)
+            .OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.WarehouseId, x.BinCount }).ToListAsync(cancellationToken);
         var ids = receipts.Select(x => x.Id).ToList();
         var rows = await db.RoomInventoryAdjustments.AsNoTracking()
             .Where(x => x.ReceiptId != null && ids.Contains(x.ReceiptId.Value)
                 && x.InventoryIdentityCorrectionId == null
                 && (x.AdjustmentType == "ReceiptAdd" || x.AdjustmentType == "ReceiptEdit"
                     || (x.AdjustmentType == "ReceiptAdminOverride"
-                        && (x.ReceiptInventoryOverrideId == null
-                            || x.ReceiptInventoryOverride!.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection))))
+                        && x.ReceiptInventoryOverride!.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection)))
             .Select(x => new { ReceiptId = x.ReceiptId!.Value, x.ChangeAmount }).ToListAsync(cancellationToken);
         var totals = rows.GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.Sum(y => (long)y.ChangeAmount));
-        return new(ModernReceivingFrom, receipts.Select(x =>
+        return new(cropYear, receipts.Select(x =>
             new ReceiptQuantityCheck(x.Id, x.WarehouseId, x.BinCount, totals.GetValueOrDefault(x.Id))).ToList());
     }
 

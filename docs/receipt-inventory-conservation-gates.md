@@ -20,12 +20,18 @@ totals come directly from `RoomInventoryLedgerQueryService`.
 
 ## Receiving
 
-Scope is active, non-test Truck receipts received from 2026-08-01 00:00 UTC.
+Scope is ALL active, non-test Truck receipts whose CropYear equals the current
+operational crop resolved by ICropYearService (2026 for this release). There is
+no ReceivedAt cutoff: July receipts in the current crop are included, while
+previous-crop, deleted, test, and non-Truck receipts are excluded.
+The JSON identifies the crop year. For the standalone SQL, set the parameters
+CTE to the same resolved crop year; its reviewed release value is 2026.
 Compare every Receipt.BinCount with signed ReceiptAdd/ReceiptEdit and quantity
 ReceiptAdminOverride ledger changes. Identity correction rows and non-quantity
-override parents are excluded. Legacy parentless ReceiptEdit/ReceiptAdminOverride
-rows use their signed deltas; paired identity changes contribute zero, never
-their sum of positive legs. June DS/LS records are outside this modern check.
+override parents are excluded. ReceiptAdminOverride requires a durable parent
+with ActionType = QuantityCorrection; parentless overrides are not included.
+ReceiptEdit uses signed deltas; paired identity changes contribute zero, never
+their sum of positive legs. June DS/LS records are outside this Truck-only check.
 The report lists mismatch IDs, so opposite discrepancies cannot cancel into PASS.
 
 ## Current inventory
@@ -65,21 +71,21 @@ be established, the correction fails closed for explicit reconciliation.
 
 ## Read-only production baseline, 2026-09-09
 
-Receiving: 1,539 receipts; Receipt bins 63,078; receiving ledger 63,078;
+Current-crop receiving: 1,579 receipts; Receipt bins 65,114; receiving ledger 65,114;
 mismatches 0; net difference 0; mismatch IDs empty.
 
-| Facility | Modern receipt bins | Current room bins | Accounting difference |
+| Facility | Current-crop receipt bins | Current room bins | Accounting difference |
 | --- | ---: | ---: | ---: |
 | DH | 11,288 | 11,096 | 0 |
-| EBS | 21,551 | 13,035 | 0 |
-| McDougall | 18,231 | 18,103 | 0 |
-| WP | 12,008 | 5,257 | 0 |
-| Global | 63,078 | 47,491 | 0 |
+| EBS | 21,939 | 13,035 | 0 |
+| McDougall | 18,491 | 18,363 | 0 |
+| WP | 13,396 | 5,257 | 0 |
+| Global | 65,114 | 47,751 | 0 |
 
 The broader effective room-ledger equation is:
 
 ```text
-65,380 effective receiving and receipt corrections (includes earlier history)
+65,640 effective receiving and receipt corrections (includes earlier history)
 + 6,143 opening inventory
 - 22,854 net packing consumption
 - 15 dropped bins
@@ -87,13 +93,15 @@ The broader effective room-ledger equation is:
 - 533 outside warehouse custody
 + 0 internal transfer net
 + 0 inventory identity correction net
-= 47,491 current room bins
+= 47,751 current room bins
 ```
 
-The 65,380 scope is intentionally broader than the 63,078 modern receipt check;
+The 65,640 scope is intentionally broader than the 65,114 current-crop receipt check;
 their difference is not treated as a receiving mismatch. There were no processor
 shipments or unclassified current ledger categories in this snapshot. Adding
-transit and outside custody to room bins gives 48,654 bins under tracked custody.
+transit and outside custody to room bins gives 48,914 bins under tracked custody.
+These are fresh read-only results, not a claim that the older 47,491-bin snapshot
+is still current. The release gate does not use the former August 1 boundary.
 
 All room-transfer and inventory-identity correction parents netted to zero.
 Ordinary treatment identity movement debits and credits were both 5,785 bins.
@@ -116,7 +124,9 @@ ambiguous remaining position. The positive historical-only test now includes a
 durable packing exit, preserves receipt and operation history, and remains idempotent.
 
 Focused coverage also includes a seeded one-bin receiving discrepancy, clean
-receiving, legacy/test/deleted exclusions, quantity overrides in both directions,
+full-crop receiving including July 26, opposite per-receipt discrepancies that
+cannot cancel into PASS, previous-crop/test/deleted/non-Truck exclusions,
+strict quantity-action override selection, quantity overrides in both directions,
 opening-baseline replacement, unknown-category failure, paired inventory and
 treatment reclassification, and global internal-transfer conservation.
 Environment-guarded PostgreSQL integration cases are not counted as exercised

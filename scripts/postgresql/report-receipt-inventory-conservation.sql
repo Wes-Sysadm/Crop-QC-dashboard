@@ -1,17 +1,18 @@
 -- Read-only release gate. Execute as one statement in a read-only transaction.
--- Receiving boundary: active non-test Truck receipts from 2026-08-01 UTC.
+-- Receiving boundary: ALL active non-test Truck receipts in the current crop.
+-- Set crop_year to the application's resolved ICropYearService current year.
 -- Inventory boundary: current room ledger after opening-import supersession.
 -- Outside/transit custody is displayed separately; it is not a physical fruit exit.
-WITH receiving AS (
+WITH parameters AS (SELECT 2026::integer AS crop_year), receiving AS (
  SELECT r."Id",r."WarehouseId",r."BinCount",COALESCE(SUM(a."ChangeAmount"),0) AS ledger
  FROM "Receipts" r
  LEFT JOIN "RoomInventoryAdjustments" a ON a."ReceiptId"=r."Id"
  AND a."InventoryIdentityCorrectionId" IS NULL
  AND (a."AdjustmentType" IN ('ReceiptAdd','ReceiptEdit')
- OR (a."AdjustmentType"='ReceiptAdminOverride' AND (a."ReceiptInventoryOverrideId" IS NULL
- OR EXISTS (SELECT 1 FROM "ReceiptInventoryOverrides" o WHERE o."Id"=a."ReceiptInventoryOverrideId" AND o."ActionType"='QuantityCorrection'))))
+ OR (a."AdjustmentType"='ReceiptAdminOverride'
+ AND EXISTS (SELECT 1 FROM "ReceiptInventoryOverrides" o WHERE o."Id"=a."ReceiptInventoryOverrideId" AND o."ActionType"='QuantityCorrection')))
  WHERE NOT r."IsDeleted" AND NOT r."IsTestData" AND r."ReceiptType"='Truck receipt'
- AND r."ReceivedAt">=TIMESTAMPTZ '2026-08-01 00:00:00+00'
+ AND r."CropYear"=(SELECT crop_year FROM parameters)
  GROUP BY r."Id"
 ), effective AS (
  SELECT a.*,CASE WHEN a."ReceiptId" IS NULL AND a."AdjustmentType"='StartingInventoryImport'
@@ -51,6 +52,7 @@ WITH receiving AS (
  FROM "TreatmentLineageMovements" WHERE "InventoryIdentityCorrectionId" IS NOT NULL AND "MovementType"='IdentityReclassification'
 )
 SELECT jsonb_build_object(
+ 'crop_year',(SELECT crop_year FROM parameters),
  'receiving',(SELECT jsonb_build_object('count',COUNT(*),'receipt_total',SUM("BinCount"),'ledger_total',SUM(ledger),
  'mismatch_count',COUNT(*) FILTER (WHERE "BinCount"<>ledger),'difference',SUM("BinCount"-ledger),
  'mismatch_receipt_ids',COALESCE(jsonb_agg("Id") FILTER (WHERE "BinCount"<>ledger),'[]'::jsonb)) FROM receiving),
