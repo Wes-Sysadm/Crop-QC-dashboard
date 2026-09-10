@@ -51,10 +51,8 @@ public sealed class ReceiptInventoryOverrideService(
         if (receipt is null) return null;
 
         var state = await GetInventoryStateAsync(receipt, cancellationToken);
-        var historicalOnlyIdentityCorrection = state.HasExactReceiptProvenance
-            && CanApplyHistoricalOnlyIdentityCorrection(
-                state,
-                await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken));
+        var historicalOnlyIdentityCorrection = await CanApplyHistoricalOnlyIdentityCorrectionAsync(
+            receipt, await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken), cancellationToken);
         IReadOnlyList<InventoryBalance> currentBalances = historicalOnlyIdentityCorrection ? [] : state.Balances;
         var currentInventory = historicalOnlyIdentityCorrection ? 0 : state.Total;
         var inventoryStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
@@ -232,7 +230,7 @@ public sealed class ReceiptInventoryOverrideService(
                 var ledgerSnapshots = await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken);
                 var attributable = new List<RoomInventoryLedgerSnapshot>();
                 var cannotAttributeCurrentBalance = false;
-                if (CanApplyHistoricalOnlyIdentityCorrection(state, ledgerSnapshots))
+                if (await CanApplyHistoricalOnlyIdentityCorrectionAsync(receipt, ledgerSnapshots, cancellationToken))
                 {
                     // A later aggregate operation may have fully consumed this receipt's
                     // former current position.  That is a historical-only correction,
@@ -725,19 +723,92 @@ public sealed class ReceiptInventoryOverrideService(
         return null;
     }
 
-    private static bool CanApplyHistoricalOnlyIdentityCorrection(
-        InventoryState receiptState,
-        IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots)
+    private async Task<bool> CanApplyHistoricalOnlyIdentityCorrectionAsync(
+        Receipt receipt,
+        IReadOnlyList<RoomInventoryLedgerSnapshot> ledgerSnapshots,
+        CancellationToken cancellationToken)
     {
-        var balances = receiptState.Balances.Where(x => x.CurrentBins > 0).ToList();
-        return balances.Count > 0 && balances.All(balance =>
-            ledgerSnapshots.Where(snapshot => snapshot.WarehouseId == balance.WarehouseId
-                    && snapshot.RoomId == balance.RoomId
-                    && snapshot.CropYear == balance.CropYear
-                    && snapshot.GrowerLotId == balance.GrowerLotId
-                    && snapshot.FruitProfileId == balance.FruitProfileId
-                    && Same(snapshot.Lot, balance.Lot))
-                .Sum(snapshot => snapshot.CurrentBins) == 0);
+        // Losing ReceiptId granularity proves nothing about custody. Require both
+        // global zero balances and durable, net exit evidence for every historical
+        // identity. Other receipts sharing an identity make this conservative:
+        // remaining consolidated fruit must be attributed or explicitly reconciled.
+        var history = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptId == receipt.Id).ToListAsync(cancellationToken);
+        if (!history.Any(x => x.AdjustmentType == "ReceiptAdd" && x.ChangeAmount > 0)) return false;
+        var identities = history.Select(x => (Year: x.CropYear ?? receipt.CropYear,
+                LotId: x.GrowerLotId, FruitId: x.FruitProfileId ?? receipt.FruitProfileId, Lot: x.LotNumber))
+            .Append((Year: receipt.CropYear, LotId: receipt.GrowerLotId, FruitId: receipt.FruitProfileId, Lot: receipt.LotCode))
+            .Distinct().ToList();
+        // Follow persisted reclassification identities in both directions. A zero
+        // old key can mean that fruit was reclassified, not that it left custody.
+        var corrections = await dbContext.InventoryIdentityCorrections.AsNoTracking().ToListAsync(cancellationToken);
+        var lotNumbers = await dbContext.GrowerLots.AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, x => x.LotNumber, cancellationToken);
+        var expanded = true;
+        while (expanded)
+        {
+            expanded = false;
+            foreach (var correction in corrections)
+            {
+                var source = (Year: correction.SourceCropYear, LotId: (int?)correction.SourceGrowerLotId,
+                    FruitId: correction.SourceFruitProfileId,
+                    Lot: correction.SourceGrowerLotId is { } sourceLotId ? lotNumbers.GetValueOrDefault(sourceLotId) ?? "" : "");
+                var target = (Year: correction.TargetCropYear, LotId: (int?)correction.TargetGrowerLotId,
+                    FruitId: correction.TargetFruitProfileId, Lot: lotNumbers.GetValueOrDefault(correction.TargetGrowerLotId) ?? "");
+                if (!identities.Any(x => x.Year == source.Year && x.LotId == source.LotId && x.FruitId == source.FruitId
+                    || x.Year == target.Year && x.LotId == target.LotId && x.FruitId == target.FruitId)) continue;
+                if (!correction.IsComplete) return false;
+                foreach (var identity in new[] { source, target })
+                    if (!identities.Contains(identity)) { identities.Add(identity); expanded = true; }
+            }
+        }
+        bool Matches(int? year, int? lotId, int? fruitId, string? lot) => identities.Any(identity =>
+            (year is null || year == identity.Year) && (fruitId is null || fruitId == identity.FruitId)
+            && ((lotId is not null && lotId == identity.LotId) || Same(lot, identity.Lot)));
+
+        if (ledgerSnapshots.Any(x => x.CurrentBins != 0 && Matches(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.Lot)))
+            return false;
+        var treatment = await dbContext.TreatmentLineageSegments.AsNoTracking()
+            .Where(x => x.CurrentBins != 0).ToListAsync(cancellationToken);
+        if (treatment.Any(x => x.ReceiptId == receipt.Id
+            || Matches(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumberSnapshot))) return false;
+        var interCrew = await dbContext.InterCrewTransfers.AsNoTracking()
+            .Where(x => x.Status != InterCrewTransferStatuses.Reversed && x.Status != InterCrewTransferStatuses.Received)
+            .Include(x => x.SourceInventoryAdjustment).ToListAsync(cancellationToken);
+        if (interCrew.Any(x => x.ReceiptId == receipt.Id || x.SourceInventoryAdjustment?.ReceiptId == receipt.Id
+            || Matches(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumberSnapshot))) return false;
+        var outside = await dbContext.OutsideWarehouseTransfers.AsNoTracking()
+            .Where(x => !x.IsReversed).Include(x => x.SourceInventoryAdjustment).ToListAsync(cancellationToken);
+        if (outside.Any(x => x.ReceiptId == receipt.Id || x.SourceInventoryAdjustment?.ReceiptId == receipt.Id
+            || Matches(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumberSnapshot))) return false;
+
+        var years = identities.Select(x => x.Year).Distinct().ToList();
+        var rows = (await dbContext.RoomInventoryAdjustments.AsNoTracking()
+                .Where(x => x.CropYear == null || years.Contains(x.CropYear.Value)).ToListAsync(cancellationToken))
+            .Where(x => Matches(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumber)).ToList();
+        // Imports, missing movement pairs, unknown categories, or a net nonzero
+        // raw balance cannot establish that fruit physically left global custody.
+        if (rows.Any(x => !InventoryConservationReportService.IsKnownMovement(x.AdjustmentType))
+            || rows.Any(x => x.AdjustmentType == RoomInventoryImportService.StartingInventoryAdjustmentType)
+            || rows.Sum(x => (long)x.ChangeAmount) != 0
+            || rows.Where(x => x.RoomTransferId != null).GroupBy(x => x.RoomTransferId)
+                .Any(x => x.Sum(y => (long)y.ChangeAmount) != 0)) return false;
+        var exits = rows.Where(x => x.ChangeAmount < 0
+            && x.AdjustmentType is "BinsRun" or "Depletion" or "DroppedBins" or "ProcessorShipment").ToList();
+        if (exits.Count == 0) return false;
+        var exitIds = exits.Select(x => x.Id).ToList();
+        var packingIds = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => exitIds.Contains(x.InventoryAdjustmentId))
+            .Select(x => x.InventoryAdjustmentId).ToListAsync(cancellationToken);
+        // A negative number without its durable operational parent is not an exit.
+        return exits.All(x => x.AdjustmentType switch
+        {
+            "BinsRun" => packingIds.Contains(x.Id),
+            "Depletion" => x.RoomDepletionId != null,
+            "DroppedBins" => x.RoomInventoryLossId != null,
+            "ProcessorShipment" => x.ProcessorShipmentLineId != null,
+            _ => false
+        });
     }
 
     private async Task<PositiveTrueUpState> GetPositiveTrueUpStateAsync(
