@@ -425,6 +425,23 @@ if (args.Contains("--verify-inventory-deductions", StringComparer.OrdinalIgnoreC
     return;
 }
 
+if (args.Contains("--verify-inventory-conservation", StringComparer.OrdinalIgnoreCase))
+{
+    await using var diagnosticScope = app.Services.CreateAsyncScope();
+    var db = diagnosticScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+    if (db.Database.IsNpgsql()) await db.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY");
+    var report = await new InventoryConservationReportService(db,
+        diagnosticScope.ServiceProvider.GetRequiredService<IRoomInventoryLedgerQueryService>(),
+        diagnosticScope.ServiceProvider.GetRequiredService<ICropYearService>().GetCurrentCropYear(
+            diagnosticScope.ServiceProvider.GetRequiredService<CropQc.Shared.Time.IBusinessTimeService>().NowPacific))
+        .AnalyzeAsync(CancellationToken.None);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));
+    Environment.ExitCode = report.IsReady ? 0 : 2;
+    return;
+}
+
 if (args.Contains("--audit-inventory-identity-corrections", StringComparer.OrdinalIgnoreCase))
 {
     await using var diagnosticScope = app.Services.CreateAsyncScope();

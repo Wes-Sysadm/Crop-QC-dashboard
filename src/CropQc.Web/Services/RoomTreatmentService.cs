@@ -931,6 +931,7 @@ public sealed class RoomTreatmentService(
             && targetTreatmentBins == targetExistingCurrentBins.Value + source.CurrentBins;
         var sourceAndTargetTreatmentsMatchSeparateInventories = sourceTreatmentBins == source.CurrentBins
             && (targetExistingCurrentBins is null || targetTreatmentBins == targetExistingCurrentBins.Value);
+        var partialConsolidatedSourceAllocations = GetExactConsolidatedSourceAllocations(source, sourceSegments);
         // Older rooms can have no persisted lineage at all. In that specific
         // case the existing MaterializeAsync path creates the same untreated
         // source representation used by normal room operations; there is no
@@ -942,8 +943,10 @@ public sealed class RoomTreatmentService(
                 sourceSegments, targetSegments, cancellationToken);
 
         if (!targetAlreadyRepresentsConsolidatedInventory && !sourceAndTargetTreatmentsMatchSeparateInventories
-            && !noRecordedTreatmentLineage && provenUntreatedGapBins is null)
-            return new(false, "Treatment provenance does not match either the separate or the consolidated authoritative inventory identities.");
+            && !noRecordedTreatmentLineage && provenUntreatedGapBins is null
+            && partialConsolidatedSourceAllocations is null)
+            return new(false, DescribeIdentityReclassificationBlocker(source, sourceSegments)
+                ?? "Treatment provenance does not match either the separate or the consolidated authoritative inventory identities.");
 
         // A correction is one durable operation. Keep its treatment rows and
         // segment updates on the correction's authoritative operation time so
@@ -1063,6 +1066,51 @@ public sealed class RoomTreatmentService(
             return new(true, null, backfillMovement.Id);
         }
 
+        if (partialConsolidatedSourceAllocations is not null)
+        {
+            // Receipt provenance has already proven the exact current receipt quantity.
+            // The older treatment model may represent that quantity inside one larger,
+            // consolidated treatment segment. Split only the attributable bins and keep
+            // their one proven treatment state/signature; do not reinterpret treatment
+            // or consume any bins belonging to the other receipts in the segment.
+            foreach (var allocation in partialConsolidatedSourceAllocations)
+            {
+                var segment = allocation.Segment;
+                var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState,
+                    segment.TreatmentSignature, now, cancellationToken, correction.CorrectedReceiptId);
+                await CopyApplicationLinksAsync(segment, destination, cancellationToken);
+                segment.CurrentBins -= allocation.Bins;
+                segment.UpdatedAt = now;
+                segment.ConcurrencyVersion++;
+                destination.CurrentBins += allocation.Bins;
+                destination.UpdatedAt = now;
+                destination.ConcurrencyVersion++;
+                var movement = new TreatmentLineageMovement
+                {
+                    OperationKey = $"{prefix}split:{segment.Id}",
+                    MovementType = TreatmentLineageMovementTypes.IdentityReclassification,
+                    SourceSegment = segment,
+                    DestinationSegment = destination,
+                    SourceRoomId = source.RoomId,
+                    DestinationRoomId = target.RoomId,
+                    IdentityKey = IdentityKey(target),
+                    TreatmentStateSnapshot = segment.TreatmentState,
+                    TreatmentSignatureSnapshot = segment.TreatmentSignature,
+                    ReceiptId = correction.CorrectedReceiptId,
+                    BinCount = allocation.Bins,
+                    InventoryIdentityCorrection = correction,
+                    InventoryIdentityCorrectionId = correction.Id,
+                    OccurredAt = occurredAt,
+                    CreatedByUserId = actorUserId,
+                    CreatedAt = now
+                };
+                correction.TreatmentLineageMovements.Add(movement);
+                dbContext.TreatmentLineageMovements.Add(movement);
+            }
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
+        }
+
         await NormalizeStaleTargetSegmentsAsync(staleTargetSegments, target, correction, occurredAt, actorUserId,
             cancellationToken);
 
@@ -1113,6 +1161,71 @@ public sealed class RoomTreatmentService(
         }
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, null, correction.TreatmentLineageMovements.LastOrDefault()?.Id);
+    }
+
+    private static IReadOnlyList<(TreatmentLineageSegment Segment, int Bins)>? GetExactConsolidatedSourceAllocations(
+        RoomInventoryLedgerSnapshot source,
+        IReadOnlyList<TreatmentLineageSegment> sourceSegments)
+    {
+        // This is deliberately narrower than generic materialization.  A partial
+        // split is safe only when all contributing segments state the exact same
+        // known treatment provenance.  Unknown, mixed, or insufficient provenance
+        // remains a fail-closed condition.
+        if (source.CurrentBins <= 0 || sourceSegments.Sum(x => x.CurrentBins) <= source.CurrentBins)
+            return null;
+        var current = sourceSegments.Where(x => x.CurrentBins > 0).ToList();
+        // A partial split is specifically for legacy consolidated lineage.
+        // Never take a partial balance out of a segment already attributed
+        // to any receipt: that would make another receipt's provenance
+        // ambiguous rather than resolving this receipt's aggregate share.
+        if (current.Count == 0
+            || current.Any(x => x.ReceiptId is not null)
+            || current.Any(x => x.TreatmentState == TreatmentLineageStates.Unknown
+                || string.IsNullOrWhiteSpace(x.TreatmentSignature))
+            || current.Select(x => (x.TreatmentState, x.TreatmentSignature))
+                .Distinct().Count() != 1)
+        {
+            return null;
+        }
+
+        var provenance = current[0];
+        if ((provenance.TreatmentState == TreatmentLineageStates.Untreated && provenance.TreatmentSignature != "u")
+            || (provenance.TreatmentState == TreatmentLineageStates.Confirmed && provenance.TreatmentSignature == "u")
+            || (provenance.TreatmentState != TreatmentLineageStates.Untreated
+                && provenance.TreatmentState != TreatmentLineageStates.Confirmed))
+        {
+            return null;
+        }
+
+        var remaining = source.CurrentBins;
+        var allocations = new List<(TreatmentLineageSegment Segment, int Bins)>();
+        foreach (var segment in current.OrderBy(x => x.ReceiptId ?? long.MaxValue).ThenBy(x => x.Id))
+        {
+            var bins = Math.Min(remaining, segment.CurrentBins);
+            if (bins > 0) allocations.Add((segment, bins));
+            remaining -= bins;
+            if (remaining == 0) break;
+        }
+        return remaining == 0 ? allocations : null;
+    }
+
+    private static string? DescribeIdentityReclassificationBlocker(
+        RoomInventoryLedgerSnapshot source,
+        IReadOnlyList<TreatmentLineageSegment> sourceSegments)
+    {
+        var current = sourceSegments.Where(x => x.CurrentBins > 0).ToList();
+        if (current.Count == 0) return null;
+        var total = current.Sum(x => x.CurrentBins);
+        if (total < source.CurrentBins)
+            return "Treatment provenance has fewer current bins than the authoritative Receipt inventory. Reconcile treatment lineage before changing identity.";
+        if (total <= source.CurrentBins) return null;
+        if (current.Any(x => x.ReceiptId is not null))
+            return "The current treatment provenance includes receipt-specific segments, so this Receipt cannot be safely split from a consolidated balance.";
+        if (current.Any(x => x.TreatmentState == TreatmentLineageStates.Unknown))
+            return "Treatment provenance for the consolidated current inventory is unknown and cannot be safely attributed to this Receipt.";
+        if (current.Select(x => (x.TreatmentState, x.TreatmentSignature)).Distinct().Count() != 1)
+            return "The consolidated current inventory has multiple treatment signatures, so the exact Receipt bins cannot be safely attributed.";
+        return "The consolidated current inventory has an invalid treatment state/signature and cannot be safely reclassified.";
     }
 
     private async Task<int?> GetProvenUntreatedLineageGapAsync(
