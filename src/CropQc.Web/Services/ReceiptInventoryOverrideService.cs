@@ -222,42 +222,48 @@ public sealed class ReceiptInventoryOverrideService(
             if (identityChanged)
             {
                 if (form.GrowerLotId is null)
-                    return await RollbackAsync(transaction, Failed("Inventory identity reclassification requires an explicit target Grower Lot."), cancellationToken);
-                var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
-                if (lineageError is not null)
-                    return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+                {
+                    var requestedIdentity = FirstNonEmpty(form.GrowerNumber, form.LotCode);
+                    var message = string.IsNullOrWhiteSpace(requestedIdentity)
+                        ? "Inventory identity reclassification requires an explicit target Grower Lot."
+                        : $"Grower/Lot {requestedIdentity} is not currently in Crop QC master data. Select or add the authoritative Grower Lot before changing this Receipt.";
+                    return await RollbackAsync(transaction, Failed(message), cancellationToken);
+                }
                 var ledgerSnapshots = await ledgerQuery.GetSnapshotsAsync(null, null, cancellationToken);
                 var attributable = new List<RoomInventoryLedgerSnapshot>();
                 var cannotAttributeCurrentBalance = false;
-                foreach (var balance in state.Balances.Where(x => x.CurrentBins > 0))
+                if (CanApplyHistoricalOnlyIdentityCorrection(state, ledgerSnapshots))
                 {
-                    var candidates = ledgerSnapshots.Where(x => x.WarehouseId == balance.WarehouseId
-                        && x.RoomId == balance.RoomId && x.CropYear == balance.CropYear
-                        && x.GrowerLotId == balance.GrowerLotId && x.FruitProfileId == balance.FruitProfileId
-                        && Same(x.Lot, balance.Lot) && x.CurrentBins >= balance.CurrentBins).ToList();
-                    if (candidates.Count != 1)
-                    {
-                        cannotAttributeCurrentBalance = true;
-                        break;
-                    }
-                    attributable.Add(candidates[0] with { CurrentBins = balance.CurrentBins });
+                    // A later aggregate operation may have fully consumed this receipt's
+                    // former current position.  That is a historical-only correction,
+                    // so current treatment lineage is neither moved nor synthesized.
+                    historicalOnlyIdentityCorrection = true;
+                    historicalIdentityBalances = state.Balances.ToList();
+                    state = new InventoryState([], HasExactReceiptProvenance: true);
                 }
-                if (cannotAttributeCurrentBalance)
+                else
                 {
-                    if (!CanApplyHistoricalOnlyIdentityCorrection(state, ledgerSnapshots))
+                    var lineageError = await ValidateLineageAsync(receipt, state, cancellationToken);
+                    if (lineageError is not null)
+                        return await RollbackAsync(transaction, Failed(lineageError), cancellationToken);
+                    foreach (var balance in state.Balances.Where(x => x.CurrentBins > 0))
+                    {
+                        var candidates = ledgerSnapshots.Where(x => x.WarehouseId == balance.WarehouseId
+                            && x.RoomId == balance.RoomId && x.CropYear == balance.CropYear
+                            && x.GrowerLotId == balance.GrowerLotId && x.FruitProfileId == balance.FruitProfileId
+                            && Same(x.Lot, balance.Lot) && x.CurrentBins >= balance.CurrentBins).ToList();
+                        if (candidates.Count != 1)
+                        {
+                            cannotAttributeCurrentBalance = true;
+                            break;
+                        }
+                        attributable.Add(candidates[0] with { CurrentBins = balance.CurrentBins });
+                    }
+                    if (cannotAttributeCurrentBalance)
                     {
                         return await RollbackAsync(transaction, Failed(
                             "The Receipt has current inventory that cannot be attributed exactly. Reconcile Receipt provenance before changing identity."), cancellationToken);
                     }
-
-                    // Historical aggregate operations can fully consume a receipt's source
-                    // position without carrying ReceiptId. The receipt identity may still be
-                    // corrected, but only as a receipt-scoped, zero-current operation: no
-                    // ledger or treatment row is rewritten or synthesized.
-                    historicalOnlyIdentityCorrection = true;
-                    historicalIdentityBalances = state.Balances.ToList();
-                    attributable.Clear();
-                    state = new InventoryState([], HasExactReceiptProvenance: true);
                 }
                 sourceIdentitySnapshots = attributable;
                 var currentStateToken = await GetInventoryIdentityStateTokenAsync(receipt, cancellationToken);
@@ -1266,6 +1272,9 @@ public sealed class ReceiptInventoryOverrideService(
 
     private static bool Same(string? left, string? right) =>
         string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string? FirstNonEmpty(params string?[] values) => values
+        .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>
         (dbContext.Database.ProviderName ?? "").Contains("InMemory", StringComparison.OrdinalIgnoreCase)

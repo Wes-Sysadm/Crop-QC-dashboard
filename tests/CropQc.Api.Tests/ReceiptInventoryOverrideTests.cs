@@ -960,6 +960,204 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
+    public async Task Inventory_reclassification_reports_missing_target_master_data_before_treatment_validation()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 14);
+        var source = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 42);
+        fixture.Db.Add(fixture.TreatmentSegment(9109, source, TreatmentLineageStates.Untreated, "u", 42));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.SetCurrentSnapshots(source);
+        var form = fixture.Form(14, Guid.NewGuid().ToString("D"));
+        form.GrowerLotId = null;
+        form.GrowerNumber = "6207";
+        form.LotCode = "6207";
+        form.GrowerName = "Unresolved grower";
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Grower/Lot 6207 is not currently in Crop QC master data", result.Error,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("treatment provenance", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Equal(42, await fixture.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+    }
+
+    [Fact]
+    public async Task Inventory_reclassification_splits_exact_receipt_bins_from_unambiguous_consolidated_untreated_treatment()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 21, includeHistory: true);
+        var receipt = await fixture.Db.Receipts.SingleAsync(x => x.Id == OverrideFixture.ReceiptId);
+        var originalReceiptAdd = await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .SingleAsync(x => x.ReceiptId == receipt.Id);
+        var originalFingerprint = (originalReceiptAdd.Id, originalReceiptAdd.ReceiptId,
+            originalReceiptAdd.GrowerLotId, originalReceiptAdd.FruitProfileId, originalReceiptAdd.ChangeAmount);
+        var sourceFruit = await fixture.Db.FruitProfiles.SingleAsync(x => x.Id == receipt.FruitProfileId);
+        receipt.BinCount = 14;
+        receipt.ConcurrencyVersion = 1;
+        var priorQuantityCorrection = new RoomInventoryAdjustment
+        {
+            Id = 9110,
+            Receipt = receipt,
+            ReceiptId = receipt.Id,
+            CropYear = receipt.CropYear,
+            WarehouseId = receipt.WarehouseId,
+            RoomId = receipt.RoomId,
+            GrowerLotId = receipt.GrowerLotId,
+            FruitProfileId = receipt.FruitProfileId,
+            GrowerName = receipt.GrowerName,
+            LotNumber = receipt.LotCode,
+            VarietyCode = sourceFruit.VarietyCode,
+            InventoryStatus = sourceFruit.ProductionType,
+            OldBinCount = 21,
+            ChangeAmount = -7,
+            NewBinCount = 14,
+            AdjustmentType = ReceiptInventoryOverrideService.AdjustmentType,
+            Reason = "Wrong bin count",
+            AdjustmentAt = Now,
+            CreatedAt = Now
+        };
+        var targetGrowerLot = new GrowerLot
+        {
+            Id = OverrideFixture.GrowerLotId + 20,
+            Grower = "Corrected Bartlett Grower",
+            LotNumber = "6207",
+            IsActive = true,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var targetFruit = new FruitProfile
+        {
+            Id = OverrideFixture.ThirdFruitId + 20,
+            Name = "Bartlett",
+            VarietyCode = "BART-CONSOLIDATED",
+            FruitType = "Pear",
+            ProductionType = "Conventional"
+        };
+        var aggregateSnapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 42);
+        fixture.Db.AddRange(priorQuantityCorrection, targetGrowerLot, targetFruit,
+            fixture.TreatmentSegment(9111, aggregateSnapshot, TreatmentLineageStates.Untreated, "u", 42));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.SetCurrentSnapshots(aggregateSnapshot);
+
+        var form = fixture.Form(14, Guid.NewGuid().ToString("D"));
+        form.ExpectedConcurrencyVersion = 1;
+        form.GrowerLotId = targetGrowerLot.Id;
+        form.GrowerNumber = targetGrowerLot.LotNumber;
+        form.GrowerName = targetGrowerLot.Grower;
+        form.LotCode = targetGrowerLot.LotNumber;
+        form.FruitProfileId = targetFruit.Id;
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error);
+        var retained = await fixture.Db.RoomInventoryAdjustments.AsNoTracking().SingleAsync(x => x.Id == originalReceiptAdd.Id);
+        Assert.Equal(originalFingerprint, (retained.Id, retained.ReceiptId,
+            retained.GrowerLotId, retained.FruitProfileId, retained.ChangeAmount));
+        var retainedPriorQuantityCorrection = await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .SingleAsync(x => x.Id == priorQuantityCorrection.Id);
+        Assert.Equal((21, -7, 14), (retainedPriorQuantityCorrection.OldBinCount,
+            retainedPriorQuantityCorrection.ChangeAmount, retainedPriorQuantityCorrection.NewBinCount));
+        var treatmentSource = await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == 9111);
+        Assert.Equal(28, treatmentSource.CurrentBins);
+        var treatmentTarget = await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x =>
+            x.ReceiptId == receipt.Id && x.GrowerLotId == targetGrowerLot.Id && x.FruitProfileId == targetFruit.Id);
+        Assert.Equal((14, TreatmentLineageStates.Untreated, "u"),
+            (treatmentTarget.CurrentBins, treatmentTarget.TreatmentState, treatmentTarget.TreatmentSignature));
+        Assert.Equal(42, await fixture.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+        var movement = await fixture.Db.TreatmentLineageMovements.AsNoTracking().SingleAsync();
+        Assert.Equal((receipt.Id, 14, TreatmentLineageStates.Untreated, "u"),
+            (movement.ReceiptId, movement.BinCount, movement.TreatmentStateSnapshot, movement.TreatmentSignatureSnapshot));
+        var operation = await fixture.Db.ReceiptInventoryOverrides.Include(x => x.InventoryAdjustments).SingleAsync();
+        Assert.Equal(new[] { -14, 14 }, operation.InventoryAdjustments.Select(x => x.ChangeAmount).Order());
+        Assert.Equal(0, operation.InventoryAdjustments.Sum(x => x.ChangeAmount));
+        var corrected = await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == receipt.Id);
+        Assert.Equal((targetGrowerLot.Id, targetGrowerLot.LotNumber, targetGrowerLot.LotNumber, targetFruit.Id, 14),
+            (corrected.GrowerLotId, corrected.GrowerNumber, corrected.LotCode, corrected.FruitProfileId, corrected.BinCount));
+        Assert.Equal(receipt.Id, (await fixture.Db.QcSamples.AsNoTracking().SingleAsync(x => x.Id == 8702)).ReceiptId);
+    }
+
+    [Fact]
+    public async Task Inventory_reclassification_fails_closed_when_consolidated_treatment_signatures_are_ambiguous()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 14);
+        var targetGrowerLot = new GrowerLot
+        {
+            Id = OverrideFixture.GrowerLotId + 21,
+            Grower = "Corrected Grower",
+            LotNumber = "6207",
+            IsActive = true,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var aggregateSnapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 42);
+        fixture.Db.AddRange(targetGrowerLot,
+            fixture.TreatmentSegment(9121, aggregateSnapshot, TreatmentLineageStates.Untreated, "u", 21),
+            fixture.TreatmentSegment(9122, aggregateSnapshot, TreatmentLineageStates.Confirmed, "u|a:9122", 21));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.SetCurrentSnapshots(aggregateSnapshot);
+        var form = fixture.Form(14, Guid.NewGuid().ToString("D"));
+        form.GrowerLotId = targetGrowerLot.Id;
+        form.GrowerNumber = targetGrowerLot.LotNumber;
+        form.GrowerName = targetGrowerLot.Grower;
+        form.LotCode = targetGrowerLot.LotNumber;
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("multiple treatment signatures", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Empty(await fixture.Db.InventoryIdentityCorrections.ToListAsync());
+        Assert.Equal(42, await fixture.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+        Assert.Equal(OverrideFixture.GrowerLotId,
+            (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).GrowerLotId);
+    }
+
+    [Theory]
+    [InlineData(TreatmentLineageStates.Untreated, "u")]
+    [InlineData(TreatmentLineageStates.Confirmed, "u|a:9130")]
+    public async Task Inventory_reclassification_preserves_one_unambiguous_consolidated_treatment_signature(
+        string treatmentState,
+        string treatmentSignature)
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 14);
+        var targetGrowerLot = new GrowerLot
+        {
+            Id = OverrideFixture.GrowerLotId + 22,
+            Grower = "Corrected Grower",
+            LotNumber = "6207",
+            IsActive = true,
+            CreatedAt = Now,
+            UpdatedAt = Now
+        };
+        var aggregateSnapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 42);
+        fixture.Db.AddRange(targetGrowerLot,
+            fixture.TreatmentSegment(9130, aggregateSnapshot, treatmentState, treatmentSignature, 42));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        fixture.SetCurrentSnapshots(aggregateSnapshot);
+        var form = fixture.Form(14, Guid.NewGuid().ToString("D"));
+        form.GrowerLotId = targetGrowerLot.Id;
+        form.GrowerNumber = targetGrowerLot.LotNumber;
+        form.GrowerName = targetGrowerLot.Grower;
+        form.LotCode = targetGrowerLot.LotNumber;
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(28, (await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == 9130)).CurrentBins);
+        var target = await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x =>
+            x.ReceiptId == OverrideFixture.ReceiptId && x.GrowerLotId == targetGrowerLot.Id);
+        Assert.Equal((14, treatmentState, treatmentSignature),
+            (target.CurrentBins, target.TreatmentState, target.TreatmentSignature));
+        Assert.Equal(42, await fixture.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+    }
+
+    [Fact]
     public async Task Fully_consumed_aggregate_history_allows_receipt_scoped_identity_correction_without_resurrecting_inventory()
     {
         await using var fixture = await OverrideFixture.CreateAsync(initialBins: 10, includeHistory: true);
