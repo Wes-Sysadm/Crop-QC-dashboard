@@ -87,9 +87,9 @@ public static class RuntimeMemoryPressureClassifier
 public sealed class RuntimeMemoryTelemetryHostedService(
     PerformanceDiagnosticsOptions options,
     IRequestActivityTracker requestActivity,
-    IServiceScopeFactory scopeFactory,
-    IConfiguration configuration,
-    ILogger<RuntimeMemoryTelemetryHostedService> logger) : BackgroundService
+    ILogger<RuntimeMemoryTelemetryHostedService> logger,
+    IServiceScopeFactory? scopeFactory = null,
+    IConfiguration? configuration = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -120,6 +120,7 @@ public sealed class RuntimeMemoryTelemetryHostedService(
 
     private async Task RunEvans11RepairIfRequestedAsync(CancellationToken cancellationToken)
     {
+        if (scopeFactory is null || configuration is null) return;
         var mode = configuration["CROPQC_EVANS11_3152_REPAIR_MODE"]?.Trim();
         if (!string.Equals(mode, "prepare", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(mode, "apply", StringComparison.OrdinalIgnoreCase))
