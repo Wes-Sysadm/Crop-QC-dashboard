@@ -14,15 +14,50 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Normalize repair audit parameter casing
+      - name: Normalize bounded repair implementation
         shell: bash
         run: |
-          sed -i 's/VerifiedBackupRunId/verifiedBackupRunId/g; s/VerifiedBackupSha256/verifiedBackupSha256/g' src/CropQc.Web/Services/Evans11Grower3152RepairService.cs
-          if ! git diff --quiet -- src/CropQc.Web/Services/Evans11Grower3152RepairService.cs; then
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repair = Path('src/CropQc.Web/Services/Evans11Grower3152RepairService.cs')
+          text = repair.read_text()
+          text = text.replace('VerifiedBackupRunId', 'verifiedBackupRunId')
+          text = text.replace('VerifiedBackupSha256', 'verifiedBackupSha256')
+          repair.write_text(text)
+
+          telemetry = Path('src/CropQc.Web/Services/RuntimeMemoryTelemetry.cs')
+          text = telemetry.read_text()
+          old = '''public sealed class RuntimeMemoryTelemetryHostedService(
+              PerformanceDiagnosticsOptions options,
+              IRequestActivityTracker requestActivity,
+              IServiceScopeFactory scopeFactory,
+              IConfiguration configuration,
+              ILogger<RuntimeMemoryTelemetryHostedService> logger) : BackgroundService'''
+          new = '''public sealed class RuntimeMemoryTelemetryHostedService(
+              PerformanceDiagnosticsOptions options,
+              IRequestActivityTracker requestActivity,
+              ILogger<RuntimeMemoryTelemetryHostedService> logger,
+              IServiceScopeFactory? scopeFactory = null,
+              IConfiguration? configuration = null) : BackgroundService'''
+          if old in text:
+              text = text.replace(old, new)
+          marker = '''    private async Task RunEvans11RepairIfRequestedAsync(CancellationToken cancellationToken)
+              {
+          '''
+          guarded = '''    private async Task RunEvans11RepairIfRequestedAsync(CancellationToken cancellationToken)
+              {
+                  if (scopeFactory is null || configuration is null) return;
+          '''
+          if marker in text and guarded not in text:
+              text = text.replace(marker, guarded)
+          telemetry.write_text(text)
+          PY
+          if ! git diff --quiet -- src/CropQc.Web/Services/Evans11Grower3152RepairService.cs src/CropQc.Web/Services/RuntimeMemoryTelemetry.cs; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/CropQc.Web/Services/Evans11Grower3152RepairService.cs
-            git commit -m "Fix Evans 11 repair audit parameter casing"
+            git add src/CropQc.Web/Services/Evans11Grower3152RepairService.cs src/CropQc.Web/Services/RuntimeMemoryTelemetry.cs
+            git commit -m "Preserve telemetry constructor compatibility"
             git push origin HEAD:codex/repair-3152-3162-evans11
           fi
       - uses: actions/setup-dotnet@v4
