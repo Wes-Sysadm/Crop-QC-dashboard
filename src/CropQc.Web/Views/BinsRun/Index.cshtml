@@ -1136,6 +1136,10 @@ else if (activeSection.Equals("RunTotals", StringComparison.OrdinalIgnoreCase))
                             {
                                 <p class="notice warning"><strong>Crop QC data-integrity issue.</strong> @item.DiagnosticMessage No reporting identity was guessed.</p>
                             }
+                            @if (!string.IsNullOrWhiteSpace(item.InformationMessage))
+                            {
+                                <p class="notice">@item.InformationMessage</p>
+                            }
                             @if (item.Reasons.Count > 0)
                             {
                                 <ul>

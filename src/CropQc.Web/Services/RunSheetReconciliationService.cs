@@ -258,6 +258,7 @@ public static class RunSheetMatcher
         var result = new List<RunSheetReconciliationItemViewModel>();
 
         PairWhere(remainingSheet, remainingCrop, result, IsExactMatch);
+        PairSplitVarieties(remainingSheet, remainingCrop, result);
         PairWhere(remainingSheet, remainingCrop, result, IsExactExceptDate);
 
         foreach (var sheet in remainingSheet.ToList())
@@ -290,6 +291,123 @@ public static class RunSheetMatcher
             .ThenBy(x => x.ActualRunIds.FirstOrDefault())
             .ToList();
     }
+
+    // The parser already aggregates each variety within these exact business dimensions.
+    // Choose one physical run per variety, never arbitrary subsets of grower rows/season totals.
+    private const int MaximumSplitCombinations = 256;
+    private const int MaximumSplitVarieties = 16;
+
+    private sealed record SplitCandidate(
+        CropPhysicalRun Crop,
+        IReadOnlyList<ExternalPhysicalRun> Candidates,
+        IReadOnlyList<ExternalPhysicalRun[]> Matches,
+        bool LimitExceeded);
+
+    private static void PairSplitVarieties(
+        List<ExternalPhysicalRun> sheets,
+        List<CropPhysicalRun> crops,
+        List<RunSheetReconciliationItemViewModel> result)
+    {
+        // Plan against the same unmatched snapshot before consuming anything. Two Crop QC
+        // runs competing for a Sheet member must not be resolved by iteration order either.
+        var plans = crops.Where(crop => crop.Varieties.Count > 1 && crop.ProductionTypes.Count == 1)
+            .Select(crop => FindSplitCandidate(crop, sheets))
+            .Where(plan => plan.Matches.Count > 0 || plan.LimitExceeded)
+            .ToList();
+        foreach (var plan in plans)
+        {
+            var members = plan.Matches.FirstOrDefault();
+            var contested = members is not null && plans.Any(other => !ReferenceEquals(plan, other)
+                && (other.LimitExceeded ? other.Candidates : other.Matches.SelectMany(x => x))
+                    .Any(sheet => members.Any(member => ReferenceEquals(member, sheet))));
+            if (plan.LimitExceeded || plan.Matches.Count != 1 || contested)
+            {
+                var item = BuildItem(RunSheetReconciliationStates.Attention, null, plan.Crop,
+                    [RunSheetReconciliationReasons.AmbiguousSplitVarieties]);
+                item.InformationMessage = plan.LimitExceeded
+                    ? "Split-variety verification exceeded its bounded candidate limit; no Sheet runs were selected."
+                    : "More than one split-variety assignment is possible; no Sheet runs were selected.";
+                result.Add(item);
+                crops.Remove(plan.Crop); // Keep ambiguity out of the later greedy/fuzzy pass.
+                continue;
+            }
+
+            var combined = CombineSplit(members!);
+            var matched = BuildItem(RunSheetReconciliationStates.Match, combined,
+                plan.Crop with { GrowerBins = NormalizeGrowers(plan.Crop.GrowerBins) }, []);
+            matched.InformationMessage = $"Google Sheet records this as {members!.Length} variety-specific runs; Crop QC records it as one combined Actual Run.";
+            result.Add(matched);
+            foreach (var member in members) sheets.Remove(member);
+            crops.Remove(plan.Crop);
+        }
+    }
+
+    private static SplitCandidate FindSplitCandidate(CropPhysicalRun crop, List<ExternalPhysicalRun> sheets)
+    {
+        var varieties = crop.Varieties.Select(RunSheetParser.NormalizeCode)
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        if (varieties.Length < 2 || varieties.Any(string.IsNullOrWhiteSpace)
+            || crop.ActualRunIds.Count != 1
+            || (crop.Facility == EmploymentFacilities.Wp
+                && (string.IsNullOrWhiteSpace(crop.SalesDesk)
+                    || string.Equals(crop.SalesDesk, "Unassigned", StringComparison.OrdinalIgnoreCase))))
+            return new(crop, [], [], false);
+
+        var candidates = sheets.Where(sheet => sheet.Facility == crop.Facility
+                && sheet.Date == crop.Date
+                && string.Equals(sheet.ProductionType, crop.ProductionTypes[0], StringComparison.OrdinalIgnoreCase)
+                && (crop.Facility == EmploymentFacilities.Ebs
+                    || (sheet.UnknownSalesDeskCode is null && !string.IsNullOrWhiteSpace(sheet.SalesDesk)
+                        && string.Equals(sheet.SalesDesk, crop.SalesDesk, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+        // Inspect the entire unmatched business peer group, not a subset selected by variety.
+        // Legitimate exact one-to-one matches have already removed their Sheet members.
+        var peerVarieties = candidates.Select(sheet => RunSheetParser.NormalizeCode(sheet.Variety))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!peerVarieties.SetEquals(varieties)) return new(crop, candidates, [], false);
+
+        var choices = varieties.Select(variety => candidates.Where(sheet =>
+            RunSheetParser.NormalizeCode(sheet.Variety) == variety).ToArray()).ToArray();
+        if (choices.Any(choice => choice.Length == 0)) return new(crop, candidates, [], false);
+
+        var combinations = 1;
+        foreach (var choice in choices)
+        {
+            if (varieties.Length > MaximumSplitVarieties || choice.Length > MaximumSplitCombinations / combinations)
+                return new(crop, candidates, [], true);
+            combinations *= choice.Length;
+        }
+
+        var cropGrowers = NormalizeGrowers(crop.GrowerBins);
+        var matches = new List<ExternalPhysicalRun[]>();
+        for (var index = 0; index < combinations; index++)
+        {
+            var selection = index;
+            var members = new ExternalPhysicalRun[choices.Length];
+            for (var variety = 0; variety < choices.Length; variety++)
+            {
+                members[variety] = choices[variety][selection % choices[variety].Length];
+                selection /= choices[variety].Length;
+            }
+            if (members.Sum(x => (long)x.TotalBins) == crop.TotalBins
+                && DictionaryEqual(NormalizeGrowers(members.SelectMany(x => x.GrowerBins)), cropGrowers))
+                matches.Add(members);
+        }
+        return new(crop, candidates, matches, false);
+    }
+
+    private static Dictionary<string, int> NormalizeGrowers(IEnumerable<KeyValuePair<string, int>> growers) =>
+        growers.GroupBy(x => RunSheetParser.NormalizeGrowerNumber(x.Key), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Sum(y => y.Value), StringComparer.OrdinalIgnoreCase);
+
+    private static ExternalPhysicalRun CombineSplit(IReadOnlyList<ExternalPhysicalRun> members) =>
+        members[0] with
+        {
+            Variety = string.Join(" / ", members.Select(x => RunSheetParser.NormalizeCode(x.Variety))
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)),
+            TotalBins = members.Sum(x => x.TotalBins),
+            GrowerBins = NormalizeGrowers(members.SelectMany(x => x.GrowerBins))
+        };
 
     private static void PairWhere(
         List<ExternalPhysicalRun> sheets,
