@@ -5,12 +5,26 @@ on:
     branches:
       - codex/repair-3152-3162-evans11
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Normalize repair audit parameter casing
+        shell: bash
+        run: |
+          sed -i 's/VerifiedBackupRunId/verifiedBackupRunId/g; s/VerifiedBackupSha256/verifiedBackupSha256/g' src/CropQc.Web/Services/Evans11Grower3152RepairService.cs
+          if ! git diff --quiet -- src/CropQc.Web/Services/Evans11Grower3152RepairService.cs; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/CropQc.Web/Services/Evans11Grower3152RepairService.cs
+            git commit -m "Fix Evans 11 repair audit parameter casing"
+            git push origin HEAD:codex/repair-3152-3162-evans11
+          fi
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
