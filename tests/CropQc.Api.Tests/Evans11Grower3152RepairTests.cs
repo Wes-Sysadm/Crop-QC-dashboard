@@ -3,6 +3,8 @@ using CropQc.Data.Entities;
 using CropQc.Shared.Time;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -10,6 +12,108 @@ namespace CropQc.Api.Tests;
 
 public sealed class Evans11Grower3152RepairTests
 {
+    [Fact]
+    public async Task InvariantFailure_RollsBackLedgerSegmentsAndMovements()
+    {
+        await using var fixture = await Fixture.CreateAsync(new RejectingInvariant());
+        var before = await DurableStateAsync(fixture.Db);
+        var result = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.False(result.Success);
+        Assert.Contains("rolled back", result.Message);
+        Assert.Equal(before, await DurableStateAsync(fixture.Db));
+        var parent = await fixture.Db.InventoryIdentityCorrections.AsNoTracking().SingleAsync();
+        Assert.Equal(0, parent.ExpectedAdjustmentCount);
+        Assert.Equal(0, parent.ExpectedTreatmentMovementCount);
+    }
+
+    private sealed class RejectingInvariant : IInventoryDeductionInvariantService
+    {
+        public Task ValidateBeforeCommitAsync(CancellationToken cancellationToken) => throw new InvalidOperationException("Simulated invariant rejection after lineage writes.");
+        public Task<InventoryDeductionReadinessResult> VerifyReadinessAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task Apply_ConservesTenBins_RetiresStaleFour_AndRerunWritesNothing()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var receiptBefore = System.Text.Json.JsonSerializer.Serialize(await fixture.Db.Receipts.AsNoTracking().IgnoreAutoIncludes().SingleAsync());
+        var before = (await fixture.Ledger.GetSnapshotsAsync(1, new[] { 21 }, default)).Sum(x => x.CurrentBins);
+        var result = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.True(result.Success, result.Message);
+        Assert.True(result.Applied);
+        var rows = await fixture.Db.RoomInventoryAdjustments.AsNoTracking().OrderBy(x => x.ChangeAmount).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(new[] { -10, 10 }, rows.Select(x => x.ChangeAmount));
+        Assert.All(rows, x => Assert.Equal(Fixture.CorrectionId, x.InventoryIdentityCorrectionId));
+        var after = await fixture.Ledger.GetSnapshotsAsync(1, new[] { 21 }, default);
+        Assert.Equal(before, after.Sum(x => x.CurrentBins));
+        Assert.Equal(0, after.Single(x => x.GrowerLotId == 513).CurrentBins);
+        Assert.Equal(10, after.Single(x => x.GrowerLotId == 511).CurrentBins);
+        Assert.Equal(0, await fixture.Db.TreatmentLineageSegments.Where(x => x.GrowerLotId == 513).SumAsync(x => x.CurrentBins));
+        Assert.Equal(10, await fixture.Db.TreatmentLineageSegments.Where(x => x.GrowerLotId == 511).SumAsync(x => x.CurrentBins));
+        var movements = await fixture.Db.TreatmentLineageMovements.AsNoTracking().ToListAsync();
+        Assert.Equal(2, movements.Count);
+        Assert.Contains(movements, x => x.SourceSegmentId == 38 && x.BinCount == 4 && x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationRetirement);
+        Assert.Contains(movements, x => x.SourceSegmentId == 70 && x.BinCount == 10 && x.MovementType == TreatmentLineageMovementTypes.IdentityReclassification);
+        Assert.Equal(receiptBefore, System.Text.Json.JsonSerializer.Serialize(await fixture.Db.Receipts.AsNoTracking().IgnoreAutoIncludes().SingleAsync()));
+        fixture.Db.ChangeTracker.Clear();
+        var durableBefore = await DurableStateAsync(fixture.Db);
+        var repeat = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.True(repeat.AlreadyApplied, repeat.Message);
+        Assert.False(repeat.Applied);
+        Assert.Equal(durableBefore, await DurableStateAsync(fixture.Db));
+        Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData("retention")]
+    [InlineData("lease")]
+    [InlineData("pruned")]
+    [InlineData("commit")]
+    [InlineData("hash")]
+    public async Task IncompleteOrWrongBackup_RejectsApplyWithoutWrites(string failure)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var backup = await fixture.Db.BackupRunRecords.SingleAsync();
+        switch (failure)
+        {
+            case "retention": backup.RetentionProcessedAt = null; break;
+            case "lease": backup.LeaseReleasedAt = null; break;
+            case "pruned": backup.PrunedAt = backup.StartedAt; break;
+            case "commit": backup.DeployedCommit = "wrong"; break;
+            case "hash": backup.Sha256 = new string('b', 64); break;
+        }
+        await fixture.Db.SaveChangesAsync();
+        var before = await DurableStateAsync(fixture.Db);
+        var result = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.False(result.Success);
+        Assert.Equal(before, await DurableStateAsync(fixture.Db));
+    }
+
+    [Fact]
+    public async Task ForgedTreatmentMovement_AfterRepair_IsNotAlreadyApplied()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var applied = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.True(applied.Applied, applied.Message);
+        var movement = await fixture.Db.TreatmentLineageMovements.FirstAsync();
+        movement.OperationKey = "unexpected";
+        await fixture.Db.SaveChangesAsync();
+        var before = await DurableStateAsync(fixture.Db);
+        var repeat = await fixture.Service.RunAsync(true, false, "wes@fruitandland.com", 1, Fixture.BackupHash, default);
+        Assert.False(repeat.Success);
+        Assert.Equal("State C", repeat.State);
+        Assert.Equal(before, await DurableStateAsync(fixture.Db));
+    }
+
+    private static async Task<string> DurableStateAsync(CropQcDbContext db) => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        Adjustments = await db.RoomInventoryAdjustments.AsNoTracking().IgnoreAutoIncludes().OrderBy(x => x.Id).ToListAsync(),
+        Segments = await db.TreatmentLineageSegments.AsNoTracking().IgnoreAutoIncludes().OrderBy(x => x.Id).ToListAsync(),
+        Movements = await db.TreatmentLineageMovements.AsNoTracking().IgnoreAutoIncludes().OrderBy(x => x.Id).ToListAsync(),
+        Audits = await db.AuditLogs.AsNoTracking().IgnoreAutoIncludes().OrderBy(x => x.Id).ToListAsync()
+    });
+
     [Fact]
     public async Task ExactReviewedProductionShape_IsReadyAndWritesNothingDuringPreflight()
     {
@@ -69,41 +173,76 @@ public sealed class Evans11Grower3152RepairTests
         public CropQcDbContext Db { get; }
         public FixedLedger Ledger { get; }
         public Evans11Grower3152RepairService Service { get; }
+        private readonly SqliteConnection connection;
+        public const string Commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        public static readonly string BackupHash = new('a', 64);
 
-        private Fixture(CropQcDbContext db, FixedLedger ledger)
+        private Fixture(CropQcDbContext db, FixedLedger ledger, SqliteConnection connection, IInventoryDeductionInvariantService? invariant)
         {
+            this.connection = connection;
             Db = db;
             Ledger = ledger;
             Service = new Evans11Grower3152RepairService(
                 db,
                 ledger,
-                null!,
-                null!,
+                new RoomTreatmentService(db, ledger, new UserAccessService(db, new ConfigurationBuilder().Build()),
+                    new HttpContextAccessor(), new PacificBusinessTimeService(new FixedClock(CorrectionAt.AddHours(1))),
+                    NullLogger<RoomTreatmentService>.Instance),
+                invariant ?? new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance),
                 null!,
                 new PacificBusinessTimeService(new FixedClock(CorrectionAt.AddHours(1))),
-                new ConfigurationBuilder().Build(),
+                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["SourceVersion"] = Commit }).Build(),
                 NullLogger<Evans11Grower3152RepairService>.Instance);
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(IInventoryDeductionInvariantService? invariant = null)
         {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
             var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>()
-                .UseInMemoryDatabase($"evans11-3152-repair-{Guid.NewGuid():N}").Options);
+                .UseSqlite(connection).Options);
             await db.Database.EnsureCreatedAsync();
-            var ledger = new FixedLedger();
-            var fixture = new Fixture(db, ledger);
+            var ledger = new FixedLedger(db);
+            var fixture = new Fixture(db, ledger, connection, invariant);
             await fixture.SeedAsync();
             return fixture;
         }
 
         private async Task SeedAsync()
         {
+            Db.Rooms.AddRange(new Room { Id = 7, WarehouseId = 1, Code = "LAMB-14", Name = "LAMB-14" },
+                new Room { Id = 21, WarehouseId = 1, Code = "EVANS-11", Name = "Evans Street 11" });
+            Db.GrowerLots.AddRange(new GrowerLot { Id = 511, Grower = "MFR - SAMS & BRN CONV", LotNumber = "3152", CreatedAt = CorrectionAt, UpdatedAt = CorrectionAt },
+                new GrowerLot { Id = 513, Grower = "Grower 3162", LotNumber = "3162", CreatedAt = CorrectionAt, UpdatedAt = CorrectionAt });
+            Db.Users.Add(new User { Id = 1, Email = "wes@fruitandland.com", DisplayName = "Wes", Domain = "fruitandland.com", IsActive = true, CreatedAt = CorrectionAt });
+            Db.BackupRunRecords.Add(new BackupRunRecord
+            {
+                Id = 1,
+                BackupType = BackupRunTypes.PreDeployment,
+                Status = BackupRunStatuses.Succeeded,
+                EnvironmentName = "Production",
+                DatabaseProvider = "PostgreSql",
+                RetentionCategory = "PreDeployment",
+                RequestedBy = "wes@fruitandland.com",
+                DeployedCommit = Commit,
+                Sha256 = BackupHash,
+                StartedAt = CorrectionAt,
+                CompletedAt = CorrectionAt,
+                VerifiedAt = CorrectionAt,
+                RetentionProcessedAt = CorrectionAt,
+                LeaseReleasedAt = CorrectionAt,
+                FileSizeBytes = 100,
+                PackageFileName = "isolated-test.zip",
+                PackageStorageKey = "isolated-test",
+                ManifestStorageKey = "isolated-manifest"
+            });
             Db.Receipts.Add(new Receipt
             {
                 Id = 1391,
                 CropYear = 2026,
                 ReceivedAt = DateTimeOffset.Parse("2026-09-08T17:00:00Z"),
                 CompuTechReceiptId = "TR109381",
+                ReceiptType = "Truck receipt",
                 WarehouseId = 1,
                 RoomId = 7,
                 FruitProfileId = 2,
@@ -152,7 +291,7 @@ public sealed class Evans11Grower3152RepairTests
             CropYear = 2026,
             GrowerLotId = growerLotId,
             FruitProfileId = 2,
-            IdentityKey = $"test-{growerLotId}",
+            IdentityKey = RoomTreatmentService.IdentityKey(FixedLedger.Snapshot(growerLotId, growerLotId == 511 ? "3152" : "3162", bins)),
             GrowerNumberSnapshot = growerLotId == 511 ? "3152" : "3162",
             GrowerNameSnapshot = growerLotId == 511 ? "MFR - SAMS & BRN CONV" : "Grower 3162",
             LotNumberSnapshot = growerLotId == 511 ? "3152" : "3162",
@@ -167,10 +306,14 @@ public sealed class Evans11Grower3152RepairTests
             ConcurrencyVersion = 1
         };
 
-        public ValueTask DisposeAsync() => Db.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            await connection.DisposeAsync();
+        }
     }
 
-    private sealed class FixedLedger : IRoomInventoryLedgerQueryService
+    private sealed class FixedLedger(CropQcDbContext db) : IRoomInventoryLedgerQueryService
     {
         private static readonly DateTimeOffset SnapshotAt = DateTimeOffset.Parse("2026-09-09T04:47:17.586479Z");
         public int TargetBins { get; set; }
@@ -190,13 +333,14 @@ public sealed class Evans11Grower3152RepairTests
         {
             var rows = new List<RoomInventoryLedgerSnapshot>
             {
-                Snapshot(513, "3162", 10)
+                Snapshot(513, "3162", 10 + db.RoomInventoryAdjustments.Where(x => x.GrowerLotId == 513).Sum(x => x.ChangeAmount))
             };
-            if (TargetBins != 0) rows.Add(Snapshot(511, "3152", TargetBins));
+            var target = TargetBins + db.RoomInventoryAdjustments.Where(x => x.GrowerLotId == 511).Sum(x => x.ChangeAmount);
+            if (target != 0) rows.Add(Snapshot(511, "3152", target));
             return rows;
         }
 
-        private static RoomInventoryLedgerSnapshot Snapshot(int growerLotId, string lot, int bins) => new(
+        public static RoomInventoryLedgerSnapshot Snapshot(int growerLotId, string lot, int bins) => new(
             WarehouseId: 1,
             Facility: "EBS",
             RoomId: 21,

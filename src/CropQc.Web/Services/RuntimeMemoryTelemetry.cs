@@ -93,7 +93,15 @@ public sealed class RuntimeMemoryTelemetryHostedService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RunEvans11RepairIfRequestedAsync(stoppingToken);
+        try
+        {
+            await RunEvans11RepairIfRequestedAsync(stoppingToken);
+        }
+        catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+        {
+            // A failed one-time repair must not stop the production web host.
+            logger.LogCritical(exception, "Evans Street 11 repair failed; no automatic retry will be attempted.");
+        }
 
         if (!options.Enabled || !options.RuntimeMemoryTelemetryEnabled)
         {

@@ -68,6 +68,8 @@ public sealed class Evans11Grower3152RepairService(
                     "Exact reviewed broken state is Ready for bounded repair.", null, null, ExistingCorrectionId);
 
             var currentCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"];
+            if (string.IsNullOrWhiteSpace(currentCommit))
+                return Fail("State C", "The exact deployed commit must be available before preparing a backup.");
             var recent = await dbContext.BackupRunRecords.AsNoTracking()
                 .Where(x => x.BackupType == BackupRunTypes.PreDeployment
                     && x.Status == BackupRunStatuses.Succeeded
@@ -75,11 +77,15 @@ public sealed class Evans11Grower3152RepairService(
                     && x.Sha256 != null
                     && x.RequestedBy == requestedBy
                     && x.StartedAt >= businessTime.UtcNow.AddHours(-4)
-                    && (currentCommit == null || x.DeployedCommit == currentCommit))
+                    && x.DeployedCommit == currentCommit
+                    && x.CompletedAt != null && x.RetentionProcessedAt != null && x.LeaseReleasedAt != null
+                    && x.PrunedAt == null && x.FileSizeBytes > 0 && x.PackageStorageKey != null)
                 .OrderByDescending(x => x.StartedAt)
                 .FirstOrDefaultAsync(cancellationToken);
             if (recent is not null)
             {
+                var error = await ValidateBackupAsync(requestedBy, recent.Id, recent.Sha256, cancellationToken);
+                if (error is not null) return Fail("State C", error);
                 return new("State A", true, false, false,
                     "Exact reviewed broken state is Ready; an already-verified pre-deployment backup for this deployed commit was reused.",
                     recent.Id, recent.Sha256, ExistingCorrectionId);
@@ -91,9 +97,12 @@ public sealed class Evans11Grower3152RepairService(
 
             var verified = await dbContext.BackupRunRecords.AsNoTracking()
                 .SingleOrDefaultAsync(x => x.Id == backup.RunId.Value, cancellationToken);
-            if (verified is null || verified.Status != BackupRunStatuses.Succeeded || verified.VerifiedAt is null
-                || string.IsNullOrWhiteSpace(verified.Sha256))
+            if (verified is null)
                 return Fail("State C", "Pre-deployment backup completed without an exact verified read-back record.");
+            var verificationError = await ValidateBackupAsync(requestedBy, verified.Id, verified.Sha256, cancellationToken);
+            if (verificationError is not null) return Fail("State C", verificationError);
+            state = await InspectAsync(cancellationToken);
+            if (!state.Ready) return Fail("State C", $"Reviewed state changed during backup: {state.Message}");
 
             return new("State A", true, false, false,
                 "Exact reviewed broken state is Ready and the pre-deployment backup is verified.",
@@ -107,7 +116,7 @@ public sealed class Evans11Grower3152RepairService(
             x => x.IsActive && x.Email == requestedBy, cancellationToken);
         if (actor is null) return Fail("State C", "The requested-by active user could not be resolved.");
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             dbContext.ChangeTracker.Clear();
@@ -295,14 +304,19 @@ public sealed class Evans11Grower3152RepairService(
             .SingleOrDefaultAsync(x => x.Id == backupRunId.Value, cancellationToken);
         if (backup is null || backup.BackupType != BackupRunTypes.PreDeployment
             || backup.Status != BackupRunStatuses.Succeeded || backup.VerifiedAt is null
+            || backup.CompletedAt is null || backup.RetentionProcessedAt is null || backup.LeaseReleasedAt is null
+            || backup.PrunedAt is not null || backup.FileSizeBytes is null or <= 0
+            || string.IsNullOrWhiteSpace(backup.PackageStorageKey) || string.IsNullOrWhiteSpace(backup.PackageFileName)
+            || string.IsNullOrWhiteSpace(backup.ManifestStorageKey) || backup.IncompleteObjectCreated
+            || backup.Sha256?.Length != 64 || !backup.Sha256.All(Uri.IsHexDigit)
             || !string.Equals(backup.Sha256, backupSha256, StringComparison.OrdinalIgnoreCase)
             || backup.RequestedBy != requestedBy)
             return "The supplied backup does not match a verified pre-deployment backup record.";
         var currentCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"];
-        if (!string.IsNullOrWhiteSpace(currentCommit)
-            && !string.Equals(backup.DeployedCommit, currentCommit, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(currentCommit)
+            || !string.Equals(backup.DeployedCommit, currentCommit, StringComparison.OrdinalIgnoreCase))
             return "The verified backup was not created by this exact deployed commit.";
-        if (backup.StartedAt < businessTime.UtcNow.AddHours(-4))
+        if (backup.StartedAt < businessTime.UtcNow.AddHours(-4) || backup.StartedAt > businessTime.UtcNow)
             return "The verified pre-deployment backup is older than the allowed repair window.";
         return null;
     }
@@ -313,7 +327,8 @@ public sealed class Evans11Grower3152RepairService(
         if (receipt is null || receipt.CompuTechReceiptId != ReceiptNumber || receipt.CropYear != CropYear
             || receipt.WarehouseId != WarehouseId || receipt.GrowerLotId != TargetGrowerLotId
             || receipt.GrowerNumber != "3152" || receipt.LotCode != "3152"
-            || receipt.FruitProfileId != FruitProfileId || receipt.BinCount != Bins || receipt.IsDeleted)
+            || receipt.FruitProfileId != FruitProfileId || receipt.BinCount != Bins || receipt.IsDeleted || receipt.IsTestData
+            || receipt.RoomId != 7 || receipt.ReceiptType != "Truck receipt")
             return (false, false, "Receipt TR109381 no longer matches the reviewed corrected identity and quantity.");
 
         var correction = await dbContext.InventoryIdentityCorrections.AsNoTracking()
@@ -358,13 +373,27 @@ public sealed class Evans11Grower3152RepairService(
             && sourceCurrent == 0 && targetCurrent == Bins
             && sourceTreatment == 0 && targetTreatment == Bins
             && linkedAdjustments.Count == 2
+            && linkedAdjustments.All(x => x.CropYear == CropYear && x.WarehouseId == WarehouseId
+                && x.ReceiptId == null && x.AdjustmentType == InventoryIdentityWriteGuard.AdjustmentType
+                && x.Source == RepairSource && x.Reason == RepairReason
+                && x.InventoryInvariantVersion == InventoryDeductionInvariantService.CurrentVersion
+                && x.InventoryOperationKey == $"identity-correction:{correction.OperationKey}:evans11:{(x.ChangeAmount < 0 ? "source" : "target")}")
             && linkedAdjustments.Sum(x => x.ChangeAmount) == 0
             && linkedAdjustments.Count(x => x.RoomId == RoomId && x.GrowerLotId == SourceGrowerLotId
                 && x.FruitProfileId == FruitProfileId && x.ChangeAmount == -Bins && x.OldBinCount == Bins && x.NewBinCount == 0) == 1
             && linkedAdjustments.Count(x => x.RoomId == RoomId && x.GrowerLotId == TargetGrowerLotId
                 && x.FruitProfileId == FruitProfileId && x.ChangeAmount == Bins && x.OldBinCount == 0 && x.NewBinCount == Bins) == 1
             && linkedMovements.Count == 2
-            && linkedMovements.Sum(x => x.BinCount) == 14
+            && linkedMovements.All(x => x.SourceRoomId == RoomId && x.ReceiptId == null
+                && x.TreatmentStateSnapshot == TreatmentLineageStates.Untreated && x.TreatmentSignatureSnapshot == "u")
+            && linkedMovements.Count(x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationRetirement
+                && x.SourceSegmentId == PhantomTargetSegmentId && x.DestinationSegmentId == null
+                && x.DestinationRoomId == null && x.BinCount == 4
+                && x.OperationKey == $"identity-correction:{correction.OperationKey}:room:{RoomId}:ledger-retirement:{PhantomTargetSegmentId}") == 1
+            && linkedMovements.Count(x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassification
+                && x.SourceSegmentId == SourceTreatmentSegmentId && x.DestinationSegmentId != null
+                && x.DestinationRoomId == RoomId && x.BinCount == Bins
+                && x.OperationKey == $"identity-correction:{correction.OperationKey}:room:{RoomId}:{SourceTreatmentSegmentId}") == 1
             && auditCount == 1;
         if (stateB) return (false, true, "Repair is already applied.");
 
@@ -380,24 +409,29 @@ public sealed class Evans11Grower3152RepairService(
         if (sourceCurrent != Bins || targetCurrent != 0
             || sourceTreatment != Bins || targetTreatment != 4
             || phantom is null || phantom.RoomId != RoomId || phantom.CropYear != CropYear
+            || phantom.WarehouseId != WarehouseId || phantom.ReceiptId != null
             || phantom.GrowerLotId != TargetGrowerLotId || phantom.FruitProfileId != FruitProfileId
             || phantom.CurrentBins != 4 || phantom.TreatmentState != TreatmentLineageStates.Untreated
             || phantom.TreatmentSignature != "u"
             || sourceSegment is null || sourceSegment.RoomId != RoomId || sourceSegment.CropYear != CropYear
+            || sourceSegment.WarehouseId != WarehouseId || sourceSegment.ReceiptId != null
             || sourceSegment.GrowerLotId != SourceGrowerLotId || sourceSegment.FruitProfileId != FruitProfileId
             || sourceSegment.CurrentBins != Bins || sourceSegment.TreatmentState != TreatmentLineageStates.Untreated
             || sourceSegment.TreatmentSignature != "u")
             return (false, false,
                 $"Evans Street 11 no longer matches the exact reviewed broken state (3152={targetCurrent}, 3162={sourceCurrent}, treatment3152={targetTreatment}, treatment3162={sourceTreatment}).");
 
-        var laterLedger = await dbContext.RoomInventoryAdjustments.AsNoTracking().AnyAsync(x =>
-            x.RoomId == RoomId && x.AdjustmentAt > correction.CreatedAt && x.InventoryIdentityCorrectionId == null
+        var ledgerTimes = await dbContext.RoomInventoryAdjustments.AsNoTracking().Where(x =>
+            x.RoomId == RoomId
             && x.CropYear == CropYear && x.FruitProfileId == FruitProfileId
-            && (x.GrowerLotId == SourceGrowerLotId || x.GrowerLotId == TargetGrowerLotId), cancellationToken);
-        var laterTreatment = await dbContext.TreatmentLineageMovements.AsNoTracking().AnyAsync(x =>
-            x.OccurredAt > correction.CreatedAt
-            && (x.SourceSegmentId == SourceTreatmentSegmentId || x.DestinationSegmentId == SourceTreatmentSegmentId
-                || x.SourceSegmentId == PhantomTargetSegmentId || x.DestinationSegmentId == PhantomTargetSegmentId), cancellationToken);
+            && (x.GrowerLotId == SourceGrowerLotId || x.GrowerLotId == TargetGrowerLotId))
+            .Select(x => x.AdjustmentAt).ToListAsync(cancellationToken);
+        var treatmentTimes = await dbContext.TreatmentLineageMovements.AsNoTracking().Where(x =>
+            x.SourceSegmentId == SourceTreatmentSegmentId || x.DestinationSegmentId == SourceTreatmentSegmentId
+                || x.SourceSegmentId == PhantomTargetSegmentId || x.DestinationSegmentId == PhantomTargetSegmentId)
+            .Select(x => x.OccurredAt).ToListAsync(cancellationToken);
+        var laterLedger = ledgerTimes.Any(x => x > correction.CreatedAt);
+        var laterTreatment = treatmentTimes.Any(x => x > correction.CreatedAt);
         if (laterLedger || laterTreatment)
             return (false, false, "Current Evans Street 11 inventory changed after the reviewed receipt correction.");
 
