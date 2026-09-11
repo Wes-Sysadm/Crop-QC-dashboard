@@ -13,10 +13,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-      - name: Restore
-        run: dotnet restore CropQc.sln
-      - name: Build
-        run: dotnet build CropQc.sln --configuration Release --no-restore
+          dotnet-version: '9.0.x'
+      - name: Restore tests and production web dependencies
+        run: dotnet restore tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj
+      - name: Build production web
+        run: dotnet build src/CropQc.Web/CropQc.Web.csproj --configuration Release --no-restore
+      - name: Build tests
+        run: dotnet build tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --configuration Release --no-restore
       - name: Test
         run: dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --configuration Release --no-build --verbosity normal
