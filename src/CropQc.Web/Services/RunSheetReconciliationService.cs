@@ -358,9 +358,14 @@ public static class RunSheetMatcher
                 && string.Equals(sheet.ProductionType, crop.ProductionTypes[0], StringComparison.OrdinalIgnoreCase)
                 && (crop.Facility == EmploymentFacilities.Ebs
                     || (sheet.UnknownSalesDeskCode is null && !string.IsNullOrWhiteSpace(sheet.SalesDesk)
-                        && string.Equals(sheet.SalesDesk, crop.SalesDesk, StringComparison.OrdinalIgnoreCase)))
-                && varieties.Contains(RunSheetParser.NormalizeCode(sheet.Variety), StringComparer.OrdinalIgnoreCase))
+                        && string.Equals(sheet.SalesDesk, crop.SalesDesk, StringComparison.OrdinalIgnoreCase))))
             .ToList();
+        // Inspect the entire unmatched business peer group, not a subset selected by variety.
+        // Legitimate exact one-to-one matches have already removed their Sheet members.
+        var peerVarieties = candidates.Select(sheet => RunSheetParser.NormalizeCode(sheet.Variety))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!peerVarieties.SetEquals(varieties)) return new(crop, candidates, [], false);
+
         var choices = varieties.Select(variety => candidates.Where(sheet =>
             RunSheetParser.NormalizeCode(sheet.Variety) == variety).ToArray()).ToArray();
         if (choices.Any(choice => choice.Length == 0)) return new(crop, candidates, [], false);

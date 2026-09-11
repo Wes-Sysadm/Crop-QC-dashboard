@@ -128,6 +128,70 @@ public sealed class RunSheetSplitVarietyTests
     }
 
     [Theory]
+    [InlineData("WP")]
+    [InlineData("EBS")]
+    public void TrueExtraVariety_RejectsExactSubsetAndKeepsAllSheetEvidence(string facility)
+    {
+        var sheets = Sheets().Select(x => x with { Facility = facility }).ToList();
+        sheets.Add(sheets[0] with { Variety = "GALA", TotalBins = 10, GrowerBins = new Dictionary<string, int> { ["1531"] = 10 } });
+        var crop = Crop() with { Facility = facility };
+        Assert.Equal(215, sheets.Take(2).Sum(x => x.TotalBins));
+        Assert.Equal(140, sheets.Take(2).Sum(x => x.GrowerBins["1531"]));
+        Assert.Equal(75, sheets.Take(2).Sum(x => x.GrowerBins["4301"]));
+
+        var items = Reconcile(sheets, [crop]);
+
+        Assert.All(items, item => Assert.Equal(RunSheetReconciliationStates.Attention, item.State));
+        Assert.Single(items, item => item.ActualRunIds.Contains(46));
+        Assert.DoesNotContain(items, item => item.InformationMessage?.Contains("one combined Actual Run") == true);
+        // Later ordinary discrepancy matching may pair a row, but must not hide or consume
+        // any of the three Sheet records as a successful grouped match.
+        Assert.Equal(3, items.Count(item => item.SheetBins.HasValue));
+        Assert.Equal(225, items.Sum(item => item.SheetBins ?? 0));
+        foreach (var sheet in sheets)
+        {
+            var evidence = Assert.Single(items, item => item.SheetVariety == sheet.Variety);
+            Assert.Equal(sheet.TotalBins, evidence.SheetBins);
+            foreach (var grower in sheet.GrowerBins)
+                Assert.Equal(grower.Value, Assert.Single(evidence.Growers, row => row.GrowerNumber == grower.Key).SheetBins);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExtraVarietyConsumedByExactMatch_DoesNotBlockSplitGroup(bool reverse)
+    {
+        var sheets = Sheets().ToList();
+        var gala = sheets[0] with { Variety = "GALA", TotalBins = 10, GrowerBins = new Dictionary<string, int> { ["1531"] = 10 } };
+        sheets.Add(gala);
+        var single = Crop() with { Varieties = ["GALA"], TotalBins = 10, GrowerBins = gala.GrowerBins, ActualRunIds = [47] };
+        var crops = new[] { Crop(), single };
+        if (reverse)
+        {
+            sheets.Reverse();
+            Array.Reverse(crops);
+        }
+
+        var items = Reconcile(sheets, crops);
+
+        Assert.Equal(2, items.Count);
+        Assert.All(items, item =>
+        {
+            Assert.Equal(RunSheetReconciliationStates.Match, item.State);
+            Assert.Empty(item.Reasons);
+        });
+        var exact = Assert.Single(items, item => item.ActualRunIds.Contains(47));
+        Assert.Equal("GALA", exact.SheetVariety);
+        Assert.Equal(10, exact.SheetBins);
+        Assert.Null(exact.InformationMessage);
+        var grouped = Assert.Single(items, item => item.ActualRunIds.Contains(46));
+        Assert.Equal("ORBA / ORRB", grouped.SheetVariety);
+        Assert.Equal(215, grouped.SheetBins);
+        Assert.Contains("2 variety-specific runs", grouped.InformationMessage);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void MultipleExactCombinations_AreAmbiguousRegardlessOfInputOrder(bool reverse)
