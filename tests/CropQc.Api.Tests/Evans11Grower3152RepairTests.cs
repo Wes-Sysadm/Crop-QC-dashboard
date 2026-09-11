@@ -128,6 +128,8 @@ public sealed class Evans11Grower3152RepairTests
                 TargetCropYear = 2026,
                 TargetGrowerLotId = 511,
                 TargetFruitProfileId = 2,
+                SourceIdentitySnapshotJson = "{}",
+                TargetIdentitySnapshotJson = "{}",
                 Reason = "Wrong lot",
                 ExpectedAdjustmentCount = 0,
                 ExpectedTreatmentMovementCount = 0,
@@ -170,6 +172,7 @@ public sealed class Evans11Grower3152RepairTests
 
     private sealed class FixedLedger : IRoomInventoryLedgerQueryService
     {
+        private static readonly DateTimeOffset SnapshotAt = DateTimeOffset.Parse("2026-09-09T04:47:17.586479Z");
         public int TargetBins { get; set; }
 
         public Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
@@ -224,8 +227,8 @@ public sealed class Evans11Grower3152RepairTests
             OtherAdjustmentBins: 0,
             CurrentBins: bins,
             TransactionCount: 1,
-            FirstTransactionAt: CorrectionAt.AddDays(-1),
-            LastTransactionAt: CorrectionAt.AddDays(-1),
+            FirstTransactionAt: SnapshotAt.AddDays(-1),
+            LastTransactionAt: SnapshotAt.AddDays(-1),
             LatestAdjustmentId: growerLotId);
     }
 
