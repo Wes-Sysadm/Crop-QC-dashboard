@@ -1933,9 +1933,15 @@ public sealed class DashboardDataService(
 
         var addInventoryAdjustment = IsInventoryReceiptType(receiptType)
             && (!wasInventory || !hasInventoryHistory || quantityChanged);
-        await using var inventoryTransaction = addInventoryAdjustment
+        var receivedDateChanged = receipt.ReceivedAt != form.ReceivedAt;
+        await using var inventoryTransaction = addInventoryAdjustment || receivedDateChanged
             ? await BeginInventoryTransactionIfSupportedAsync(cancellationToken)
             : null;
+        if (receivedDateChanged && await ReceiptDateBaselineGuard.WouldChangeEligibilityAsync(
+            dbContext, receipt.Id, receipt.ReceivedAt, form.ReceivedAt, cancellationToken))
+        {
+            return "This received date cannot be changed because the new date would change how this Receipt is included in opening inventory accounting. No changes were saved. Request a controlled accounting review if this date must be changed.";
+        }
         if (addInventoryAdjustment)
         {
             var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [], [form.RoomId], BusinessTime, cancellationToken);
@@ -1997,8 +2003,8 @@ public sealed class DashboardDataService(
         if (addInventoryAdjustment)
         {
             await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);
-            if (inventoryTransaction is not null) await inventoryTransaction.CommitAsync(cancellationToken);
         }
+        if (inventoryTransaction is not null) await inventoryTransaction.CommitAsync(cancellationToken);
         return null;
     }
 
