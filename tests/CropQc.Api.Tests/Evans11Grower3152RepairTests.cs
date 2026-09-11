@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
 namespace CropQc.Api.Tests;
 
@@ -173,13 +174,18 @@ public sealed class Evans11Grower3152RepairTests
         public CropQcDbContext Db { get; }
         public FixedLedger Ledger { get; }
         public Evans11Grower3152RepairService Service { get; }
-        private readonly SqliteConnection connection;
+        private readonly SqliteConnection? connection;
+        private readonly string? postgresAdmin;
+        private readonly string? postgresDatabase;
         public const string Commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         public static readonly string BackupHash = new('a', 64);
 
-        private Fixture(CropQcDbContext db, FixedLedger ledger, SqliteConnection connection, IInventoryDeductionInvariantService? invariant)
+        private Fixture(CropQcDbContext db, FixedLedger ledger, SqliteConnection? connection, IInventoryDeductionInvariantService? invariant,
+            string? postgresAdmin = null, string? postgresDatabase = null)
         {
             this.connection = connection;
+            this.postgresAdmin = postgresAdmin;
+            this.postgresDatabase = postgresDatabase;
             Db = db;
             Ledger = ledger;
             Service = new Evans11Grower3152RepairService(
@@ -197,13 +203,35 @@ public sealed class Evans11Grower3152RepairTests
 
         public static async Task<Fixture> CreateAsync(IInventoryDeductionInvariantService? invariant = null)
         {
-            var connection = new SqliteConnection("Data Source=:memory:");
-            await connection.OpenAsync();
-            var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>()
-                .UseSqlite(connection).Options);
+            var postgres = Environment.GetEnvironmentVariable("CROPQC_EVANS11_TEST_POSTGRES");
+            SqliteConnection? connection = null;
+            string? database = null;
+            var options = new DbContextOptionsBuilder<CropQcDbContext>();
+            if (string.IsNullOrWhiteSpace(postgres))
+            {
+                connection = new SqliteConnection("Data Source=:memory:");
+                await connection.OpenAsync();
+                options.UseSqlite(connection);
+            }
+            else
+            {
+                var builder = new NpgsqlConnectionStringBuilder(postgres);
+                Assert.Equal("127.0.0.1", builder.Host);
+                Assert.StartsWith("pr247_", builder.Database);
+                await using var admin = new NpgsqlConnection(postgres);
+                await admin.OpenAsync();
+                Assert.Equal(18, admin.PostgreSqlVersion.Major);
+                database = $"pr247_test_{Guid.NewGuid():N}";
+                await using var create = new NpgsqlCommand($"CREATE DATABASE {database}", admin);
+                await create.ExecuteNonQueryAsync();
+                builder.Database = database;
+                builder.Pooling = false;
+                options.UseNpgsql(builder.ConnectionString);
+            }
+            var db = new CropQcDbContext(options.Options);
             await db.Database.EnsureCreatedAsync();
             var ledger = new FixedLedger(db);
-            var fixture = new Fixture(db, ledger, connection, invariant);
+            var fixture = new Fixture(db, ledger, connection, invariant, postgres, database);
             await fixture.SeedAsync();
             return fixture;
         }
@@ -309,7 +337,14 @@ public sealed class Evans11Grower3152RepairTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            await connection.DisposeAsync();
+            if (connection is not null) await connection.DisposeAsync();
+            if (postgresDatabase is not null)
+            {
+                await using var admin = new NpgsqlConnection(postgresAdmin);
+                await admin.OpenAsync();
+                await using var drop = new NpgsqlCommand($"DROP DATABASE {postgresDatabase}", admin);
+                await drop.ExecuteNonQueryAsync();
+            }
         }
     }
 
