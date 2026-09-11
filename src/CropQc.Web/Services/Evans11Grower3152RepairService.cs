@@ -213,8 +213,8 @@ public sealed class Evans11Grower3152RepairService(
                     Evans11 = new { Grower3152 = 10, Grower3162 = 0 },
                     Treatment = new { Grower3152 = 10, Grower3162 = 0 },
                     RoomTotalChange = 0,
-                    VerifiedBackupRunId,
-                    VerifiedBackupSha256
+                    verifiedBackupRunId,
+                    verifiedBackupSha256
                 }),
                 SourceApplication = "CropQc.Web bounded repair",
                 CreatedAt = now
