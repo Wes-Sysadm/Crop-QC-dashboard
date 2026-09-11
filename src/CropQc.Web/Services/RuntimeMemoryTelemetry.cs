@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Runtime;
+using System.Text.Json;
+using CropQc.Data;
+using CropQc.Shared.Time;
 
 namespace CropQc.Web.Services;
 
@@ -84,10 +87,14 @@ public static class RuntimeMemoryPressureClassifier
 public sealed class RuntimeMemoryTelemetryHostedService(
     PerformanceDiagnosticsOptions options,
     IRequestActivityTracker requestActivity,
+    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
     ILogger<RuntimeMemoryTelemetryHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await RunEvans11RepairIfRequestedAsync(stoppingToken);
+
         if (!options.Enabled || !options.RuntimeMemoryTelemetryEnabled)
         {
             return;
@@ -108,6 +115,52 @@ public sealed class RuntimeMemoryTelemetryHostedService(
             {
                 return;
             }
+        }
+    }
+
+    private async Task RunEvans11RepairIfRequestedAsync(CancellationToken cancellationToken)
+    {
+        var mode = configuration["CROPQC_EVANS11_3152_REPAIR_MODE"]?.Trim();
+        if (!string.Equals(mode, "prepare", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(mode, "apply", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var requestedBy = configuration["CROPQC_EVANS11_3152_REQUESTED_BY"]?.Trim();
+        if (string.IsNullOrWhiteSpace(requestedBy)) requestedBy = "wes@fruitandland.com";
+        var backupRunId = long.TryParse(configuration["CROPQC_EVANS11_3152_BACKUP_RUN_ID"], out var parsedBackupRunId)
+            ? parsedBackupRunId
+            : (long?)null;
+        var backupSha256 = configuration["CROPQC_EVANS11_3152_BACKUP_SHA256"]?.Trim();
+        var apply = string.Equals(mode, "apply", StringComparison.OrdinalIgnoreCase);
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var repair = new Evans11Grower3152RepairService(
+            services.GetRequiredService<CropQcDbContext>(),
+            services.GetRequiredService<IRoomInventoryLedgerQueryService>(),
+            services.GetRequiredService<IRoomTreatmentService>(),
+            services.GetRequiredService<IInventoryDeductionInvariantService>(),
+            services.GetRequiredService<IBackupService>(),
+            services.GetRequiredService<IBusinessTimeService>(),
+            configuration,
+            services.GetRequiredService<ILogger<Evans11Grower3152RepairService>>());
+        var result = await repair.RunAsync(
+            apply,
+            createBackup: !apply,
+            requestedBy,
+            backupRunId,
+            backupSha256,
+            cancellationToken);
+        var serialized = JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (result.Success)
+        {
+            logger.LogInformation("Evans Street 11 grower repair mode {Mode} completed: {Result}", mode, serialized);
+        }
+        else
+        {
+            logger.LogCritical("Evans Street 11 grower repair mode {Mode} failed closed: {Result}", mode, serialized);
         }
     }
 
