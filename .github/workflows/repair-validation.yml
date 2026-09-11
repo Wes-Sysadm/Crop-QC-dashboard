@@ -1,0 +1,22 @@
+name: Repair validation
+
+on:
+  push:
+    branches:
+      - codex/repair-3152-3162-evans11
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore CropQc.sln
+      - name: Build
+        run: dotnet build CropQc.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --configuration Release --no-build --verbosity normal
