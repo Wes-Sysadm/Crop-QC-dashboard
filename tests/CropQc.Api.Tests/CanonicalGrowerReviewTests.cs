@@ -41,19 +41,21 @@ public sealed class CanonicalGrowerReviewTests
     }
 
     [Fact]
-    public async Task SeededMappings_CreateOneCanonicalRecordPerKnownGrower()
+    public async Task MissingMappings_ResolveKnownAliasesWithoutCreatingDurableIds()
     {
         await using var db = CreateDbContext();
         var service = new CanonicalGrowerService(db);
 
-        await service.EnsureSeedMappingsAsync(CancellationToken.None);
-
-        var growers = await db.CanonicalGrowers.Include(x => x.Aliases).OrderBy(x => x.DisplayName).ToListAsync();
-        var stayman = Assert.Single(growers, x => x.DisplayName == "Stayman Flats");
-        var vantage = Assert.Single(growers, x => x.DisplayName == "Vantage Orchard");
-        Assert.Contains(stayman.Aliases, x => x.AliasName == "Stayman");
-        Assert.Contains(stayman.Aliases, x => x.AliasName == "Stayman Flats Non Chilean");
-        Assert.Contains(vantage.Aliases, x => x.AliasName == "Vantage Orchard Non Chilean");
+        var resolver = await service.LoadResolutionSetAsync(CancellationToken.None);
+        foreach (var alias in new[] { "Vantage Orchard", "Vantage Orchard Non Chilean", "Stayman Flats", "Stayman", "Stayman Flats Non Chilean" })
+        {
+            var identity = resolver.Resolve(alias, null);
+            Assert.Equal(alias.StartsWith("Vantage", StringComparison.Ordinal) ? "Vantage Orchard" : "Stayman Flats", identity.DisplayName);
+            Assert.True(identity.IsMapped);
+            Assert.Null(identity.CanonicalGrowerId);
+        }
+        Assert.Empty(await db.CanonicalGrowers.ToListAsync());
+        Assert.Empty(await db.CanonicalGrowerAliases.ToListAsync());
     }
 
     [Fact]

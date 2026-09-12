@@ -8,6 +8,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
 {
     public async Task<IReadOnlyList<QcStationSampleListItem>> GetTodaySamplesAsync(string? warehouseCode, CancellationToken cancellationToken = default)
     {
+        await HeartbeatAsync(cancellationToken);
         var path = "api/qc-station/samples/today";
         if (!string.IsNullOrWhiteSpace(warehouseCode))
         {
@@ -22,6 +23,7 @@ public sealed class QcStationApiClient(HttpClient httpClient)
 
     public async Task<QcStationSampleDetail?> GetSampleDetailAsync(long sampleId, CancellationToken cancellationToken = default)
     {
+        await HeartbeatAsync(cancellationToken);
         using var response = await httpClient.GetAsync($"api/qc-station/samples/{sampleId}/pressure", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
@@ -29,12 +31,20 @@ public sealed class QcStationApiClient(HttpClient httpClient)
 
     public async Task<QcStationSampleDetail?> SavePressuresAsync(long sampleId, IReadOnlyList<QcStationPressureRowUpdate> rows, CancellationToken cancellationToken = default)
     {
+        await HeartbeatAsync(cancellationToken);
         var response = await httpClient.PutAsJsonAsync(
             $"api/qc-station/samples/{sampleId}/pressure",
             new QcStationPressureUpdateRequest(rows),
             cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QcStationSampleDetail>(cancellationToken);
+    }
+
+    // One heartbeat per existing user-driven read/save, with no new polling timer.
+    public async Task HeartbeatAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsync("api/qc-station/heartbeat", null, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
     }
 
     public static QcStationApiClient Create(string apiBaseUrl, string? stationCode = null, string? apiKey = null, string? stationName = null)

@@ -85,7 +85,7 @@
 <section class="panel">
     <h2>Danger Zone</h2>
     <p class="notice warning">Type <strong>DELETE TEST DATA</strong> to run cleanup. Soft cleanup hides selected samples and keeps photos. Hard purge permanently deletes selected sample records, rows, selected photo metadata, and email logs.</p>
-    <form class="toolbar" method="post" action="/Admin/DataCleanup/Execute">
+    <form asp-antiforgery="true" class="toolbar" method="post" action="/Admin/DataCleanup/Execute">
         <input type="hidden" name="CropYear" value="@Model.Filter.CropYear" />
         <input type="hidden" name="AllCropYears" value="@Model.Filter.AllCropYears.ToString().ToLowerInvariant()" />
         <input type="hidden" name="FromDate" value="@Model.Filter.FromDate?.ToString("yyyy-MM-dd")" />

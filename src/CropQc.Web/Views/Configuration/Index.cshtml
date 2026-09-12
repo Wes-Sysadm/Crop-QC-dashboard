@@ -67,7 +67,7 @@
     else if (Model.EmailStatus.CurrentUserNeedsReconnect)
     {
         <p class="notice warning">Reconnect Google/Gmail to grant send permission. Sign out and sign back in with Google so the app can request <code>https://www.googleapis.com/auth/gmail.send</code>.</p>
-        <form method="post" action="/Login/Google" class="button-row">
+        <form asp-antiforgery="true" method="post" action="/Login/Google" class="button-row">
             <button type="submit">Reconnect Google/Gmail</button>
         </form>
     }
@@ -81,7 +81,7 @@
     <p class="notice success">@TempData["Success"]</p>
 }
 
-<form method="post" action="/Admin/Configuration/Save">
+<form asp-antiforgery="true" method="post" action="/Admin/Configuration/Save">
     <section class="panel">
         <h2>QC Email Recipients</h2>
         <p><strong>qc@fruitandland.com</strong> is required on every QC report. Orchard managers are added from confirmed orchard associations.</p>
@@ -127,5 +127,5 @@
     </div>
     <p class="button-row"><button type="submit">Save Configuration</button></p>
 </form>
-<form id="ebs-daily-bin-test-form" method="post" action="/Admin/Configuration/EbsDailyBins/Test"></form>
-<form id="ebs-daily-bin-send-form" method="post" action="/Admin/Configuration/EbsDailyBins/SendNow"></form>
+<form asp-antiforgery="true" id="ebs-daily-bin-test-form" method="post" action="/Admin/Configuration/EbsDailyBins/Test"></form>
+<form asp-antiforgery="true" id="ebs-daily-bin-send-form" method="post" action="/Admin/Configuration/EbsDailyBins/SendNow"></form>

@@ -720,7 +720,6 @@ public sealed class AdminManagementService(
     private async Task<MasterDataPageViewModel> CanonicalGrowersPage(bool canEdit, CancellationToken ct)
     {
         var growerService = canonicalGrowerService ?? new CanonicalGrowerService(dbContext);
-        await growerService.EnsureSeedMappingsAsync(ct);
         var growers = await dbContext.CanonicalGrowers.AsNoTracking()
             .Include(x => x.Aliases)
             .Include(x => x.GrowerNumbers)

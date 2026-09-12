@@ -31,7 +31,7 @@
     <a class="button secondary-button" href="/FieldSamples/@Model.SampleId">Back to Field Sample</a>
     @if (Model.CanSend)
     {
-        <form method="post" action="/FieldSamples/@Model.SampleId/report/send" data-field-report-send-form>
+        <form asp-antiforgery="true" method="post" action="/FieldSamples/@Model.SampleId/report/send" data-field-report-send-form>
             <label class="checkbox-line">
                 <input type="checkbox" name="confirmSend" value="true" required />
                 Confirm the recipients and send this @(Model.IsResend ? "corrected " : "")Field Sample report

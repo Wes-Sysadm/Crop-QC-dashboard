@@ -16,7 +16,7 @@
     }
     @if (Model.CanCreate && Model.Inventory.Count > 0)
     {
-        <form method="post" action="/BinsRun/InterCrewTransfers" class="form-grid" data-inter-crew-form>
+        <form asp-antiforgery="true" method="post" action="/BinsRun/InterCrewTransfers" class="form-grid" data-inter-crew-form>
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
             <input type="hidden" name="SourceWarehouseId" value="@Model.Form.SourceWarehouseId" />
             <input type="hidden" name="SourceRoomId" value="@Model.Form.SourceRoomId" />

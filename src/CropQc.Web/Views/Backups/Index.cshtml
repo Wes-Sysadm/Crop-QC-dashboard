@@ -53,10 +53,10 @@
             <dd>@(Model.Enabled ? "Yes" : "No")</dd>
         </dl>
         <div class="action-bar">
-            <form method="post" action="/Admin/Backups/RunNow">
+            <form asp-antiforgery="true" method="post" action="/Admin/Backups/RunNow">
                 <button type="submit">Run Backup Now</button>
             </form>
-            <form method="post" action="/Admin/Backups/TestAccess">
+            <form asp-antiforgery="true" method="post" action="/Admin/Backups/TestAccess">
                 <button class="secondary-button" type="submit">Test Google Drive Backup Access</button>
             </form>
         </div>
@@ -84,7 +84,7 @@
 <section class="panel">
     <h2>Backup Location</h2>
     <p class="muted">Set the Google Drive backup folder from the site. You may paste either a Drive folder URL or the folder ID.</p>
-    <form class="form-grid" method="post" action="/Admin/Backups/Settings">
+    <form asp-antiforgery="true" class="form-grid" method="post" action="/Admin/Backups/Settings">
         <label class="checkbox-field wide"><input type="checkbox" name="Enabled" value="true" @(Model.SettingsForm.Enabled ? "checked" : "") /> Backups enabled</label><input type="hidden" name="Enabled" value="false" />
         <div class="field">
             <label>Backup provider</label>
@@ -176,7 +176,7 @@
                             <span class="text-wrap-normal">@notification.ErrorSummary</span>
                             @if (notification.Status == CropQc.Data.Entities.BackupNotificationStatuses.Failed)
                             {
-                                <form method="post" action="/Admin/Backups/Notifications/@notification.Id/Retry">
+                                <form asp-antiforgery="true" method="post" action="/Admin/Backups/Notifications/@notification.Id/Retry">
                                     <button class="secondary-button" type="submit">Retry</button>
                                 </form>
                             }

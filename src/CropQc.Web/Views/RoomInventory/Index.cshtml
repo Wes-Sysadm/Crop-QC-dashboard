@@ -23,7 +23,7 @@
     <p class="muted">One row equals one current baseline lot balance in one room. Required columns: CropYear, Warehouse, RoomCode, Lot, Variety, Bins, EffectiveDate. Optional columns: Grower, Status, Notes.</p>
     <div class="action-bar">
         <a class="button secondary-button" href="/Admin/RoomInventory/Template">Download CSV Template</a>
-        <form method="post" action="/Admin/RoomInventory/ImportEbsStartingInventory">
+        <form asp-antiforgery="true" method="post" action="/Admin/RoomInventory/ImportEbsStartingInventory">
             <button type="submit">Import EBS Current Baseline</button>
         </form>
     </div>
@@ -34,7 +34,7 @@
         <pre><code>@Model.CsvExample</code></pre>
         <p class="muted">This example previews EVANCA12 as 1,022 FUJI Sealed from lots 1560=118, 1570=819, and 1030=85.</p>
     </details>
-    <form class="form-grid" method="post" enctype="multipart/form-data" action="/Admin/RoomInventory/Preview">
+    <form asp-antiforgery="true" class="form-grid" method="post" enctype="multipart/form-data" action="/Admin/RoomInventory/Preview">
         <label class="field wide">Upload room inventory CSV
             <input type="file" name="CsvFile" accept=".csv,text/csv" />
         </label>
@@ -150,7 +150,7 @@
                 </table>
             </div>
         }
-        <form method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
+        <form asp-antiforgery="true" method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
             <input type="hidden" name="CsvText" value="@Model.ImportPreview.CsvText" />
             <input type="hidden" name="UseBuiltInSeed" value="@(Model.ImportPreview.IsBuiltInSeed ? "true" : "false")" />
             @if (Model.ImportPreview.RequiresReplaceConfirmation)

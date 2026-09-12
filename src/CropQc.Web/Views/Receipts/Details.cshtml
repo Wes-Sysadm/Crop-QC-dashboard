@@ -239,7 +239,7 @@
                             <a class="inline-action" href="cropqcstation://sample/@sample.Id">Open in QC Station</a>
                             @if (CanSendEmail(sample))
                             {
-                                <form class="inline-form" method="post" action="/Samples/@sample.Id/Send"><button class="link-button" type="submit">Send QC Email</button></form>
+                                <form asp-antiforgery="true" class="inline-form" method="post" action="/Samples/@sample.Id/Send"><button class="link-button" type="submit">Send QC Email</button></form>
                             }
                             @if (Model.CanDeleteSamples)
                             {

@@ -16,7 +16,7 @@
 
 <section class="panel">
     <h2>@(Model.PlanForm.Id is null ? "Add Pack Plan" : "Edit Pack Plan")</h2>
-    <form class="form-grid" method="post" action="/Admin/CommercialPacks/Plans/Save">
+    <form asp-antiforgery="true" class="form-grid" method="post" action="/Admin/CommercialPacks/Plans/Save">
         <input type="hidden" name="Id" value="@Model.PlanForm.Id" />
         <label class="field">Code <input name="Code" value="@Model.PlanForm.Code" maxlength="50" required /></label>
         <label class="field">Display name <input name="DisplayName" value="@Model.PlanForm.DisplayName" maxlength="150" required /></label>
@@ -53,7 +53,7 @@
                 <td>@BusinessTime.FormatPacific(plan.UpdatedAt) @(string.IsNullOrWhiteSpace(plan.UpdatedBy) ? "" : $"by {plan.UpdatedBy}")</td>
                 <td class="button-row">
                     <a class="button secondary-button" href="/Admin/CommercialPacks?editPlanId=@plan.Id">Edit</a>
-                    @if (plan.IsActive) { <form method="post" action="/Admin/CommercialPacks/Plans/@plan.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
+                    @if (plan.IsActive) { <form asp-antiforgery="true" method="post" action="/Admin/CommercialPacks/Plans/@plan.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
                 </td>
             </tr>
         }
@@ -63,7 +63,7 @@
 
 <section class="panel">
     <h2>@(Model.PackForm.Id is null ? "Add Commercial Pack" : "Edit Commercial Pack")</h2>
-    <form class="form-grid" method="post" action="/Admin/CommercialPacks/Packs/Save">
+    <form asp-antiforgery="true" class="form-grid" method="post" action="/Admin/CommercialPacks/Packs/Save">
         <input type="hidden" name="Id" value="@Model.PackForm.Id" />
         <label class="field">Pack code <input name="Code" value="@Model.PackForm.Code" maxlength="50" required /></label>
         <label class="field">Pack name <input name="DisplayName" value="@Model.PackForm.DisplayName" maxlength="150" required /></label>
@@ -140,7 +140,7 @@
                 <td>@BusinessTime.FormatPacific(pack.UpdatedAt) @(string.IsNullOrWhiteSpace(pack.UpdatedBy) ? "" : $"by {pack.UpdatedBy}")</td>
                 <td class="button-row">
                     <a class="button secondary-button" href="/Admin/CommercialPacks?editPackId=@pack.Id">Edit</a>
-                    @if (pack.IsActive) { <form method="post" action="/Admin/CommercialPacks/Packs/@pack.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
+                    @if (pack.IsActive) { <form asp-antiforgery="true" method="post" action="/Admin/CommercialPacks/Packs/@pack.Id/Deactivate"><button class="secondary-button" type="submit">Deactivate</button></form> }
                 </td>
             </tr>
         }
@@ -151,7 +151,7 @@
 <section class="panel">
     <h2>Assign Packs to a Plan</h2>
     <p class="muted">Priority is authoritative. Lower numbers allocate first, preventing projected fruit from being counted in more than one pack.</p>
-    <form class="form-grid compact-form" method="post" action="/Admin/CommercialPacks/PlanItems/Save">
+    <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/Admin/CommercialPacks/PlanItems/Save">
         <label class="field">Plan <select name="CommercialPackPlanId" required><option value="">Select</option>@foreach (var plan in Model.Plans.Where(x => x.IsActive)) { <option value="@plan.Id">@plan.Commodity — @plan.DisplayName</option> }</select></label>
         <label class="field">Pack <select name="CommercialPackDefinitionId" required><option value="">Select</option>@foreach (var pack in Model.Packs.Where(x => x.IsActive)) { <option value="@pack.Id">@pack.Commodity — @pack.DisplayName</option> }</select></label>
         <label class="field">Priority <input type="number" min="0" name="Priority" value="0" required /></label>
@@ -162,7 +162,7 @@
         <tbody>
         @foreach (var item in Model.PlanItems)
         {
-            <tr><td>@item.Plan</td><td>@item.Pack</td><td>@item.Priority</td><td><form method="post" action="/Admin/CommercialPacks/PlanItems/Remove"><input type="hidden" name="planId" value="@item.PlanId" /><input type="hidden" name="packId" value="@item.PackId" /><button class="secondary-button" type="submit">Remove</button></form></td></tr>
+            <tr><td>@item.Plan</td><td>@item.Pack</td><td>@item.Priority</td><td><form asp-antiforgery="true" method="post" action="/Admin/CommercialPacks/PlanItems/Remove"><input type="hidden" name="planId" value="@item.PlanId" /><input type="hidden" name="packId" value="@item.PackId" /><button class="secondary-button" type="submit">Remove</button></form></td></tr>
         }
         </tbody>
     </table></div>

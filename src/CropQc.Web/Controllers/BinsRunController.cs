@@ -127,6 +127,25 @@ public sealed class BinsRunController(
     public IActionResult RedirectMalformedFacilityLink() =>
         RedirectToAction(nameof(Index));
 
+    [HttpPost("Projections/{id:long}/InspectDeleted")]
+    [Authorize(Policy = AccessPolicyNames.ProjectionPlannerAdmin)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> InspectDeleted(long id, [FromForm] BinsRunFilterForm filter, CancellationToken cancellationToken)
+    {
+        var date = await runProjectionService.InspectDeletedAsync(id, User, cancellationToken);
+        if (date is null) return NotFound();
+        return RedirectToAction(nameof(Index), new
+        {
+            Section = "Planner",
+            PlannedDate = date.Value.ToString("yyyy-MM-dd"),
+            ProjectionId = id,
+            filter.RoomId,
+            filter.Facility,
+            ProjectionVisibility = "Deleted",
+            filter.ProjectionSort
+        });
+    }
+
     [HttpGet("Sources")]
     [Authorize(Policy = AccessPolicyNames.ProjectionPlannerView)]
     public async Task<IActionResult> Sources(string? query, int? facilityWarehouseId, int? roomId, string? mode, CancellationToken cancellationToken) =>

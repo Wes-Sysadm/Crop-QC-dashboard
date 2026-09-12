@@ -6,7 +6,7 @@
         : Model.DefaultPhotoType;
 }
 
-<form class="panel form-grid photo-workflow" method="post" action="@Model.FormAction" id="@instanceId" enctype="multipart/form-data"
+<form asp-antiforgery="true" class="panel form-grid photo-workflow" method="post" action="@Model.FormAction" id="@instanceId" enctype="multipart/form-data"
       data-crop-year="@Model.CropYear"
       data-warehouse="@Model.Warehouse"
       data-receipt-id="@Model.ReceiptId">

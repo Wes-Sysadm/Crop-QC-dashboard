@@ -73,7 +73,7 @@
 
 <div class="action-bar">
     <a class="button secondary-button" href="/BinsRun?Section=Planner&amp;PlannedDate=@Model.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@Model.ProjectionId">Back Without Changes</a>
-    <form method="post" action="/BinsRun/Projections/@Model.ProjectionId/PackPlan/Apply">
+    <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@Model.ProjectionId/PackPlan/Apply">
         <input type="hidden" name="CommercialPackPlanId" value="@Model.CommercialPackPlanId" />
         <input type="hidden" name="ConcurrencyVersion" value="@Model.ConcurrencyVersion" />
         <input type="hidden" name="ConfigurationHash" value="@Model.ConfigurationHash" />

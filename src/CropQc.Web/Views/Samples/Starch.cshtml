@@ -75,7 +75,7 @@
             ShowApplePhotos: true))
     }
 
-    <form method="post" action="/Samples/@Model.Sample.Id/Starch">
+    <form asp-antiforgery="true" method="post" action="/Samples/@Model.Sample.Id/Starch">
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
         <section class="panel tray-panel">
             <h2>Tray Map</h2>
