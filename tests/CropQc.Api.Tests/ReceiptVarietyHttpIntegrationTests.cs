@@ -26,6 +26,44 @@ namespace CropQc.Api.Tests;
 public sealed class ReceiptVarietyHttpIntegrationTests
 {
     [Fact]
+    public async Task MasterDataUsedProfileEdit_ShowsGuardError_AndRetainsPermissionsAndAtomicity()
+    {
+        await using var factory = new ReceiptVarietyFactory();
+        using var owner = await factory.CreateClientAsync(ApplicationAreas.OwnerEmail);
+        var token = await AntiforgeryTokenAsync(owner);
+        var values = new Dictionary<string, string>
+        {
+            ["Id"] = "17",
+            ["Code"] = "BART",
+            ["Name"] = "Must not save",
+            ["FruitType"] = "Pear",
+            ["ProductionType"] = "Organic",
+            ["IsActive"] = "true",
+            ["__RequestVerificationToken"] = token
+        };
+        var response = await owner.PostAsync("/MasterData/fruit-profiles/Save", new FormUrlEncodedContent(values));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var page = await owner.GetAsync(response.Headers.Location);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        var html = await page.Content.ReadAsStringAsync();
+        Assert.Contains("already used by operational history", html);
+        Assert.Contains("Create a new Fruit Profile", html);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+            var receiptProfile = await db.Receipts.Where(x => x.FruitProfileId == 17).Select(x => x.FruitProfile).FirstAsync();
+            Assert.Equal("BART", receiptProfile.VarietyCode);
+            Assert.Equal("Conventional", receiptProfile.ProductionType);
+            Assert.False(receiptProfile.IsOrganic);
+            Assert.NotEqual("Must not save", receiptProfile.Name);
+            Assert.False(await db.AuditLogs.AnyAsync(x => x.EntityName == "fruit-profiles"));
+        }
+        using var receiver = await factory.CreateClientAsync(ReceiptVarietyFactory.ReceiverEmail);
+        values["__RequestVerificationToken"] = await AntiforgeryTokenAsync(receiver);
+        Assert.Equal(HttpStatusCode.Forbidden, (await receiver.PostAsync("/MasterData/fruit-profiles/Save", new FormUrlEncodedContent(values))).StatusCode);
+    }
+
+    [Fact]
     public async Task VarietySearch_IsActiveCodeFirstCaseInsensitiveAndNameSearchIsAmbiguous()
     {
         await using var factory = new ReceiptVarietyFactory();

@@ -5,6 +5,7 @@ using CropQc.Data.Entities;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace CropQc.Web.Services;
 
@@ -1536,29 +1537,85 @@ public sealed class AdminManagementService(
 
     private async Task<string?> SaveFruitProfile(MasterDataEditForm form, string by, CancellationToken ct)
     {
+        // Keep this transaction local to Fruit Profiles; other Master Data saves are unchanged.
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(dbContext.Database.IsNpgsql()
+                ? System.Data.IsolationLevel.ReadCommitted : System.Data.IsolationLevel.Serializable, ct)
+            : null;
+        try
+        {
+            var error = await SaveFruitProfileCore(form, by, ct);
+            if (transaction is not null)
+            {
+                if (error is null) await transaction.CommitAsync(ct);
+                else await transaction.RollbackAsync(ct);
+            }
+            return error;
+        }
+        catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.LockNotAvailable
+            or PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(ct);
+            dbContext.ChangeTracker.Clear();
+            return FruitProfileIdentityGuard.RetryMessage;
+        }
+    }
+
+    private async Task<string?> SaveFruitProfileCore(MasterDataEditForm form, string by, CancellationToken ct)
+    {
         if (Blank(form.Code) || Blank(form.Name) || Blank(form.FruitType) || Blank(form.ProductionType)) return "Variety code, name, commodity, and production type are required.";
         if (!IsValidProductionType(form.ProductionType)) return "Production type must be Conventional or Organic.";
         if (!form.ResetVarietyColor && !Blank(form.VarietyHexColor) && !VarietyColorService.IsValidHexColor(VarietyColorService.NormalizeHex(form.VarietyHexColor))) return "Enter a valid hex color such as #2F80ED.";
         var normalizedCode = form.Code.Trim().ToUpper();
         if (await dbContext.FruitProfiles.AnyAsync(x => x.VarietyCode.ToUpper() == normalizedCode && x.Id != (form.Id ?? 0), ct)) return "Variety code must be unique.";
+        if (form.Id is int id && dbContext.Database.IsNpgsql())
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"FruitProfiles\" WHERE \"Id\" = {id} FOR UPDATE NOWAIT", ct);
+        }
         var entity = form.Id is null ? new FruitProfile { VarietyCode = "", Name = "", FruitType = "", ProductionType = "" } : await dbContext.FruitProfiles.FindAsync([form.Id.Value], ct);
         if (entity is null) return "Fruit profile not found.";
-        var action = form.Id is null ? "create" : "update";
-        var before = form.Id is null ? null : JsonSerializer.Serialize(entity);
+        // FindAsync may return an earlier tracked version. Never evaluate the guard against it.
+        if (form.Id is not null) await dbContext.Entry(entity).ReloadAsync(ct);
         var productionType = NormalizeProductionType(form.ProductionType);
+        // Preserve existing legacy combinations on cosmetic-only edits; do not silently clean
+        // a historical IsOrganic flag. A production-type change still derives the organic flag.
+        var organic = form.Id is not null && productionType == entity.ProductionType
+            ? entity.IsOrganic : productionType == "Organic";
+        if (form.Id is not null && FruitProfileIdentityGuard.ChangesIdentity(
+            entity, form.Code.Trim(), form.FruitType.Trim(), productionType, organic))
+        {
+            await FruitProfileIdentityGuard.LockReferencesAsync(dbContext, ct);
+            if (await FruitProfileIdentityGuard.IsInUseAsync(dbContext, entity.Id, ct))
+                return FruitProfileIdentityGuard.InUseMessage;
+        }
+        var action = form.Id is null ? "create" : "update";
+        var before = form.Id is null ? null : FruitProfileAuditSnapshot(entity);
         entity.VarietyCode = form.Code.Trim();
         entity.Name = form.Name.Trim();
         entity.Description = form.Description;
         entity.FruitType = form.FruitType.Trim();
         entity.ProductionType = productionType;
-        entity.IsOrganic = productionType == "Organic";
+        entity.IsOrganic = organic;
         entity.IsActive = form.IsActive;
         if (form.Id is null) dbContext.FruitProfiles.Add(entity);
         await dbContext.SaveChangesAsync(ct);
-        await AddAuditAsync(action, "fruit-profiles", entity.Id.ToString(), by, before, JsonSerializer.Serialize(entity), ct);
+        await AddAuditAsync(action, "fruit-profiles", entity.Id.ToString(), by, before, FruitProfileAuditSnapshot(entity), ct);
         await dbContext.SaveChangesAsync(ct);
         return await SaveFruitProfileColorAsync(entity, form, by, ct);
     }
+
+    private static string FruitProfileAuditSnapshot(FruitProfile profile) => JsonSerializer.Serialize(new
+    {
+        profile.Id,
+        profile.VarietyCode,
+        profile.Name,
+        profile.Description,
+        profile.FruitType,
+        profile.ProductionType,
+        profile.IsOrganic,
+        profile.IsActive
+    });
 
     private async Task<string?> SaveGrade(MasterDataEditForm form, string by, CancellationToken ct)
     {

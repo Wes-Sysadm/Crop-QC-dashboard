@@ -126,6 +126,10 @@ else if (Model.Type == "orchard-blocks")
 }
 else if (Model.Type == "fruit-profiles")
 {
+    @if (Model.Id is not null)
+    {
+        <p class="muted wide">Once used by operational history, variety code, commodity, and Organic/Conventional production type cannot be changed here. Name, description, dashboard color, and active status remain editable. Create a new Fruit Profile for a different identity.</p>
+    }
     <div class="field"><label>Variety Code</label><input name="Code" value="@Model.Code" required /></div>
     <div class="field"><label>Name</label><input name="Name" value="@Model.Name" required /></div>
     <div class="field"><label>Description</label><input name="Description" value="@Model.Description" /></div>
