@@ -400,9 +400,9 @@ public sealed class BrowserAntiforgeryTests(Xunit.Abstractions.ITestOutputHelper
     }
 
     [Fact]
-    public async Task UnresolvedAuditFinding_ConfigurationGetCreatesMissingDefaults()
+    public async Task ApprovedCompatibilityException_ConfigurationGetOnlyCreatesMissingDefaults()
     {
-        // Intentional reproduction of the remaining initialization blocker, NOT read-only certification.
+        // Temporary user-approved bootstrap exception, NOT desirable HTTP design or read-only certification.
         await using var factory = new Factory();
         using var admin = await factory.BrowserAsync();
         await factory.WithDbAsync(async db =>
@@ -414,7 +414,13 @@ public sealed class BrowserAntiforgeryTests(Xunit.Abstractions.ITestOutputHelper
         var before = factory.Writes.Count;
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/Admin/Configuration")).StatusCode);
         Assert.Contains("DashboardConfiguration.Key", factory.Writes.Skip(before).SelectMany(x => x));
+        Assert.All(factory.Writes.Skip(before).SelectMany(x => x), property => Assert.StartsWith("DashboardConfiguration.", property));
         Assert.True(await factory.WithDbAsync(db => db.DashboardConfigurations.AnyAsync()));
+        var fingerprint = await factory.WithDbAsync(async db => Snapshot(await db.DashboardConfigurations.AsNoTracking().OrderBy(x => x.Id).ToListAsync()));
+        before = factory.Writes.Count;
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/Admin/Configuration")).StatusCode);
+        Assert.Empty(factory.Writes.Skip(before).SelectMany(x => x));
+        Assert.Equal(fingerprint, await factory.WithDbAsync(async db => Snapshot(await db.DashboardConfigurations.AsNoTracking().OrderBy(x => x.Id).ToListAsync())));
     }
 
     private static Task<string> GrowerFingerprintAsync(Factory factory) => factory.WithDbAsync(async db => Snapshot(new

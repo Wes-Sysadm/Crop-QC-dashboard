@@ -4,10 +4,16 @@
 
 Development only, based on main `90c129f4bca77b6b6df8b259532d2974e79a1e0d`.
 No migration, production requests, business-data repair, merge, or deployment.
-**Blocked by newly found Configuration / QC Station admin / Google credential diagnostic initialization on GET.**
-The two expressly authorized corrections are complete. A narrow Variety Color read-path
-correction was also made under the authorization to continue the GET audit. Initialization
-redesign for the remaining findings is stopped for review; passing scoped tests is not release approval.
+Problem: cookie-authenticated browser writes lacked uniform antiforgery enforcement,
+and the accompanying audit found hidden durable side effects in ordinary GET paths.
+The user explicitly deferred exactly three existing compatibility/bootstrap read-side
+initialization paths on 2026-09-12. Their implementation remains unchanged in this
+continuation. They are not additional antiforgery exemptions and are not being described
+as safe HTTP design. The four ordinary GET-mutation corrections remain in place.
+
+**These three exceptions are not considered good final architecture. Their relocation/removal
+is deferred to the compatibility/startup-boundary hardening work because changing
+schema/bootstrap ownership is outside Batch 1C.**
 
 The affected shared dependency is MVC unsafe-method filtering. Tests therefore cover
 HTTP workflows across browser controllers, rather than unrelated inventory arithmetic.
@@ -315,20 +321,22 @@ No new endpoint, color algorithm, schema helper implementation or startup change
 HTTP and service tests prove conflicting aliases remain untouched on GET, the winner
 is unchanged, and consolidation occurs only after an authorized token-bearing Save.
 
-## GET audit — blocked at initialization boundary
+## Centralized temporary compatibility/bootstrap exception list
 
 Runtime MVC descriptors enumerate **85 explicit GET verb/route pairs** (aliases count
 separately), plus **5 minimal GET health endpoints** and **2 conventional actions**.
 The architectural test prints this inventory; it enumerates HttpMethodActionConstraint
 and AttributeRouteInfo on actual ControllerActionDescriptors. The unsafe table above
 uses the same methodology, not file-string estimates. All 85 GET entries were included
-in the source audit, but read-only certification is NOT complete: three remaining
-durable initialization mechanisms are known, affecting two browser destinations:
+in the source/call-path audit. Exactly three existing durable initialization mechanisms
+are temporarily deferred by explicit user decision, affecting two browser destinations:
 
 1. `/Admin/Configuration` -> `GetConfigurationAsync` -> `EnsureConfigurationTableAsync`
    and `EnsureConfigurationDefaultsAsync`: runtime DDL and missing configuration-row
-   inserts. The new `UnresolvedAuditFinding_ConfigurationGetCreatesMissingDefaults`
-   HTTP test deliberately reproduces inserts after removing defaults in a disposable DB.
+   inserts. `ApprovedCompatibilityException_ConfigurationGetOnlyCreatesMissingDefaults`
+   deliberately reproduces inserts after removing defaults in a disposable DB, checks
+   that no other entity type is written, and fingerprints a repeat GET to prove existing
+   configuration values are unchanged and no further durable changes occur.
    Configuration editing currently addresses persisted IDs, so replacing seed-on-read
    requires an explicit initialization/default-editing contract, not invented IDs.
 2. `/Admin/QcStations` -> `GetStationsAsync` -> `EnsureQcStationColumnsAsync`: provider
@@ -339,12 +347,12 @@ durable initialization mechanisms are known, affecting two browser destinations:
    update credential use/refresh timestamps. Token refresh/use writes are in sending
    and background-mailbox paths, not this diagnostic.
 
-These are not exempted or silently accepted. They are left unchanged for a scoped
-initialization/compatibility decision, per the user's stop-before-broad-redesign rule.
+These are specific temporary GET-side-effect exceptions, NOT unsafe-method antiforgery
+exemptions. They are explicitly accepted for deferral, not silently grandfathered.
 No startup/bootstrap behavior was altered. Four read-mutation families are corrected
 in this PR (station telemetry, projection audit, canonical grower seeds, variety colors);
-three initialization mechanisms remain. No unsafe authentication classification is
-ambiguous, but these GET side effects block readiness.
+three initialization mechanisms remain. No fourth exception is allowed or was found by
+the resumed source/call-path audit. No unsafe authentication classification is ambiguous.
 
 The audit also traced controller/service reads for inventory diagnostics, backups,
 configuration, report previews, EOD history/preview, projection detail/export, photos,
@@ -353,6 +361,47 @@ middleware state/correlation, not ordinary MVC writes. HarvestWatch Connect init
 that protocol without saving rows itself. Photo GETs authorize and stream existing
 content; delete GETs show confirmations. Process-local caches and structured logging
 are not counted as durable writes. No claim of universal GET-read-only coverage is made.
+
+Ordinary application GET paths are read-only after Batch 1C except for three documented
+legacy compatibility/bootstrap initialization paths: Configuration initialization,
+QC Station schema/backfill initialization, and Google credential schema initialization.
+
+## GET architecture guard
+
+`GetMutationArchitectureTests` walks compiled application call paths from MVC GETs and
+the two conventional Home actions. It follows async/iterator state machines, referenced
+delegates, helper calls and application-interface implementations across Web/Data/Shared.
+EF saves, raw SQL mutation entry points, file mutation APIs and process execution are
+tripwires. In-memory collections/caches, metrics and structured logging are not writes.
+The five minimal health delegates remain source-reviewed reads.
+
+The only permitted edges are the exact four helper calls implementing the three named
+read-path exceptions above (Configuration has two helpers). Each has a documented reason.
+Tests require all expected edges to be reached and exactly three exception callers;
+there is no controller, `/Admin/*`, diagnostic, API, or schema-helper wildcard.
+The exceptional helper source bodies are frozen by normalized SHA-256 checks, so adding
+business writes inside an approved helper also fails review. Their current DDL/backfill
+targets were inspected from source; no PostgreSQL execution claim is made for those checks.
+
+Self-tests prove indirect, async, interface-dispatched database writes and file writes
+are detected; normal process-local state is permitted. This is a regression tripwire,
+not a formal whole-program verifier of reflection/dynamic code or third-party internals.
+Existing disposable real-cookie HTTP tests provide runtime evidence for corrected reads,
+allowed Configuration bootstrap effects, forms, permissions and protected writes.
+
+## Future work — Compatibility/bootstrap request-time mutation cleanup
+
+This is the deferred request-time compatibility DDL/startup-ownership concern, not new
+Batch 1C implementation scope. Review Configuration schema/default creation, QC Station
+schema/name backfill, and Google credential schema creation together. Identify any other
+request-time compatibility DDL encountered in that later review. Deliberately assign
+initialization ownership, validate old-deployment compatibility, preserve persisted
+configuration IDs/default semantics and station/credential history, and remove the
+corresponding narrowly frozen exceptions only after that work is verified.
+
+Goal: **Request handlers do not own database schema evolution or hidden durable bootstrap
+synchronization.** No new migration, startup job, middleware initializer, admin page,
+architecture PR, or production change is introduced here.
 
 ## Forms and JavaScript
 
@@ -376,19 +425,24 @@ Executed 2026-09-12:
 
 - Restore and solution build: PASS (existing nullable warnings; no build errors).
 - Final change-scoped HTTP/antiforgery/station/Fruit Profile guard/projection/canonical
-  grower/variety-color suite: **325/325 PASS**, zero skips.
-- Dedicated BrowserAntiforgeryTests: **31/31 PASS**, including the explicitly labelled
-  reproduction of the remaining Configuration GET mutation. Passing that diagnostic
-  does not satisfy the read-only GET gate. The corrected projection, grower and color
-  tests instead require zero read-side writes.
-- Shared QC Station client regression: **5/5 PASS** (included in the 325).
+  grower/variety-color/GET-architecture suite: **332/332 PASS**, zero skips.
+- Dedicated BrowserAntiforgeryTests: **31/31 PASS**, including the explicitly approved
+  Configuration bootstrap exception test. Corrected projection, grower and color
+  tests require zero read-side writes; the exception test permits only its documented
+  initialization purpose and requires repeat-read fingerprints unchanged.
+- GET mutation architecture and frozen-exception guard: **7/7 PASS**.
+- Batch 1B Fruit Profile identity guard: **31/31 PASS**; HTTP valid-token identity
+  rejection and tokenless pre-business rejection also remain covered.
+- QC Station regressions: **105/105 PASS**, including **5/5** shared client tests.
+- Run Projection: **63/63**, canonical grower: **19/19**, variety alias/color: **27/27**,
+  variety navigation: **3/3**, all PASS and included in the 332.
 - Upload-feedback and camera-control JavaScript: **22/22 PASS**.
 - EF pending-model check: clean; no migration executed.
 - `dotnet format CropQc.sln --no-restore --verify-no-changes`: PASS.
 - `git diff --check`: PASS.
 - MSI: existing `scripts/build-qcstation-installer.ps1`, default version **1.0.0**,
   `artifacts/installers/CropQcStationSetup.msi`, **872,448 bytes**, build PASS.
-  Rebuilt 2026-09-12 16:11:12 UTC; unsigned, not uploaded/installed/distributed.
+  Rebuilt 2026-09-12 18:19:16 UTC; unsigned, not uploaded/installed/distributed.
   The WiX payload includes the rebuilt shared station client with the heartbeat call.
   No hardware test was performed. The normal build script removes its generated
   development settings file from the local installer payload; no user configuration
@@ -397,7 +451,7 @@ Executed 2026-09-12:
 The affected suite command was:
 
 ```powershell
-dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build --filter '(FullyQualifiedName~Http|FullyQualifiedName~BrowserAntiforgery|FullyQualifiedName~Antiforgery|FullyQualifiedName~QcStation|FullyQualifiedName~FruitProfileIdentityGuardTests|FullyQualifiedName~RunProjectionTests|FullyQualifiedName~CanonicalGrowerReviewTests|FullyQualifiedName~VarietyColorAliasTests|FullyQualifiedName~VarietyColorsNavigationTests)&FullyQualifiedName!~PostgreSql&FullyQualifiedName!~Restore'
+dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build --filter '(FullyQualifiedName~Http|FullyQualifiedName~BrowserAntiforgery|FullyQualifiedName~GetMutationArchitectureTests|FullyQualifiedName~Antiforgery|FullyQualifiedName~QcStation|FullyQualifiedName~FruitProfileIdentityGuardTests|FullyQualifiedName~RunProjectionTests|FullyQualifiedName~CanonicalGrowerReviewTests|FullyQualifiedName~VarietyColorAliasTests|FullyQualifiedName~VarietyColorsNavigationTests)&FullyQualifiedName!~PostgreSql&FullyQualifiedName!~Restore'
 node --test tests/js/upload-feedback.test.cjs tests/js/device-camera-controls.test.cjs
 ```
 
@@ -415,11 +469,11 @@ success paths. No PostgreSQL claim is made for provider-independent filter work.
 
 Migration: None. Production changes: None. Draft development only.
 
-## Continuation change manifest
+## Previous continuation change manifest
 
 Continued from `f18a82f7adc5555e5b314584d71dab8ea4236beb`, same branch and base.
 No update from newer main was necessary. Twelve files changed in this continuation;
-the complete PR now changes 47 files relative to main:
+that revision changed 47 files relative to main:
 
 - `src/CropQc.Web/Controllers/BinsRunController.cs`
 - `src/CropQc.Web/Services/AdminManagementService.cs`
@@ -440,3 +494,25 @@ rendering proves both controls/token markup; a physical/mobile browser visual or
 station test was not performed. Runtime architecture enumeration and real-cookie HTTP
 tests passed; raw SQL initialization findings remain source-confirmed rather than
 misrepresented as PostgreSQL-tested read-only paths.
+
+## Final completion continuation
+
+Continued from `ee6374bcb1ec1a16132a0424844d477ee8bf85c9` on the same branch/base.
+Only the implementation review, `BrowserAntiforgeryTests.cs`, and the new
+`GetMutationArchitectureTests.cs` change in this continuation (3 files). The complete
+PR changes 48 files versus main. All production application, compatibility-helper,
+station-client and schema source remains byte-for-byte unchanged from the prior head.
+
+Final inventory was recalculated from MVC descriptors: 162 explicit unsafe verb/route
+pairs (158 browser, 4 machine), 158 distinct unsafe controller methods (156 browser,
+2 machine), 2 conventional actions, and 85 explicit GET routes. Source confirms 5
+minimal health endpoints. Recounting added token-enabled form markup in the diff from
+main yields 87 forms across 31 Razor views. No new routes, permissions or antiforgery
+exemptions were introduced by this completion continuation.
+
+Batch 1C release-review blockers: none within the expressly approved scope. The three
+temporary compatibility exceptions remain visible technical debt assigned to the
+future work above. Actual deployment, production verification, signing/distribution
+and onsite station/hardware validation remain later release/rollout work.
+
+Status: **BATCH 1C READY FOR RELEASE REVIEW**. PR remains draft, unmerged and undeployed.
