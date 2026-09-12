@@ -269,7 +269,7 @@
             }
             @if (Model.Planner.CanEdit)
             {
-                <form class="form-grid compact-form" method="post" action="/BinsRun/Projections">
+                <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections">
                     <h3 class="wide">Create Projection</h3>
                     <input type="hidden" name="Facility" value="@plannerFacility" />
                     <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
@@ -350,7 +350,7 @@
 
                 @if (selected.CanEditRecord)
                 {
-                    <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
+                    <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="Facility" value="@plannerFacility" />
                         <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
@@ -372,7 +372,7 @@
                         <button type="submit">Save Draft</button>
                     </form>
 
-                    <form class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources"
+                    <form asp-antiforgery="true" class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources"
                           data-projection-mode="@selected.ProjectionMode" data-projection-id="@selected.Id"
                           data-facility-warehouse-id="@selected.FacilityWarehouseId">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
@@ -416,7 +416,7 @@
                 }
                 @if (selected.Sources.Count > 0)
                 {
-                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Packout/ApplyAll">
+                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Packout/ApplyAll">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <label>Apply Expected Packout % to all current sources
@@ -560,7 +560,7 @@
                         }
                         @if (selected.CanEditRecord && source.ActualBinsRunEntryId is null)
                         {
-                            <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
+                            <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
                                 <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                 <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                 <label class="field">@(source.SourceType == "GrowerLot" ? "Total Projected Bins" : selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Planned bins")
@@ -599,12 +599,12 @@
                                 <span class="muted" data-autosave-status>Saved</span>
                             </form>
                             <div class="action-bar">
-                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
+                                <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                     <button type="submit" class="secondary-button">Remove Source</button>
                                 </form>
-                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
+                                <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                     <input type="hidden" name="confirmRefresh" value="true" />
@@ -678,7 +678,7 @@
                     }
                     else
                     {
-                        <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/PackPlan/Preview">
+                        <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/PackPlan/Preview">
                             <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                             <input type="hidden" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                             <label>Pack-plan scenario
@@ -882,7 +882,7 @@
                     <p class="muted">This preserves the Preharvest estimate and creates a separate Inventory projection only after every block is explicitly mapped to a real received lot.</p>
                     @if (selected.Sources.All(x => x.InventoryMappingChoices.Count > 0) && selected.CanEditRecord)
                     {
-                        <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/CreateInventory">
+                        <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/CreateInventory">
                             <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                             <input type="hidden" name="FacilityWarehouseId" value="@selected.FacilityWarehouseId" />
                             <label class="field">Run date
@@ -925,13 +925,13 @@
                 <a class="button" href="/BinsRun/Projections/@selected.Id/Outcome">View Outcome</a>
                 @if (selected.CanEditRecord)
                 {
-                    <form method="post" action="/BinsRun/Projections/@selected.Id/Ready">
+                    <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Ready">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <button type="submit">Mark Ready</button>
                     </form>
                 }
-                <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
+                <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
                     <label>Duplicate to <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.AddDays(1).ToString("yyyy-MM-dd")" required /></label>
                     <label>Facility
                         <select name="FacilityWarehouseId" required>
@@ -945,7 +945,7 @@
                 </form>
                 @if (Model.Planner.CanAdmin && selected.Status is "Draft" or "Ready")
                 {
-                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Cancel">
+                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Cancel">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <label>Reason <input name="Reason" maxlength="500" required /></label>
@@ -1537,7 +1537,7 @@ else
                                 </tbody>
                             </table>
                         </div>
-                        <form class="inline-form" method="post" action="/BinsRun/ActualRunOverrides/@request.Id/Approve">
+                        <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/ActualRunOverrides/@request.Id/Approve">
                             <label>Required override reason <input name="Reason" maxlength="1000" required /></label>
                             <button type="submit">Approve and Apply</button>
                         </form>
@@ -1604,7 +1604,7 @@ else
                 {
                     <p class="notice warning" role="status">@Model.TransferInventoryNotice</p>
                 }
-                <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
+                <form asp-antiforgery="true" class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
@@ -1758,7 +1758,7 @@ else
             }
             else
             {
-                <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                <form asp-antiforgery="true" class="form-grid" method="post" action="/BinsRun/TrueUp">
                     <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Current receipt-backed lot
@@ -1821,7 +1821,7 @@ else
                                 }
                                 @if (Model.CanAdmin)
                                 {
-                                    <form class="inline-form" method="post" action="/BinsRun/ActualRuns/@run.Id/Cancel">
+                                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/ActualRuns/@run.Id/Cancel">
                                         <input type="hidden" name="ConcurrencyVersion" value="@run.ConcurrencyVersion" />
                                         <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
                                         <label>Cancellation reason <input name="Reason" maxlength="1000" required /></label>

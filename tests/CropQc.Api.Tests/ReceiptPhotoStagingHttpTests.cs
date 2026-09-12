@@ -108,7 +108,9 @@ public sealed class ReceiptPhotoStagingHttpTests
         Assert.Equal(4, factory.Storage.SaveCount);
         Assert.Equal(4, factory.Storage.SavedRequests.Count);
 
-        var remove = await client.PostAsync($"/Receipts/{receiptId}/photos/{photoId}/remove", new FormUrlEncodedContent([]));
+        var removeToken = await AntiforgeryTokenAsync(client, $"/Receipts/{receiptId}");
+        var remove = await client.PostAsync($"/Receipts/{receiptId}/photos/{photoId}/remove", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["__RequestVerificationToken"] = removeToken }));
         Assert.Equal(HttpStatusCode.Redirect, remove.StatusCode);
         await using (var scope = factory.Services.CreateAsyncScope())
         {

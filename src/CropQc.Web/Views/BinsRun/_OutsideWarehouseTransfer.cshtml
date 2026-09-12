@@ -21,7 +21,7 @@
     }
     else
     {
-        <form class="form-grid outside-transfer-form" method="post" action="/BinsRun/OutsideTransfers" data-outside-transfer-form>
+        <form asp-antiforgery="true" class="form-grid outside-transfer-form" method="post" action="/BinsRun/OutsideTransfers" data-outside-transfer-form>
             <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
             <input type="hidden" name="ExpectedAvailableBins" value="@Model.Form.ExpectedAvailableBins" data-outside-expected />
             <input type="hidden" name="ConfirmedReview" value="false" data-outside-confirmed />

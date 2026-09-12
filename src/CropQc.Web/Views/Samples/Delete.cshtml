@@ -25,7 +25,7 @@ else
             <dt>Photo count</dt><dd>@Model.PhotoCount</dd>
             <dt>Email status</dt><dd>@Model.EmailStatus</dd>
         </dl>
-        <form method="post" action="/Samples/@Model.SampleId/Delete">
+        <form asp-antiforgery="true" method="post" action="/Samples/@Model.SampleId/Delete">
             <div class="field">
                 <label>Reason</label>
                 <textarea name="Reason" rows="3" placeholder="Test data cleanup, duplicate sample, or other reason"></textarea>

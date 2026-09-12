@@ -124,7 +124,7 @@
                     {
                         @if (canSendQcSummary)
                         {
-                            <form method="post" action="/Samples/@sample.Id/Send" class="inline-form">
+                            <form asp-antiforgery="true" method="post" action="/Samples/@sample.Id/Send" class="inline-form">
                                 <button type="submit">Send QC Summary</button>
                             </form>
                         }

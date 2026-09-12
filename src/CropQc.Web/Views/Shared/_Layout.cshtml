@@ -84,7 +84,7 @@
                     {
                         <span class="environment-badge">@AppEnvironment.DisplayName</span>
                     }
-                    <form class="logout-form" method="post" action="/Logout">
+                    <form asp-antiforgery="true" class="logout-form" method="post" action="/Logout">
                         <button type="submit" class="link-button">Logout</button>
                     </form>
                 </div>

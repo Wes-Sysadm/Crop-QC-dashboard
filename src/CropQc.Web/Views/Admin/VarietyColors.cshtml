@@ -43,7 +43,7 @@
                         <span class="variety-color-preview" style="--variety-color: @variety.HexColor" aria-label="@variety.VarietyName color preview"></span>
                     </td>
                     <td>
-                        <form class="button-row variety-color-form" method="post" action="/Admin/VarietyColors/Save">
+                        <form asp-antiforgery="true" class="button-row variety-color-form" method="post" action="/Admin/VarietyColors/Save">
                             <input type="hidden" name="VarietyKey" value="@variety.VarietyKey" />
                             <input type="hidden" name="VarietyName" value="@variety.VarietyName" />
                             <label class="field">
@@ -62,7 +62,7 @@
                         <div class="muted">Default @variety.FallbackColor</div>
                     </td>
                     <td>
-                        <form method="post" action="/Admin/VarietyColors/Reset">
+                        <form asp-antiforgery="true" method="post" action="/Admin/VarietyColors/Reset">
                             <input type="hidden" name="VarietyKey" value="@variety.VarietyKey" />
                             <input type="hidden" name="VarietyName" value="@variety.VarietyName" />
                             <button class="secondary-button" type="submit" disabled="@(!Model.CanManage || !variety.IsConfigured ? "disabled" : null)">Reset to default</button>

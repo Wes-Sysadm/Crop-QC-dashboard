@@ -120,7 +120,7 @@
 {
     <section class="panel">
         <h2>Add @Model.Title</h2>
-        <form class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
+        <form asp-antiforgery="true" class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
             @await Html.PartialAsync("_MasterDataFields", Model.EditForm ?? new MasterDataEditForm { Type = Model.Type })
             <button type="submit">Add</button>
         </form>
@@ -132,7 +132,7 @@
     <section class="panel">
         <h2>Import Grower Lots</h2>
         <p class="muted">Upload a CSV with <strong>Grower</strong>, <strong>Grower Number</strong>, and <strong>Pool Start</strong>. Only active reviewed Grower Numbers are accepted; names are taken from the reviewed Grower master. Existing PoolStart values and historical rows are preserved.</p>
-        <form class="form-grid" method="post" enctype="multipart/form-data" action="/MasterData/grower-lots/ImportPreview">
+        <form asp-antiforgery="true" class="form-grid" method="post" enctype="multipart/form-data" action="/MasterData/grower-lots/ImportPreview">
             <label class="field wide">Grower lot CSV
                 <input type="file" name="CsvFile" accept=".csv,text/csv" required />
             </label>
@@ -184,7 +184,7 @@
                 <p class="muted">Showing first 50 preview rows.</p>
             }
             <div class="action-bar">
-                <form method="post" action="/MasterData/grower-lots/ImportApply">
+                <form asp-antiforgery="true" method="post" action="/MasterData/grower-lots/ImportApply">
                     <input type="hidden" name="CsvText" value="@importPreview.CsvText" />
                     <input type="hidden" name="ConfirmImport" value="true" />
                     <button type="submit" disabled="@(!importPreview.CanApply)">Import Grower Lots</button>
@@ -297,7 +297,7 @@
                     <a class="button secondary-button" href="/MasterData/@Model.Type/Edit/@item.Id">Edit</a>
                     @if (item.IsActive)
                     {
-                        <form method="post" action="/MasterData/@Model.Type/Deactivate/@item.Id">
+                        <form asp-antiforgery="true" method="post" action="/MasterData/@Model.Type/Deactivate/@item.Id">
                             <button class="secondary-button" type="submit">Deactivate</button>
                         </form>
                     }

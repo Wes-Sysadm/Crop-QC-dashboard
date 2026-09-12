@@ -510,7 +510,7 @@
     <section class="panel">
         <h2>Record Bins Sent to Line</h2>
         <p class="muted">Use depletion to remove fruit from current room summaries without deleting receipts, samples, photos, or email history.</p>
-        <form class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Deplete">
+        <form asp-antiforgery="true" class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Deplete">
             <label class="field">Lot / Receipt
                 <select name="ReceiptId" required>
                     <option value="">Select current lot</option>
@@ -660,7 +660,7 @@
                     <a class="button secondary-button" href="/Receipts/@depletion.ReceiptId">View Receipt</a>
                     @if (Model.CanManageDepletions && !depletion.IsVoided && Model.Summary is not null)
                     {
-                        <form method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Depletions/@depletion.Id/Void" class="stack-form">
+                        <form asp-antiforgery="true" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Depletions/@depletion.Id/Void" class="stack-form">
                             <label>Void reason <input name="Reason" required maxlength="1000" /></label>
                             <button type="submit" class="secondary-button">Void</button>
                         </form>

@@ -10,7 +10,7 @@
 }
 
 <section class="panel">
-    <form class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
+    <form asp-antiforgery="true" class="form-grid" method="post" action="/MasterData/@Model.Type/Save">
         @await Html.PartialAsync("_MasterDataFields", Model)
         <button type="submit">Save</button>
         <a class="button secondary-button" href="/MasterData/@Model.Type">Cancel</a>
