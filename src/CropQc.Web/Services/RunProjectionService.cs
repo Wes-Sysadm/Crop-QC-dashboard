@@ -14,6 +14,7 @@ namespace CropQc.Web.Services;
 
 public interface IRunProjectionService
 {
+    Task<DateOnly?> InspectDeletedAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<RunProjectionPlannerViewModel> GetPlannerAsync(DateOnly? date, long? projectionId, string? facility, string? deletionStatus, string? sort, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<ProjectionOutcomeViewModel?> GetOutcomeAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken);
     Task<IReadOnlyList<RunProjectionSourceCandidateViewModel>> SearchSourcesAsync(string? query, int? facilityWarehouseId, int? roomId, string? projectionMode, ClaimsPrincipal user, CancellationToken cancellationToken);
@@ -251,29 +252,6 @@ public sealed class RunProjectionService(
                     DatabaseFailureDiagnostics.Classify(exception).Category);
             }
         }
-        if (selectedProjection?.IsDeleted == true
-            && projectionId == selectedProjection.Id
-            && canAdmin)
-        {
-            var userId = await CurrentUserIdAsync(user, cancellationToken);
-            dbContext.AuditLogs.Add(new AuditLog
-            {
-                Action = "InspectDeleted",
-                EntityName = nameof(RunProjection),
-                EntityKey = selectedProjection.Id.ToString(CultureInfo.InvariantCulture),
-                UserId = userId,
-                AfterValuesJson = JsonSerializer.Serialize(new
-                {
-                    selectedProjection.Id,
-                    selectedProjection.FacilityCode,
-                    selectedProjection.DeletedAt,
-                    Result = "Viewed"
-                }),
-                SourceApplication = SourceApplication,
-                CreatedAt = businessTime.UtcNow
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
         return new RunProjectionPlannerViewModel
         {
             SelectedDate = selectedDate,
@@ -336,6 +314,35 @@ public sealed class RunProjectionService(
             PlannerWarning = plannerWarning,
             DiagnosticReference = diagnosticReference
         };
+    }
+
+    public async Task<DateOnly?> InspectDeletedAsync(long id, ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        await RequireAsync(user, PageAccessLevel.Admin, cancellationToken);
+        var projection = await dbContext.RunProjections.AsNoTracking()
+            .Where(x => x.Id == id && x.IsDeleted)
+            .Select(x => new
+            {
+                x.Id,
+                x.PlannedRunDate,
+                FacilityCode = x.FacilityWarehouse == null ? (x.FacilityCodeSnapshot ?? "Unassigned") : x.FacilityWarehouse.Code,
+                x.DeletedAt
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (projection is null) return null;
+
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Action = "InspectDeleted",
+            EntityName = nameof(RunProjection),
+            EntityKey = projection.Id.ToString(CultureInfo.InvariantCulture),
+            UserId = await CurrentUserIdAsync(user, cancellationToken),
+            AfterValuesJson = JsonSerializer.Serialize(new { projection.Id, projection.FacilityCode, projection.DeletedAt, Result = "Viewed" }),
+            SourceApplication = SourceApplication,
+            CreatedAt = businessTime.UtcNow
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return projection.PlannedRunDate;
     }
 
     public async Task<ProjectionOutcomeViewModel?> GetOutcomeAsync(

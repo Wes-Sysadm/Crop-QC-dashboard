@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using CropQc.Data;
 using CropQc.Data.Entities;
@@ -27,7 +29,7 @@ using Microsoft.Extensions.Options;
 
 namespace CropQc.Api.Tests;
 
-public sealed class BrowserAntiforgeryTests
+public sealed class BrowserAntiforgeryTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     // Exact action allowlist, not an /api/* exemption. Both require station code
     // and a verified hashed station key; ordinary browser cookies are insufficient.
@@ -43,6 +45,10 @@ public sealed class BrowserAntiforgeryTests
         Assert.Empty(options.Filters.OfType<IgnoreAntiforgeryTokenAttribute>());
         var actions = Actions(factory);
         Assert.NotEmpty(actions);
+        var routes = actions.SelectMany(a => (a.ActionConstraints?.OfType<HttpMethodActionConstraint>().SelectMany(c => c.HttpMethods) ?? [])
+            .Select(m => new { Method = m, Route = a.AttributeRouteInfo?.Template, Action = a.ControllerName + "." + a.ActionName })).Distinct().ToArray();
+        var unsafeRoutes = routes.Where(r => r.Method is "POST" or "PUT" or "PATCH" or "DELETE").ToArray();
+        output.WriteLine($"Inventory: GET={routes.Count(r => r.Method == "GET")}; unsafe={unsafeRoutes.Length}; browser={unsafeRoutes.Count(r => !r.Action.StartsWith("QcStation.", StringComparison.Ordinal))}; machine={unsafeRoutes.Count(r => r.Action.StartsWith("QcStation.", StringComparison.Ordinal))}; unsafe actions={unsafeRoutes.Select(r => r.Action).Distinct().Count()}; conventional={actions.Count(a => a.ActionConstraints?.OfType<HttpMethodActionConstraint>().Any() != true)}");
         var exempt = actions.Where(a => a.FilterDescriptors.Any(f => f.Filter is IgnoreAntiforgeryTokenAttribute)).ToArray();
         Assert.Equal(MachineActions, exempt.Select(a => a.ActionName).Distinct().Order().ToArray());
         Assert.All(exempt, a => Assert.Equal(typeof(QcStationController), a.ControllerTypeInfo.AsType()));
@@ -151,13 +157,6 @@ public sealed class BrowserAntiforgeryTests
         await using var factory = new Factory();
         using var client = await factory.BrowserAsync();
         var token = await TokenAsync(client);
-        // This success-path fixture starts with established resolver mappings.
-        // Cold-start GET seeding is reproduced separately below and blocks Batch 1C.
-        if (url.StartsWith("/Admin/RoomInventory", StringComparison.Ordinal))
-        {
-            using var scope = factory.Services.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<ICanonicalGrowerService>().LoadResolutionSetAsync(default);
-        }
         var before = factory.Writes.Count;
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["CsvText"] = "invalid-header" }) };
         request.Headers.Add("RequestVerificationToken", token); // Same supported header as JSON/AJAX clients.
@@ -167,22 +166,264 @@ public sealed class BrowserAntiforgeryTests
         Assert.Empty(factory.Writes.Skip(before).SelectMany(x => x));
     }
 
-    [Fact]
-    public async Task AuditFinding_CurrentInventoryGetPersistsCanonicalSeedMappings()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GrowerReads_MissingOrIncompleteMappings_AreReadOnly(bool incomplete)
     {
-        // Diagnostic reproduction of an unresolved pre-existing GET mutation,
-        // NOT a declaration that the behavior is acceptable. See Batch 1C review.
         await using var factory = new Factory();
         using var client = await factory.BrowserAsync();
+        if (incomplete)
+        {
+            await factory.WithDbAsync(async db =>
+            {
+                db.CanonicalGrowers.Add(new CanonicalGrower
+                {
+                    DisplayName = "VANTAGE ORCHARD",
+                    NormalizedKey = "VANTAGE_ORCHARD",
+                    IsActive = true,
+                    CreatedAt = DateTimeOffset.UnixEpoch,
+                    UpdatedAt = DateTimeOffset.UnixEpoch
+                });
+                await db.SaveChangesAsync();
+                return true;
+            });
+        }
+        var fingerprint = await GrowerFingerprintAsync(factory);
         var before = factory.Writes.Count;
-        using var response = await client.GetAsync("/Admin/RoomInventory");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var properties = factory.Writes.Skip(before).SelectMany(x => x).ToArray();
-        Assert.Contains("CanonicalGrower.DisplayName", properties);
-        Assert.Contains("CanonicalGrowerAlias.AliasName", properties);
-        Assert.All(properties, p => Assert.True(p.StartsWith("CanonicalGrower.", StringComparison.Ordinal)
-            || p.StartsWith("CanonicalGrowerAlias.", StringComparison.Ordinal)));
+        foreach (var path in new[] { "/Admin/RoomInventory", "/MasterData/canonical-growers", "/Receipts", "/CropYearReview", "/Admin/RoomInventory/Reconciliation" })
+        {
+            using var response = await client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+        // Both uncached and cached resolution, including a second cache hit.
+        await factory.WithDbAsync(async db =>
+        {
+            foreach (var cache in new CanonicalGrowerResolutionCache?[] { null, new() })
+            {
+                var service = new CanonicalGrowerService(db, cache);
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    var resolver = await service.LoadResolutionSetAsync(default);
+                    foreach (var alias in new[] { "Vantage Orchard", "Vantage Orchard Non Chilean", "Stayman Flats", "Stayman", "Stayman Flats Non Chilean" })
+                    {
+                        var identity = resolver.Resolve(alias, null);
+                        Assert.Equal(alias.StartsWith("Vantage", StringComparison.Ordinal)
+                            ? (incomplete ? "VANTAGE ORCHARD" : "Vantage Orchard") : "Stayman Flats", identity.DisplayName);
+                        if (incomplete && alias.StartsWith("Vantage", StringComparison.Ordinal))
+                            Assert.Equal((await db.CanonicalGrowers.SingleAsync()).Id, identity.CanonicalGrowerId);
+                        else Assert.Null(identity.CanonicalGrowerId);
+                    }
+                }
+            }
+            return true;
+        });
+        Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(fingerprint, await GrowerFingerprintAsync(factory));
     }
+
+    [Fact]
+    public async Task ExplicitMasterDataMapping_RequiresTokenAndPermission_PreservesAuditAndUniqueness()
+    {
+        await using var factory = new Factory();
+        using var admin = await factory.BrowserAsync();
+        using var viewer = await factory.BrowserAsync("viewer@example.test");
+        const string path = "/MasterData/canonical-growers/Save";
+        // Historical mappings use the existing Save boundary; active reviewed-master rules are unchanged.
+        var form = new Dictionary<string, string>
+        {
+            ["Name"] = "Vantage Orchard",
+            ["GrowerAliases"] = "Vantage Orchard Non Chilean",
+            ["IsActive"] = "false"
+        };
+        var fingerprint = await GrowerFingerprintAsync(factory);
+        var before = factory.Writes.Count;
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync(path, new FormUrlEncodedContent(form))).StatusCode);
+        form["__RequestVerificationToken"] = await TokenAsync(viewer);
+        var denied = await viewer.PostAsync(path, new FormUrlEncodedContent(form));
+        Assert.True(denied.StatusCode == HttpStatusCode.Forbidden || denied.Headers.Location?.OriginalString.Contains("AccessDenied") == true);
+        Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(fingerprint, await GrowerFingerprintAsync(factory));
+        form["__RequestVerificationToken"] = await TokenAsync(admin);
+        Assert.Equal(HttpStatusCode.Redirect, (await admin.PostAsync(path, new FormUrlEncodedContent(form))).StatusCode);
+        await factory.WithDbAsync(async db =>
+        {
+            var grower = await db.CanonicalGrowers.Include(x => x.Aliases).SingleAsync();
+            Assert.Equal("VANTAGE_ORCHARD", grower.NormalizedKey);
+            Assert.Equal(2, grower.Aliases.Count);
+            var audit = await db.AuditLogs.SingleAsync(x => x.EntityName == "canonical-growers");
+            Assert.Equal("create", audit.Action);
+            Assert.Equal(grower.Id.ToString(), audit.EntityKey);
+            Assert.Equal("CropQc.Web", audit.SourceApplication);
+            Assert.Equal((await db.Users.SingleAsync(x => x.Email == ApplicationAreas.OwnerEmail)).Id, audit.UserId);
+            return true;
+        });
+        fingerprint = await GrowerFingerprintAsync(factory);
+        before = factory.Writes.Count;
+        Assert.Equal(HttpStatusCode.Redirect, (await admin.PostAsync(path, new FormUrlEncodedContent(form))).StatusCode);
+        Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(fingerprint, await GrowerFingerprintAsync(factory));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProjectionReadAndExplicitInspection_OnlyAuthorizedTokenPostCreatesAudit(bool deleted)
+    {
+        await using var factory = new Factory();
+        using var admin = await factory.BrowserAsync();
+        using var viewer = await factory.BrowserAsync("viewer@example.test");
+        var id = await factory.WithDbAsync(async db =>
+        {
+            var projection = new RunProjection
+            {
+                Name = "Read-only projection",
+                Status = RunProjectionStatuses.Draft,
+                PlannedRunDate = new DateOnly(2026, 9, 12),
+                CropYear = 2026,
+                FacilityWarehouse = new Warehouse { Code = "WP", Name = "Test WP" },
+                FacilityCodeSnapshot = "WP",
+                IsDeleted = deleted,
+                DeletedAt = deleted ? DateTimeOffset.UnixEpoch : null,
+                ApplePoundsPerBin = 900,
+                PearPoundsPerBin = 1100,
+                StandardBoxWeightPounds = 40
+            };
+            db.RunProjections.Add(projection);
+            await db.SaveChangesAsync();
+            return projection.Id;
+        });
+        var projectionBefore = await factory.WithDbAsync(async db => Snapshot(await db.RunProjections.AsNoTracking().SingleAsync()));
+        var before = factory.Writes.Count;
+        var path = $"/BinsRun?Section=Planner&PlannedDate=2026-09-12&ProjectionId={id}&Facility=All&ProjectionVisibility={(deleted ? "Deleted" : "Active")}";
+        var html = await admin.GetStringAsync(path);
+        Assert.Contains("Read-only projection", html);
+        Assert.DoesNotContain("could not be displayed", html);
+        Assert.DoesNotContain("Other projections remain available", html);
+        // Implicit first-record selection has always allowed read-only deleted display too.
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path.Replace($"&ProjectionId={id}", ""))).StatusCode);
+        Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(0, await factory.WithDbAsync(db => db.AuditLogs.CountAsync()));
+        var postPath = $"/BinsRun/Projections/{id}/InspectDeleted";
+        if (deleted)
+        {
+            var forms = Regex.Matches(html, "<form\\b[^>]*action=\"" + postPath + "\"[^>]*>.*?</form>", RegexOptions.Singleline);
+            Assert.Equal(2, forms.Count); // planner card and recent activity
+            Assert.All(forms.Cast<Match>(), f => Assert.Single(Regex.Matches(f.Value, "name=\"__RequestVerificationToken\"")));
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync(postPath, null)).StatusCode);
+        var denied = await viewer.PostAsync(postPath, new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = await TokenAsync(viewer) }));
+        Assert.True(denied.StatusCode == HttpStatusCode.Forbidden || denied.Headers.Location?.OriginalString.Contains("AccessDenied") == true);
+        Assert.Equal(before, factory.Writes.Count);
+        var started = DateTimeOffset.UtcNow;
+        var result = await admin.PostAsync(postPath, new FormUrlEncodedContent(new Dictionary<string, string>
+        { ["__RequestVerificationToken"] = await TokenAsync(admin), ["Facility"] = "All", ["ProjectionSort"] = "Updated" }));
+        Assert.Equal(deleted ? HttpStatusCode.Redirect : HttpStatusCode.NotFound, result.StatusCode);
+        if (deleted)
+        {
+            Assert.Contains($"ProjectionId={id}", result.Headers.Location!.OriginalString);
+            Assert.Contains("ProjectionVisibility=Deleted", result.Headers.Location.OriginalString);
+            Assert.Contains("ProjectionSort=Updated", result.Headers.Location.OriginalString);
+            await factory.WithDbAsync(async db =>
+            {
+                var audit = await db.AuditLogs.SingleAsync();
+                Assert.Equal("InspectDeleted", audit.Action);
+                Assert.Equal(nameof(RunProjection), audit.EntityName);
+                Assert.Equal(id.ToString(), audit.EntityKey);
+                Assert.Equal("CropQc.Web", audit.SourceApplication);
+                Assert.Equal((await db.Users.SingleAsync(x => x.Email == ApplicationAreas.OwnerEmail)).Id, audit.UserId);
+                Assert.InRange(audit.CreatedAt, started, DateTimeOffset.UtcNow);
+                var evidence = JsonDocument.Parse(audit.AfterValuesJson!).RootElement;
+                Assert.Equal(id, evidence.GetProperty("Id").GetInt64());
+                Assert.Equal("WP", evidence.GetProperty("FacilityCode").GetString());
+                Assert.Equal("Viewed", evidence.GetProperty("Result").GetString());
+                Assert.Equal(DateTimeOffset.UnixEpoch, evidence.GetProperty("DeletedAt").GetDateTimeOffset());
+                return true;
+            });
+            Assert.Equal(before + 1, factory.Writes.Count);
+            Assert.All(factory.Writes.Last(), p => Assert.StartsWith("AuditLog.", p));
+            Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(result.Headers.Location)).StatusCode);
+            Assert.Equal(before + 1, factory.Writes.Count);
+        }
+        else Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(projectionBefore, await factory.WithDbAsync(async db => Snapshot(await db.RunProjections.AsNoTracking().SingleAsync())));
+    }
+
+    private static string Snapshot(object value) => JsonSerializer.Serialize(value, new JsonSerializerOptions { ReferenceHandler = ReferenceHandler.IgnoreCycles });
+
+    [Fact]
+    public async Task VarietyAliasReads_PreserveRowsAndWinner_ConsolidationRequiresProtectedPost()
+    {
+        await using var factory = new Factory();
+        using var admin = await factory.BrowserAsync();
+        using var viewer = await factory.BrowserAsync("viewer@example.test");
+        await factory.WithDbAsync(async db =>
+        {
+            db.VarietyColorConfigurations.AddRange(
+                new VarietyColorConfiguration { VarietyKey = "GRANNY_SMITH", VarietyName = "Granny Smith", HexColor = "#112233", CreatedAt = DateTimeOffset.UnixEpoch },
+                new VarietyColorConfiguration { VarietyKey = "GSMT", VarietyName = "GSMT", HexColor = "#445566", CreatedAt = DateTimeOffset.UnixEpoch });
+            await db.SaveChangesAsync();
+            return true;
+        });
+        async Task<string> Fingerprint() => await factory.WithDbAsync(async db => Snapshot(new
+        {
+            Colors = await db.VarietyColorConfigurations.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+            Audits = await db.AuditLogs.AsNoTracking().OrderBy(x => x.Id).ToListAsync()
+        }));
+        var fingerprint = await Fingerprint();
+        var before = factory.Writes.Count;
+        foreach (var path in new[] { "/Admin/VarietyColors", "/MasterData/fruit-profiles" })
+            Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path)).StatusCode);
+        await factory.WithDbAsync(async db =>
+        {
+            var colors = await new VarietyColorService(db).GetResolvedColorsAsync(["GSMT"], default);
+            Assert.Equal("#112233", colors["GRANNY_SMITH"].HexColor);
+            return true;
+        });
+        Assert.Equal(before, factory.Writes.Count);
+        Assert.Equal(fingerprint, await Fingerprint());
+        var form = new Dictionary<string, string> { ["VarietyKey"] = "GRANNY_SMITH", ["VarietyName"] = "Granny Smith", ["HexColor"] = "#112233" };
+        const string post = "/Admin/VarietyColors/Save";
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync(post, new FormUrlEncodedContent(form))).StatusCode);
+        form["__RequestVerificationToken"] = await TokenAsync(viewer);
+        var denied = await viewer.PostAsync(post, new FormUrlEncodedContent(form));
+        Assert.True(denied.StatusCode == HttpStatusCode.Forbidden || denied.Headers.Location?.OriginalString.Contains("AccessDenied") == true);
+        Assert.Equal(before, factory.Writes.Count);
+        form["__RequestVerificationToken"] = await TokenAsync(admin);
+        Assert.Equal(HttpStatusCode.Redirect, (await admin.PostAsync(post, new FormUrlEncodedContent(form))).StatusCode);
+        await factory.WithDbAsync(async db =>
+        {
+            Assert.Equal("GRANNY_SMITH", (await db.VarietyColorConfigurations.SingleAsync()).VarietyKey);
+            Assert.Single(await db.AuditLogs.Where(x => x.Action == "consolidate-variety-alias").ToListAsync());
+            return true;
+        });
+    }
+
+    [Fact]
+    public async Task UnresolvedAuditFinding_ConfigurationGetCreatesMissingDefaults()
+    {
+        // Intentional reproduction of the remaining initialization blocker, NOT read-only certification.
+        await using var factory = new Factory();
+        using var admin = await factory.BrowserAsync();
+        await factory.WithDbAsync(async db =>
+        {
+            db.DashboardConfigurations.RemoveRange(await db.DashboardConfigurations.ToListAsync());
+            await db.SaveChangesAsync();
+            return true;
+        });
+        var before = factory.Writes.Count;
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/Admin/Configuration")).StatusCode);
+        Assert.Contains("DashboardConfiguration.Key", factory.Writes.Skip(before).SelectMany(x => x));
+        Assert.True(await factory.WithDbAsync(db => db.DashboardConfigurations.AnyAsync()));
+    }
+
+    private static Task<string> GrowerFingerprintAsync(Factory factory) => factory.WithDbAsync(async db => Snapshot(new
+    {
+        Growers = await db.CanonicalGrowers.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+        Aliases = await db.CanonicalGrowerAliases.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+        Numbers = await db.CanonicalGrowerNumbers.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+        Audits = await db.AuditLogs.AsNoTracking().OrderBy(x => x.Id).ToListAsync()
+    }));
 
     [Fact]
     public async Task ValidToken_DoesNotGrantMasterDataPermission()

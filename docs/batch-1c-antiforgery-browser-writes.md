@@ -4,12 +4,15 @@
 
 Development only, based on main `90c129f4bca77b6b6df8b259532d2974e79a1e0d`.
 No migration, production requests, business-data repair, merge, or deployment.
-**Blocked: the deleted-projection GET audit and shared canonical-grower seeding on read paths below require a scope decision.**
+**Blocked by newly found Configuration / QC Station admin / Google credential diagnostic initialization on GET.**
+The two expressly authorized corrections are complete. A narrow Variety Color read-path
+correction was also made under the authorization to continue the GET audit. Initialization
+redesign for the remaining findings is stopped for review; passing scoped tests is not release approval.
 
 The affected shared dependency is MVC unsafe-method filtering. Tests therefore cover
 HTTP workflows across browser controllers, rather than unrelated inventory arithmetic.
 Existing history, quantities, identity, authorization policies and storage semantics remain unchanged.
-Only station heartbeat telemetry moves to a dedicated write endpoint.
+Station heartbeat telemetry and explicit deleted-projection inspection now use write endpoints.
 
 ## Enforcement architecture
 
@@ -30,7 +33,9 @@ they inherit the same global unsafe-method filter.
 ## Complete unsafe endpoint inventory
 
 Counts distinguish verb/route pairs (aliases count separately) from controller methods:
-**161 explicit unsafe routes: 157 browser routes and 4 machine routes.**
+**162 explicit unsafe routes: 158 browser routes and 4 machine routes.**
+These resolve to **158 unsafe controller methods: 156 browser and 2 machine**.
+The single new route in this continuation is deleted-projection inspection.
 Additionally, two conventional actions (Home.Index and Home.Error) permit unsafe
 methods without explicit verb attributes; both inherit global validation.
 No Razor Pages, unsafe minimal APIs, extra application parts, or other hosted API
@@ -69,6 +74,7 @@ authentication classifications remain. JSON responses are not considered machine
 | Backups | POST | `/Admin/Backups/TestAccess` | A |
 | Backups | POST | `/Admin/Backups/Notifications/{id:long}/Retry` | A |
 | BinsRun | POST | `/BinsRun/Projections` | A |
+| BinsRun | POST | `/BinsRun/Projections/{id:long}/InspectDeleted` | A |
 | BinsRun | POST | `/BinsRun/Projections/{id:long}/Header` | A |
 | BinsRun | POST | `/BinsRun/Projections/{id:long}/Sources` | A |
 | BinsRun | POST | `/BinsRun/Projections/{id:long}/Sources/{sourceId:long}` | A |
@@ -242,46 +248,115 @@ The local installer uses the existing build script/default version 1.0.0, not a 
 packaging process; the generated MSI is unsigned, uninstalled and unuploaded.
 Signing and onsite hardware verification remain release/rollout prerequisites.
 
-## GET mutation findings
+## Deleted projection GET — corrected
 
-1. QC Station authentication persisted LastSeenAt/LastSeenIp on GET. Fixed as authorized.
-2. **Unresolved:** GET `/BinsRun?Section=Planner&ProjectionId=<deleted id>`
-   calls `RunProjectionService.GetPlannerAsync`, which adds an `InspectDeleted`
-   AuditLog and saves when an administrator explicitly selects a deleted projection.
-   This is durable application data, not ordinary diagnostic logging. The existing
-   test in RunProjectionTests requires this audit. Recommended narrow correction:
-   move inspection recording to an authorized, token-protected POST Inspect action,
-   retain the original audit evidence, redirect to a read-only planner GET, and update
-   the page-local inspection control/tests. Approval was requested; this behavior has
-   not been silently removed or exempted.
-3. **Unresolved systemic read mutation:** GET `/Admin/RoomInventory` calls
-   `RoomInventoryImportService.GetCurrentLotsAsync`, which calls
-   `CanonicalGrowerService.LoadResolutionSetAsync`. On cache miss that invokes
-   `EnsureSeedMappingsAsync`: it creates missing CanonicalGrowers/aliases, can rename
-   an existing canonical grower, and calls SaveChanges. The same shared resolver is
-   used by Receiving, receipt details, reconciliation and loss views. Local fixtures
-   reproduced two growers/five aliases being created during view loading. Moving or
-   removing this initialization requires a separate identity/bootstrap decision;
-   changing resolver semantics or startup work is explicitly outside this batch.
-   It is not an acceptable CSRF exemption. A dedicated diagnostic test reproduces
-   this durable GET mutation. Valid-token Room Inventory success-path fixtures
-   establish resolver mappings explicitly before measuring request writes. Those
-   success tests do not imply that cold-start GET seeding is acceptable.
-4. OAuth callbacks are authentication-protocol endpoints handled by Google middleware,
-   not ordinary MVC writes. Their state/correlation validation remains intact.
-   The HarvestWatch Connect GET initiates that protocol and does not itself save a row.
-5. Photo content GETs authorize then stream existing storage content; no rotation,
-   derivative creation or storage write was added. Delete GETs in Receipts, Samples,
-   Field Samples and Projections show confirmation pages; their mutation actions use POST.
+`GetPlannerAsync` previously created `InspectDeleted` only when `projectionId`
+explicitly equaled the selected deleted record and the user had Planner Admin access.
+There are no consumers of this action implementing an access gate. Critically, the
+same method already selected/displayed the first deleted record when no ID was supplied,
+without that audit. Thus this was informational explicit-inspection telemetry, not
+an every-display compliance/access gate. The Outcome route actually excludes deleted
+records; it is not an alternative deleted-record access path.
 
-The review traced controller read actions and service calls, including backup status,
-configuration, inventory views, report previews, projection detail/export and photo
-content. The deleted-projection audit and shared grower seeding remain outstanding;
-this document does not claim universal read-only GET certification while it is open.
+Both planner-card and recent-activity deleted-record controls now submit
+`POST /BinsRun/Projections/{id:long}/InspectDeleted` with exactly one form token.
+The controller requires the existing ProjectionPlannerAdmin policy and antiforgery;
+the service independently requires Planner Admin, queries the exact deleted record,
+adds the same `InspectDeleted` entity key, user, source, timestamp, facility/deletion
+evidence and `Result=Viewed`, then redirects to the read-only planner view. Active or
+missing records return 404 without an audit. No projection/source/history is modified.
+Existing authorized direct GETs and implicit first-record display remain read-only.
+No query-string authorization token or new access policy was invented.
+
+HTTP tests prove active/deleted GET zero SaveChanges, exact POST audit, token/permission
+rejection, correct redirect, read-back with no second audit, and unchanged projection
+serialization. The service deletion-history regression retains the audit assertion
+after explicitly calling inspection rather than expecting a GET mutation.
+
+## Canonical grower resolution — corrected
+
+The cache factory and uncached `LoadResolutionSetAsync` both called lazy seeding.
+`AdminManagementService.CanonicalGrowersPage` also called it directly. All such calls
+and the now-unnecessary `EnsureSeedMappingsAsync` interface/implementation are removed.
+Reads now query AsNoTracking and build only the existing in-memory resolution/cache.
+They do not rename display names, create aliases or IDs, change timestamps, or save.
+
+No replacement automatic seed endpoint/startup job was added. The original canonical
+grower migration already owns initial seed rows. Later durable changes remain at
+the existing explicit `/MasterData/canonical-growers/Save` and `/Map` POST boundaries
+in AdminManagementService, with their existing Create-level Master Data permission,
+normalization, uniqueness, audit and reviewed-active-master restrictions. No permission
+was broadened. An administrator must explicitly create missing durable mappings;
+simply viewing a page no longer restores or renames them.
+
+Read consumers (Dashboard/Receiving/Crop Year Review, Bins Run display, inventory import,
+reconciliation and losses) use normalized/display resolution. Mapping forms enumerate
+persisted canonical IDs. Legacy reconciliation explicitly fails closed if the resolved
+canonical ID is null or does not match the reviewed active target; it must not obtain
+an ID by triggering a read-side seed. Reviewed Grower sync semantics remain unchanged.
+
+All five Vantage/Stayman aliases retain their existing in-memory fallback. Missing rows
+yield a null canonical ID, never a fabricated ID. Existing complete or incomplete
+rows retain their actual ID and stored display casing. Tests exercise both uncached
+loads and cache hits, actual GETs with missing/incomplete rows, and exact before/after
+serialized grower/alias/number/audit fingerprints plus zero SaveChanges calls.
+The existing explicit Save HTTP test proves token and permission rejection, audited
+creation of a historical mapping, normalized uniqueness and duplicate rejection.
+Existing mapping-service tests preserve active source/number mapping behavior.
+
+## Additional narrow audit correction — Variety Colors
+
+Admin Variety Colors and Fruit Profile Master Data reads called both runtime DDL and
+`ConsolidateAliasConfigurationsAsync` (rename/delete configuration rows and audit).
+Read methods now use the existing AsNoTracking preference/normalization resolver only.
+The same canonical winner and display color are retained without rewriting aliases.
+Consolidation and its existing audit remain at the existing protected Save/Reset actions.
+No new endpoint, color algorithm, schema helper implementation or startup change.
+HTTP and service tests prove conflicting aliases remain untouched on GET, the winner
+is unchanged, and consolidation occurs only after an authorized token-bearing Save.
+
+## GET audit — blocked at initialization boundary
+
+Runtime MVC descriptors enumerate **85 explicit GET verb/route pairs** (aliases count
+separately), plus **5 minimal GET health endpoints** and **2 conventional actions**.
+The architectural test prints this inventory; it enumerates HttpMethodActionConstraint
+and AttributeRouteInfo on actual ControllerActionDescriptors. The unsafe table above
+uses the same methodology, not file-string estimates. All 85 GET entries were included
+in the source audit, but read-only certification is NOT complete: three remaining
+durable initialization mechanisms are known, affecting two browser destinations:
+
+1. `/Admin/Configuration` -> `GetConfigurationAsync` -> `EnsureConfigurationTableAsync`
+   and `EnsureConfigurationDefaultsAsync`: runtime DDL and missing configuration-row
+   inserts. The new `UnresolvedAuditFinding_ConfigurationGetCreatesMissingDefaults`
+   HTTP test deliberately reproduces inserts after removing defaults in a disposable DB.
+   Configuration editing currently addresses persisted IDs, so replacing seed-on-read
+   requires an explicit initialization/default-editing contract, not invented IDs.
+2. `/Admin/QcStations` -> `GetStationsAsync` -> `EnsureQcStationColumnsAsync`: provider
+   SQL contains ALTER TABLE and UPDATE of blank StationName from Name. An InMemory
+   SaveChanges observer cannot certify this raw relational SQL as read-only.
+3. `/Admin/Configuration` -> email status -> `GoogleCredentialStore.GetDiagnosticAsync`
+   -> `EnsureSchemaAsync`: conditional provider DDL. Diagnostic reads do not otherwise
+   update credential use/refresh timestamps. Token refresh/use writes are in sending
+   and background-mailbox paths, not this diagnostic.
+
+These are not exempted or silently accepted. They are left unchanged for a scoped
+initialization/compatibility decision, per the user's stop-before-broad-redesign rule.
+No startup/bootstrap behavior was altered. Four read-mutation families are corrected
+in this PR (station telemetry, projection audit, canonical grower seeds, variety colors);
+three initialization mechanisms remain. No unsafe authentication classification is
+ambiguous, but these GET side effects block readiness.
+
+The audit also traced controller/service reads for inventory diagnostics, backups,
+configuration, report previews, EOD history/preview, projection detail/export, photos,
+and sample refresh. OAuth callbacks are authentication-protocol endpoints handled by
+middleware state/correlation, not ordinary MVC writes. HarvestWatch Connect initiates
+that protocol without saving rows itself. Photo GETs authorize and stream existing
+content; delete GETs show confirmations. Process-local caches and structured logging
+are not counted as durable writes. No claim of universal GET-read-only coverage is made.
 
 ## Forms and JavaScript
 
-85 explicit-action POST forms across 31 views now opt into the framework FormTagHelper's
+85 existing explicit-action POST forms plus 2 new inspection forms across 31 views use the framework FormTagHelper's
 `asp-antiforgery="true"`. Existing explicit tokens and automatically tokenized forms
 were retained rather than adding duplicate hidden inputs.
 
@@ -300,27 +375,34 @@ Rendered-form regressions require exactly one hidden token per POST form.
 Executed 2026-09-12:
 
 - Restore and solution build: PASS (existing nullable warnings; no build errors).
-- Change-scoped HTTP/antiforgery/station/Fruit Profile guard suite: **207/207 PASS**, zero skips.
-- Dedicated BrowserAntiforgeryTests: **25/25 PASS**, including the diagnostic that
-  reproduces the unresolved canonical-grower GET write. Passing this diagnostic
-  does not satisfy the read-only GET gate.
-- Shared QC Station client regression: **5/5 PASS** (included in the 207).
+- Final change-scoped HTTP/antiforgery/station/Fruit Profile guard/projection/canonical
+  grower/variety-color suite: **325/325 PASS**, zero skips.
+- Dedicated BrowserAntiforgeryTests: **31/31 PASS**, including the explicitly labelled
+  reproduction of the remaining Configuration GET mutation. Passing that diagnostic
+  does not satisfy the read-only GET gate. The corrected projection, grower and color
+  tests instead require zero read-side writes.
+- Shared QC Station client regression: **5/5 PASS** (included in the 325).
 - Upload-feedback and camera-control JavaScript: **22/22 PASS**.
 - EF pending-model check: clean; no migration executed.
 - `dotnet format CropQc.sln --no-restore --verify-no-changes`: PASS.
 - `git diff --check`: PASS.
 - MSI: existing `scripts/build-qcstation-installer.ps1`, default version **1.0.0**,
   `artifacts/installers/CropQcStationSetup.msi`, **872,448 bytes**, build PASS.
-  Unsigned; not uploaded/installed. No hardware test was performed.
+  Rebuilt 2026-09-12 16:11:12 UTC; unsigned, not uploaded/installed/distributed.
+  The WiX payload includes the rebuilt shared station client with the heartbeat call.
+  No hardware test was performed. The normal build script removes its generated
+  development settings file from the local installer payload; no user configuration
+  or production installer was removed.
 
 The affected suite command was:
 
 ```powershell
-dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build --filter '(FullyQualifiedName~Http|FullyQualifiedName~BrowserAntiforgery|FullyQualifiedName~Antiforgery|FullyQualifiedName~QcStation|FullyQualifiedName~FruitProfileIdentityGuardTests)&FullyQualifiedName!~PostgreSql&FullyQualifiedName!~Restore'
+dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj --no-build --filter '(FullyQualifiedName~Http|FullyQualifiedName~BrowserAntiforgery|FullyQualifiedName~Antiforgery|FullyQualifiedName~QcStation|FullyQualifiedName~FruitProfileIdentityGuardTests|FullyQualifiedName~RunProjectionTests|FullyQualifiedName~CanonicalGrowerReviewTests|FullyQualifiedName~VarietyColorAliasTests|FullyQualifiedName~VarietyColorsNavigationTests)&FullyQualifiedName!~PostgreSql&FullyQualifiedName!~Restore'
 node --test tests/js/upload-feedback.test.cjs tests/js/device-camera-controls.test.cjs
 ```
 
-This expanded HTTP regression scope is justified by changing the global MVC filter.
+This expanded HTTP regression scope is justified by changing the global MVC filter;
+the added projection/grower/color service tests cover the newly changed read dependencies.
 The full application suite and production/restored-PostgreSQL certification were not run.
 Dedicated BrowserAntiforgeryTests use an isolated InMemory database, real protected
 browser cookies, ephemeral test-only Data Protection and a SaveChanges observer.
@@ -332,3 +414,29 @@ success paths. No PostgreSQL claim is made for provider-independent filter work.
 ## Migration / production
 
 Migration: None. Production changes: None. Draft development only.
+
+## Continuation change manifest
+
+Continued from `f18a82f7adc5555e5b314584d71dab8ea4236beb`, same branch and base.
+No update from newer main was necessary. Twelve files changed in this continuation;
+the complete PR now changes 47 files relative to main:
+
+- `src/CropQc.Web/Controllers/BinsRunController.cs`
+- `src/CropQc.Web/Services/AdminManagementService.cs`
+- `src/CropQc.Web/Services/CanonicalGrowerService.cs`
+- `src/CropQc.Web/Services/RunProjectionService.cs`
+- `src/CropQc.Web/Services/VarietyColorService.cs`
+- `src/CropQc.Web/Views/BinsRun/Index.cshtml`
+- `src/CropQc.Web/wwwroot/css/site.css`
+- `tests/CropQc.Api.Tests/BrowserAntiforgeryTests.cs`
+- `tests/CropQc.Api.Tests/CanonicalGrowerReviewTests.cs`
+- `tests/CropQc.Api.Tests/RunProjectionTests.cs`
+- `tests/CropQc.Api.Tests/VarietyColorAliasTests.cs`
+- `docs/batch-1c-antiforgery-browser-writes.md`
+
+The new deleted-inspection button retains the existing responsive card layout, adds
+normal keyboard-submit behavior, full available width and inherited typography. HTTP
+rendering proves both controls/token markup; a physical/mobile browser visual or onsite
+station test was not performed. Runtime architecture enumeration and real-cookie HTTP
+tests passed; raw SQL initialization findings remain source-confirmed rather than
+misrepresented as PostgreSQL-tested read-only paths.

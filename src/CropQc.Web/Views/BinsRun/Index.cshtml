@@ -251,14 +251,28 @@
                 @foreach (var item in Model.Planner.Projections)
                 {
                     <div class="projection-list-row">
+                    @if (item.IsDeleted)
+                    {
+                        <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@item.Id/InspectDeleted">
+                            <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                            <input type="hidden" name="Facility" value="@plannerFacility" />
+                            <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                            <button type="submit" class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")">
+                                <span class="status pending">@item.ProjectionMode</span>
+                                <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@ProjectionStatusLabel(item.Status) · @item.SourceCount source(s) · Deleted</small></span>
+                                <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">Inspect deleted record</small></span>
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
                     <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
-                       href="@(item.IsDeleted
-                           ? $"/BinsRun?Section=Planner&PlannedDate={item.PlannedRunDate:yyyy-MM-dd}&ProjectionId={item.Id}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}"
-                           : $"/BinsRun/Projections/{item.Id}/Outcome")">
+                       href="/BinsRun/Projections/@item.Id/Outcome">
                         <span class="status pending">@item.ProjectionMode</span>
                         <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@ProjectionStatusLabel(item.Status) · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
                         <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
+                    }
                     @if (!item.IsDeleted)
                     {
                         <a class="button secondary-button projection-print-action" href="/BinsRun/Projections/@item.Id/Outcome#print-report">Print Projection</a>
@@ -978,7 +992,20 @@
                     {
                         <tr>
                             <td><span class="facility-badge">@item.FacilityCode</span></td>
-                            <td><a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a></td>
+                            <td>
+                                @if (item.IsDeleted)
+                                {
+                                    <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@item.Id/InspectDeleted">
+                                        <input type="hidden" name="Facility" value="@plannerFacility" />
+                                        <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                                        <button type="submit" class="secondary-button">@item.Name — Inspect deleted record</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a>
+                                }
+                            </td>
                             <td>@item.ProjectionMode</td>
                             <td>@ProjectionStatusLabel(item.Status) @(item.IsDeleted ? "· Deleted" : "")</td>
                             <td>@item.PlannedRunDate</td>

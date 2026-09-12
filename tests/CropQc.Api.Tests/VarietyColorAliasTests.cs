@@ -213,6 +213,9 @@ public sealed class VarietyColorAliasTests
 
         var row = Assert.Single(page.Varieties, x => x.VarietyKey == "GRANNY_SMITH");
         Assert.Equal("#111111", row.HexColor);
+        Assert.Equal(2, await db.VarietyColorConfigurations.CountAsync());
+        Assert.Empty(await db.AuditLogs.ToListAsync());
+        Assert.Null(await service.SaveAsync(new VarietyColorForm { VarietyKey = "GRANNY_SMITH", VarietyName = "Granny Smith", HexColor = "#111111" }, "test@example.test", CancellationToken.None));
         Assert.Single(await db.VarietyColorConfigurations.Where(x => x.VarietyKey == "GRANNY_SMITH").ToListAsync());
         Assert.DoesNotContain(await db.VarietyColorConfigurations.ToListAsync(), x => x.VarietyKey == "GSMT");
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "consolidate-variety-alias" && x.EntityKey == "GRANNY_SMITH");
@@ -233,7 +236,8 @@ public sealed class VarietyColorAliasTests
 
         var row = Assert.Single(page.Varieties, x => x.VarietyKey == "GRANNY_SMITH");
         Assert.Equal("#222222", row.HexColor);
-        Assert.Single(await db.VarietyColorConfigurations.Where(x => x.VarietyKey == "GRANNY_SMITH").ToListAsync());
+        Assert.Equal(2, await db.VarietyColorConfigurations.CountAsync());
+        Assert.Empty(await db.AuditLogs.ToListAsync());
     }
 
     [Fact]
