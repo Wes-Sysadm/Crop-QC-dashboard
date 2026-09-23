@@ -1670,6 +1670,8 @@ public sealed class DashboardDataService(
 
     public async Task<CreateReceiptResult> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
     {
+        if (form.IsTransferReceipt && !configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled"))
+            return new(null, null, TruckReceiptOptions.DisabledMessage);
         var receiptType = NormalizeReceiptType(form.ReceiptType);
         if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
         {
@@ -1917,7 +1919,7 @@ public sealed class DashboardDataService(
                 InventoryLosses = inventoryLosses,
                 CurrentPackableBins = currentPackableBins,
                 TreatmentApplications = treatmentApplications,
-                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanApplyReceivingTreatment = !receipt.IsTransferReceipt && await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
                 CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
@@ -1996,6 +1998,7 @@ public sealed class DashboardDataService(
 
         if (receipt.IsTransferReceipt)
         {
+            if (!configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled")) return TruckReceiptOptions.DisabledMessage;
             if (receipt.TransferCompletedAt is not null) return "Reopen the completed transfer receipt before editing it.";
             if (receipt.ConcurrencyVersion != form.ReceiptVersion) return "The receipt changed. Reload before editing.";
             if (receiptType != "Truck receipt" || form.BinCount != receipt.BinCount || form.FruitProfileId != receipt.FruitProfileId)
@@ -2148,6 +2151,8 @@ public sealed class DashboardDataService(
             return "Receipt not found.";
         }
 
+        if (receipt.IsTransferReceipt && !configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled"))
+            return TruckReceiptOptions.DisabledMessage;
         if (receipt.IsTransferReceipt && (receipt.TransferCompletedAt != null
             || await dbContext.InterCrewTransfers.AnyAsync(x => x.ReceivingReceiptId == receipt.Id, cancellationToken)))
             return "Reopen / unlink the transfer receipt before deleting it. Inventory history cannot be deleted.";
@@ -2288,7 +2293,7 @@ public sealed class DashboardDataService(
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 CurrentPackableBins = currentPackableBins,
                 TreatmentApplications = await GetReceivingTreatmentHistoryAsync(sample.ReceiptId!.Value, cancellationToken),
-                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanApplyReceivingTreatment = !sample.Receipt.IsTransferReceipt && await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
                 CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
@@ -6039,7 +6044,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
             .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted
+            .Where(x => !x.IsDeleted && !x.IsTransferReceipt
                 && cropYears.Contains(x.CropYear)
                 && ((hasGrowerLotIds && x.GrowerLotId != null && growerLotIds.Contains(x.GrowerLotId.Value))
                     || (hasLegacyLotIdentity

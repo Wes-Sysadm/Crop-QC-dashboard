@@ -18,8 +18,10 @@ public sealed class TruckReceiptReconciliationService(
     IInventoryDeductionInvariantService invariant,
     IUserAccessService access,
     IHttpContextAccessor context,
-    IBusinessTimeService time)
+    IBusinessTimeService time,
+    TruckReceiptOptions? options = null)
 {
+    private bool Enabled => options?.Enabled == true;
     public const string ReturnToSource = "TransitAllocationReturn";
     public const string ReopenDestination = "TransferReceiptReopen";
     private ClaimsPrincipal Principal => context.HttpContext?.User ?? new ClaimsPrincipal();
@@ -38,9 +40,10 @@ public sealed class TruckReceiptReconciliationService(
             Receipt = receipt,
             Transfer = transfer,
             Profiles = await db.FruitProfiles.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.VarietyCode).ToListAsync(ct),
-            CanAdmin = await IsAdminAsync(ct),
-            CanEditReceipt = await access.HasAccessAsync(Principal, ApplicationAreas.Receipts, PageAccessLevel.Edit, ct),
-            CanEditTransfer = await access.HasAccessAsync(Principal, ApplicationAreas.Transfers, PageAccessLevel.Edit, ct)
+            WritesEnabled = Enabled,
+            CanAdmin = Enabled && await IsAdminAsync(ct),
+            CanEditReceipt = Enabled && await access.HasAccessAsync(Principal, ApplicationAreas.Receipts, PageAccessLevel.Edit, ct),
+            CanEditTransfer = Enabled && await access.HasAccessAsync(Principal, ApplicationAreas.Transfers, PageAccessLevel.Edit, ct)
         };
         if (transfer is not null)
         {
@@ -277,6 +280,12 @@ public sealed class TruckReceiptReconciliationService(
                 await RejectChangedIdentityAsync(segment, ct);
                 var bins = group.Sum(x => x.BinCount);
                 var receiveIds = receives.Select(x => x.Id).ToList();
+                // Treatment application/reversal can change segments without a lineage movement.
+                // Include reversed applications: reversal does not erase downstream history.
+                Require(!await db.RoomTreatmentApplicationSources.AnyAsync(x => x.IdentityKey == segment.IdentityKey
+                    && x.RoomTreatmentApplication.RoomId == segment.RoomId
+                    && x.RoomTreatmentApplication.CreatedAt >= receipt.TransferCompletedAt, ct),
+                    "Cannot reopen: subsequent treatment activity exists. History was preserved.");
                 Require(segment.CurrentBins >= bins
                     && !await db.TreatmentLineageMovements.AnyAsync(x => (x.SourceSegmentId == segment.Id || x.DestinationSegmentId == segment.Id)
                         && x.Id > receiveIds.Min() && !receiveIds.Contains(x.Id), ct)
@@ -451,6 +460,7 @@ public sealed class TruckReceiptReconciliationService(
 
     private async Task<string?> WriteAsync(Func<User, Task> write, CancellationToken ct)
     {
+        if (!Enabled) return TruckReceiptOptions.DisabledMessage;
         await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null
             ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct) : null;
         var outer = transaction is null ? db.Database.CurrentTransaction : null;

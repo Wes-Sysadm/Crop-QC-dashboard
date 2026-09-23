@@ -13,6 +13,38 @@ namespace CropQc.Api.Tests;
 
 public sealed class GrowerLotProgressTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Transfer_receiving_evidence_does_not_count_the_growers_fruit_twice(bool completed)
+    {
+        await using var db = CreateDbContext();
+        var seed = await SeedAsync(db);
+        var original = seed.Receipt;
+        db.Receipts.Add(new Receipt
+        {
+            CropYear = original.CropYear,
+            WarehouseId = original.WarehouseId,
+            RoomId = original.RoomId,
+            FruitProfileId = original.FruitProfileId,
+            GrowerLotId = original.GrowerLotId,
+            GrowerNumber = original.GrowerNumber,
+            GrowerName = original.GrowerName,
+            LotCode = original.LotCode,
+            ReceivedAt = original.ReceivedAt,
+            CreatedAt = original.CreatedAt,
+            UpdatedAt = original.UpdatedAt,
+            CompuTechReceiptId = "TR-EVIDENCE",
+            BinCount = 70,
+            IsTransferReceipt = true,
+            TransferCompletedAt = completed ? original.UpdatedAt : null
+        });
+        await db.SaveChangesAsync();
+        var result = await CreateService(db).GetAsync(new GrowerLotProgressFilterForm { CropYear = 2026 }, default);
+        Assert.Equal(100, result.BinsReceived);
+        Assert.Equal(60, result.BinsRun);
+    }
+
     [Fact]
     public async Task Overview_ReconcilesGrowerVarietyLotAndWeeklyTotals_WithoutWrites()
     {

@@ -2298,6 +2298,7 @@ public sealed class RoomTreatmentService(
             .Include(x => x.FruitProfile)
             .SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (receipt is null) return new(null, null, 0, "Receipt was not found.");
+        if (receipt.IsTransferReceipt) return new(receipt, null, 0, "This Truck Receipt is receiving evidence. Apply treatment to the received room inventory and its original lineage instead.");
         var appliedAtUtc = appliedAt.ToUniversalTime();
         if (appliedAtUtc > businessTime.UtcNow.AddMinutes(5))
             return new(receipt, null, 0, "Application date/time cannot be in the future.");

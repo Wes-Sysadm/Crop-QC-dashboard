@@ -1090,7 +1090,7 @@ public sealed class OutsideWarehouseTransferTests
             var invariant = new InventoryDeductionInvariantService(Db, NullLogger<InventoryDeductionInvariantService>.Instance);
             return (new InterCrewTransferService(Db, Service, Ledger, Treatments, new InventoryIdentityService(Db), invariant, Access,
                 new FixedHttpContextAccessor(new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email)], "Test")) }),
-                new PacificBusinessTimeService(new FixedClock(Now))), ebsRoom);
+                new PacificBusinessTimeService(new FixedClock(Now)), truckReceiptOptions: new TruckReceiptOptions { Enabled = true }), ebsRoom);
         }
 
         public async Task<int> CurrentBinsAsync() => (await Ledger.GetSnapshotsAsync(WarehouseId, [RoomId], default)).Sum(x => x.CurrentBins);

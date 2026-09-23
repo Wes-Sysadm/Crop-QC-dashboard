@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Security;
 using CropQc.Data;
+using CropQc.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Web.Services;
@@ -19,6 +20,7 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
             .Include(x => x.Warehouse)
             .Include(x => x.Room)
             .Include(x => x.FruitProfile)
+            .Include(x => x.VarietyLines).ThenInclude(x => x.FruitProfile)
             .Include(x => x.Samples).ThenInclude(x => x.SampleType)
             .Include(x => x.Samples).ThenInclude(x => x.FruitReadings).ThenInclude(x => x.Grade)
             .Include(x => x.Samples).ThenInclude(x => x.FruitReadings).ThenInclude(x => x.StarchScaleValue)
@@ -31,24 +33,19 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
 
         foreach (var receipt in receipts)
         {
-            if (receipt.Samples.Count == 0)
+            // Receipt QC retains its original primary-variety relationship. Other varieties get
+            // their own receiving row, never copies of that primary variety's QC measurements.
+            IReadOnlyList<ReceiptVarietyLine?> varieties = receipt.IsTransferReceipt
+                ? receipt.VarietyLines.OrderBy(x => x.Id).Cast<ReceiptVarietyLine?>().ToList() : [null];
+            foreach (var variety in varieties)
             {
-                rows.Add(ReceiptRow(receipt, null, null));
-                continue;
-            }
-
-            foreach (var sample in receipt.Samples.OrderBy(x => x.SampleSequenceNumber))
-            {
-                var readings = sample.FruitReadings.OrderBy(x => x.RowNumber).ToList();
-                if (readings.Count == 0)
+                var samples = receipt.Samples.Where(x => variety is null || variety.FruitProfileId == receipt.FruitProfileId).ToList();
+                if (samples.Count == 0) { rows.Add(ReceiptRow(receipt, null, null, variety)); continue; }
+                foreach (var sample in samples.OrderBy(x => x.SampleSequenceNumber))
                 {
-                    rows.Add(ReceiptRow(receipt, sample, null));
-                    continue;
-                }
-
-                foreach (var reading in readings)
-                {
-                    rows.Add(ReceiptRow(receipt, sample, reading));
+                    var readings = sample.FruitReadings.OrderBy(x => x.RowNumber).ToList();
+                    if (readings.Count == 0) { rows.Add(ReceiptRow(receipt, sample, null, variety)); continue; }
+                    foreach (var reading in readings) rows.Add(ReceiptRow(receipt, sample, reading, variety));
                 }
             }
         }
@@ -62,10 +59,10 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
         "Variety Code", "Variety Description", "Commodity", "Bin Count", "Sample Type", "Sample Status",
         "Starch Status", "Photo Status", "Email Status", "Defect Inspection Status", "Sample Taken At", "Actual Sample Size",
         "Row Number", "Pressure 1", "Pressure 2", "Average Pressure", "Weight Grams", "Calculated Size",
-        "Size Status", "Grade", "Starch", "Defects", "Other Defect Notes", "Ready/Missing Status"
+        "Size Status", "Grade", "Starch", "Defects", "Other Defect Notes", "Ready/Missing Status", "Transfer receipt status"
     ];
 
-    private static IReadOnlyList<string?> ReceiptRow(CropQc.Data.Entities.Receipt receipt, CropQc.Data.Entities.QcSample? sample, CropQc.Data.Entities.QcFruitReading? reading)
+    private static IReadOnlyList<string?> ReceiptRow(CropQc.Data.Entities.Receipt receipt, CropQc.Data.Entities.QcSample? sample, CropQc.Data.Entities.QcFruitReading? reading, ReceiptVarietyLine? variety)
     {
         var displaySampleId = sample is null
             ? null
@@ -91,10 +88,10 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
             receipt.Room.Code,
             receipt.GrowerName,
             receipt.LotCode,
-            receipt.FruitProfile.VarietyCode,
-            receipt.FruitProfile.Name,
-            receipt.FruitProfile.FruitType,
-            receipt.BinCount.ToString(CultureInfo.InvariantCulture),
+            (variety?.FruitProfile ?? receipt.FruitProfile).VarietyCode,
+            (variety?.FruitProfile ?? receipt.FruitProfile).Name,
+            (variety?.FruitProfile ?? receipt.FruitProfile).FruitType,
+            (variety?.BinCount ?? receipt.BinCount).ToString(CultureInfo.InvariantCulture),
             sample?.SampleType.Name,
             sample?.Status,
             sample?.StarchStatus,
@@ -114,7 +111,8 @@ public sealed class ReceivingExportService(CropQcDbContext dbContext) : IReceivi
             reading?.StarchScaleValue?.Value.ToString("0.0", CultureInfo.InvariantCulture),
             defects,
             otherNotes,
-            readyStatus
+            readyStatus,
+            receipt.IsTransferReceipt ? receipt.TransferCompletedAt is null ? "Pending transfer reconciliation" : "Completed transfer reconciliation" : null
         ];
     }
 

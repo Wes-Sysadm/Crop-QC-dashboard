@@ -237,7 +237,7 @@ public sealed class GrowerLotProgressService(
         VarietySelection selectedVariety)
     {
         var query = dbContext.Receipts.AsNoTracking()
-            .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData)
+            .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData && !x.IsTransferReceipt)
             .Where(x => x.Warehouse.Code == EmploymentFacilities.Wp || x.Warehouse.Code == EmploymentFacilities.Ebs)
             .Where(x => x.GrowerNumber != null && x.GrowerNumber != ""
                 && x.LotCode != ""
@@ -542,7 +542,7 @@ public sealed class GrowerLotProgressService(
     {
         const int sampleLimit = 20;
         var receiptCandidates = dbContext.Receipts.AsNoTracking()
-            .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData)
+            .Where(x => x.CropYear == cropYear && !x.IsDeleted && !x.IsTestData && !x.IsTransferReceipt)
             .Where(x => x.Warehouse.Code == EmploymentFacilities.Wp || x.Warehouse.Code == EmploymentFacilities.Ebs);
         if (facility != "All") receiptCandidates = receiptCandidates.Where(x => x.Warehouse.Code == facility);
         var invalidReceipts = receiptCandidates

@@ -74,6 +74,31 @@ public sealed class TruckReceiptHttpTests
     }
 
     [Fact]
+    public async Task Paused_feature_keeps_authenticated_evidence_readable_and_rejects_post_with_valid_token()
+    {
+        await using var f = await TruckReceiptReconciliationTests.Fixture.CreateAsync();
+        var transfer = await f.DispatchAsync(70); var receipt = await f.CreateReceiptAsync(70);
+        await using var factory = new Factory(f, enabled: false);
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = true });
+        client.DefaultRequestHeaders.Add("Test-Email", f.Actor.Email);
+        var html = await client.GetStringAsync($"/Receipts/{receipt.Id}/MatchTransfer");
+        Assert.Contains("reconciliation is paused", html);
+        var form = await f.FormAsync(receipt.Id, transfer.Id);
+        var response = await client.PostAsync($"/Receipts/{receipt.Id}/MatchTransfer", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = Token(html),
+            ["TransferId"] = transfer.Id.ToString(),
+            ["TransferVersion"] = form.TransferVersion.ToString(),
+            ["ReceiptVersion"] = form.ReceiptVersion.ToString()
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        f.Db.ChangeTracker.Clear();
+        Assert.Null((await f.Db.InterCrewTransfers.SingleAsync(x => x.Id == transfer.Id)).ReceivingReceiptId);
+        Assert.Equal(0, await f.BalanceAsync(f.Destination.Id));
+        Assert.False(await f.Db.AuditLogs.AnyAsync(x => x.Action == "MatchTransferReceipt"));
+    }
+
+    [Fact]
     public async Task Anonymous_receipt_and_transfer_contexts_require_authentication()
     {
         await using var f = await TruckReceiptReconciliationTests.Fixture.CreateAsync();
@@ -89,7 +114,7 @@ public sealed class TruckReceiptHttpTests
         Assert.True(match.Success); return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
-    private sealed class Factory(TruckReceiptReconciliationTests.Fixture fixture) : WebApplicationFactory<Program>
+    private sealed class Factory(TruckReceiptReconciliationTests.Fixture fixture, bool enabled = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -99,6 +124,7 @@ public sealed class TruckReceiptHttpTests
                 ["Database:EnsureCreatedOnStartup"] = "false",
                 ["Database:SeedMasterDataOnStartup"] = "false",
                 ["Backups:Enabled"] = "false",
+                ["TruckReceiptReconciliation:Enabled"] = enabled.ToString(),
                 ["EbsDailyBinsEmail:Enabled"] = "false",
                 ["RENDER_EXTERNAL_HOSTNAME"] = "integration-test.local"
             }));

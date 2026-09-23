@@ -1,1 +1,2 @@
 src/CropQc.Web/Data/ReviewedGrowers/*.csv text eol=lf
+scripts/start-truck-receipt-web.sh text eol=lf

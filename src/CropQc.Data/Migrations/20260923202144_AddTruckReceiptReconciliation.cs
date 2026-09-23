@@ -107,8 +107,8 @@ namespace CropQc.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(MigrationProviderTypes.Sql(migrationBuilder,
-                "IF EXISTS (SELECT 1 FROM [Receipts] WHERE [IsTransferReceipt] = 1) OR EXISTS (SELECT 1 FROM [InterCrewTransfers] WHERE [RequiresTruckReceipt] = 1) THROW 51000, 'Truck Receipt evidence exists. Preserve schema and use a feature-aware application rollback.', 1;",
-                "DO $$ BEGIN IF EXISTS (SELECT 1 FROM \"Receipts\" WHERE \"IsTransferReceipt\") OR EXISTS (SELECT 1 FROM \"InterCrewTransfers\" WHERE \"RequiresTruckReceipt\") THEN RAISE EXCEPTION 'Truck Receipt evidence exists. Preserve schema and use a feature-aware application rollback.'; END IF; END $$;"));
+                "IF EXISTS (SELECT 1 FROM [Receipts] WHERE [IsTransferReceipt] = 1 OR [TransferCompletedAt] IS NOT NULL) OR EXISTS (SELECT 1 FROM [InterCrewTransfers] WHERE [RequiresTruckReceipt] = 1 OR [ReceivingReceiptId] IS NOT NULL) OR EXISTS (SELECT 1 FROM [ReceiptVarietyLines]) THROW 51000, 'Truck Receipt evidence exists. Preserve schema and use a feature-aware application rollback.', 1;",
+                "DO $$ BEGIN IF EXISTS (SELECT 1 FROM \"Receipts\" WHERE \"IsTransferReceipt\" OR \"TransferCompletedAt\" IS NOT NULL) OR EXISTS (SELECT 1 FROM \"InterCrewTransfers\" WHERE \"RequiresTruckReceipt\" OR \"ReceivingReceiptId\" IS NOT NULL) OR EXISTS (SELECT 1 FROM \"ReceiptVarietyLines\") THEN RAISE EXCEPTION 'Truck Receipt evidence exists. Preserve schema and use a feature-aware application rollback.'; END IF; END $$;"));
             migrationBuilder.DropForeignKey(
                 name: "FK_InterCrewTransfers_Receipts_ReceivingReceiptId",
                 table: "InterCrewTransfers");

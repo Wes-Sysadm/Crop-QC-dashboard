@@ -46,6 +46,7 @@ public sealed class TruckReceiptPage
     public IReadOnlyList<TransitAllocation> Allocations { get; set; } = [];
     public IReadOnlyList<OutsideWarehouseInventoryOptionViewModel> Available { get; set; } = [];
     public string? Error { get; set; }
+    public bool WritesEnabled { get; set; }
     public bool CanAdmin { get; set; }
     public bool CanEditReceipt { get; set; }
     public bool CanEditTransfer { get; set; }

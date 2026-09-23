@@ -317,6 +317,7 @@ builder.Services.AddScoped<IInventoryByVarietyService, InventoryByVarietyService
 builder.Services.AddScoped<IProcessorShipmentService, ProcessorShipmentService>();
 builder.Services.AddScoped<IOutsideWarehouseTransferService, OutsideWarehouseTransferService>();
 builder.Services.AddScoped<IInterCrewTransferService, InterCrewTransferService>();
+builder.Services.AddSingleton(sp => new TruckReceiptOptions { Enabled = sp.GetRequiredService<IConfiguration>().GetValue<bool>("TruckReceiptReconciliation:Enabled") });
 builder.Services.AddScoped<TruckReceiptReconciliationService>();
 builder.Services.AddScoped<ITreatmentReportAttachmentService, TreatmentReportAttachmentService>();
 builder.Services.AddScoped<ITr108859DroppedBinsCorrectionService, Tr108859DroppedBinsCorrectionService>();
@@ -402,6 +403,29 @@ if (ensureCreatedOnStartup)
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<CropQcDbContext>();
     await dbContext.Database.EnsureCreatedAsync();
+}
+
+if (args.Contains("--verify-truck-receipt-schema", StringComparer.OrdinalIgnoreCase)
+    || args.Contains("--verify-pre-truck-receipt-rollback", StringComparer.OrdinalIgnoreCase))
+{
+    await using var releaseScope = app.Services.CreateAsyncScope();
+    var releaseDb = releaseScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    try
+    {
+        await using var readOnly = await releaseDb.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+        if (releaseDb.Database.IsNpgsql()) await releaseDb.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY");
+        await TruckReceiptReleaseSafety.VerifySchemaAsync(releaseDb, CancellationToken.None);
+        var rollbackCheck = args.Contains("--verify-pre-truck-receipt-rollback", StringComparer.OrdinalIgnoreCase);
+        var compatible = !rollbackCheck || await TruckReceiptReleaseSafety.CanUsePreFeatureApplicationAsync(releaseDb, CancellationToken.None);
+        Console.WriteLine(compatible ? "Truck Receipt release check passed." : "BLOCKED: Truck Receipt evidence exists. Keep a feature-aware application and additive schema.");
+        Environment.ExitCode = compatible ? 0 : 2;
+    }
+    catch
+    {
+        Console.Error.WriteLine("Truck Receipt release check failed: missing/incompatible schema or unavailable database. No changes were attempted.");
+        Environment.ExitCode = 1;
+    }
+    return;
 }
 
 var schemaVerificationCommand = args.FirstOrDefault(

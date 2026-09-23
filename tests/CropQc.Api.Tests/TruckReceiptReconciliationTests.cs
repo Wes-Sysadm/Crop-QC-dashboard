@@ -463,6 +463,8 @@ public sealed class TruckReceiptReconciliationTests
     internal sealed class Fixture : IAsyncDisposable
     {
         private static readonly Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot Root = new();
+        public TruckReceiptOptions Feature = new() { Enabled = true };
+        public IConfigurationRoot Configuration = null!;
         public RoomTreatmentService Treatments = null!;
         public CropQcDbContext Db = null!;
         public DbContextOptions<CropQcDbContext> Options = null!;
@@ -492,8 +494,8 @@ public sealed class TruckReceiptReconciliationTests
             var key = Guid.NewGuid().ToString("N")[..12];
             var source = await f.Db.Warehouses.SingleOrDefaultAsync(x => x.Code == sourceCode) ?? new Warehouse { Code = sourceCode, Name = sourceCode };
             var destination = await f.Db.Warehouses.SingleOrDefaultAsync(x => x.Code == destinationCode) ?? new Warehouse { Code = destinationCode, Name = destinationCode };
-            f.Source = new() { Warehouse = source, Code = "SRC-" + key, Name = "Source", CapacityBins = 1000 };
-            f.Destination = new() { Warehouse = destination, Code = "DST-" + key, Name = "Destination", CapacityBins = 1000 };
+            f.Source = new() { Warehouse = source, Code = "SRC-" + key, Name = "Source " + key, CapacityBins = 1000 };
+            f.Destination = new() { Warehouse = destination, Code = "DST-" + key, Name = "Destination " + key, CapacityBins = 1000 };
             f.First = new() { Name = "Bartlett test", VarietyCode = "B-" + key, FruitType = "Pear", ProductionType = "Conventional" };
             f.Second = new() { Name = "Anjou test", VarietyCode = "A-" + key, FruitType = "Pear", ProductionType = "Conventional" };
             f.Grower = new() { Grower = "TEST " + key, LotNumber = "9" + key, CreatedAt = f.Now, UpdatedAt = f.Now };
@@ -507,10 +509,11 @@ public sealed class TruckReceiptReconciliationTests
             f.Treatments = treatment;
             var invariant = new InventoryDeductionInvariantService(f.Db, NullLogger<InventoryDeductionInvariantService>.Instance);
             f.Inventory = new(f.Db, f.Ledger, treatment, treatment, invariant, f.Access, accessor, time);
-            f.ServiceWithInvariant = guard => new(f.Db, f.Inventory, treatment, f.Ledger, guard, f.Access, accessor, time);
+            f.ServiceWithInvariant = guard => new(f.Db, f.Inventory, treatment, f.Ledger, guard, f.Access, accessor, time, f.Feature);
             f.Service = f.ServiceWithInvariant(invariant);
-            f.Transfers = new(f.Db, f.Inventory, f.Ledger, treatment, new InventoryIdentityService(f.Db), invariant, f.Access, accessor, time, f.Service);
-            var configuration = new ConfigurationBuilder().Build();
+            f.Transfers = new(f.Db, f.Inventory, f.Ledger, treatment, new InventoryIdentityService(f.Db), invariant, f.Access, accessor, time, f.Service, f.Feature);
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["TruckReceiptReconciliation:Enabled"] = "true" }).Build();
+            f.Configuration = configuration;
             f.Dashboard = new(f.Db, null!, new FileStorageOptions(), new EmailOptions(), null!, new GoogleAuthenticationOptions(), null!, null!, null!, null!,
                 new CropYearService(f.Db, configuration), accessor, configuration, NullLogger<DashboardDataService>.Instance, f.Access,
                 businessTime: time, roomInventoryLedgerQueryService: f.Ledger, inventoryDeductionInvariantService: invariant, roomTreatmentService: treatment);
