@@ -57,13 +57,14 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
         or "OutsideWarehouseTransfer" or "OutsideWarehouseTransferReversal"
         or "InterCrewTransferDispatch" or "InterCrewTransferReceive"
         or "InterCrewTransferReversalDestination" or "InterCrewTransferReversalSource"
+        or TruckReceiptReconciliationService.ReturnToSource or TruckReceiptReconciliationService.ReopenDestination
         or "TransferIn" or "TransferOut" or "InventoryIdentityCorrection";
 
     public async Task<ReceiptQuantityReconciliation> ReconcileReceiptsAsync(CancellationToken cancellationToken)
     {
         // Crop identity, not a calendar cutoff, defines the complete receiving gate.
         var receipts = await db.Receipts.AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.IsTestData && x.ReceiptType == "Truck receipt"
+            .Where(x => !x.IsTransferReceipt && !x.IsDeleted && !x.IsTestData && x.ReceiptType == "Truck receipt"
                 && x.CropYear == cropYear)
             .OrderBy(x => x.Id)
             .Select(x => new { x.Id, x.WarehouseId, x.BinCount }).ToListAsync(cancellationToken);
@@ -157,7 +158,8 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             "ProcessorShipment" or "ProcessorShipmentReversal" => "Processor exits (net)",
             "OutsideWarehouseTransfer" or "OutsideWarehouseTransferReversal" => "Outside warehouse custody (net room removal)",
             "InterCrewTransferDispatch" or "InterCrewTransferReceive" or "InterCrewTransferReversalDestination"
-                or "InterCrewTransferReversalSource" => "Inter-crew custody (net room movement)",
+                or "InterCrewTransferReversalSource" or TruckReceiptReconciliationService.ReturnToSource
+                or TruckReceiptReconciliationService.ReopenDestination => "Inter-crew custody (net room movement)",
             "TransferIn" or "TransferOut" => "Internal transfers",
             "InventoryIdentityCorrection" => "Identity/location corrections",
             _ => "UNCLASSIFIED: " + x.AdjustmentType

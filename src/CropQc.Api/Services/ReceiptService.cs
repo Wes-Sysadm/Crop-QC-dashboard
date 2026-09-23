@@ -112,6 +112,8 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
             return (null, "Receipt not found.");
         }
 
+        if (receipt.IsTransferReceipt) return (null, "Use the Truck Receipt reconciliation workflow to edit this receipt.");
+
         if (receipt.ReceivedAt.Date != DateTimeOffset.UtcNow.Date)
         {
             return (null, "Only same-day receipt fields can be updated.");

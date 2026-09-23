@@ -2,7 +2,7 @@
 @inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
 
 <div class="inter-crew-transfer-workflow">
-    <p class="notice information"><strong>Two-step custody transfer:</strong> dispatch removes bins from the source Room and places them In Transit. The receiving crew later selects its destination Room and records the authoritative received count.</p>
+    <p class="notice information"><strong>Two-step custody transfer:</strong> dispatch removes bins from the source Room and places them In Transit. Cross-company loads require a normal Computech Truck Receipt and exact reconciliation by variety before completion. A load can contain several varieties; use its allocation editor to add further inventory.</p>
     <section class="subpanel" aria-label="In Transit summary">
         <h3>In Transit</h3><p><strong>@Model.InTransitLoads load(s)</strong> · @Model.InTransitBins bins</p>
     </section>
@@ -59,7 +59,7 @@
 
     <section class="subpanel"><h3>@(string.IsNullOrWhiteSpace(Model.CurrentCustodyGroup) ? "Receiving Queue" : $"{Model.CurrentCustodyGroup} Receiving Queue")</h3>
         @if (Model.Queue.Count == 0) { <p class="empty-state">No loads are waiting for this crew.</p> }
-        else { <div class="table-wrap"><table class="compact-table"><thead><tr><th>Load</th><th>Loaded</th><th>From</th><th>To crew</th><th>Grower / Lot</th><th>Bins</th><th>BOL</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.Queue) { <tr><td><a href="/BinsRun/InterCrewTransfers/@item.Id">#@item.Id — Receive</a></td><td>@BusinessTime.FormatPacific(item.LoadedAt)</td><td>@item.Source</td><td>@item.DestinationGroup</td><td>@item.Grower<br /><span class="muted">@item.Lot / @item.Variety</span></td><td>@item.BinsLoaded</td><td>@item.Bol</td><td><span class="status-pill status-warning">In Transit</span></td></tr> }</tbody></table></div> }
+        else { <div class="table-wrap"><table class="compact-table"><thead><tr><th>Load</th><th>Loaded</th><th>From</th><th>To crew</th><th>Grower / Lot</th><th>Bins</th><th>BOL</th><th>Status</th></tr></thead><tbody>@foreach (var item in Model.Queue) { <tr><td><a href="/BinsRun/InterCrewTransfers/@item.Id">#@item.Id — Receive</a></td><td>@BusinessTime.FormatPacific(item.LoadedAt)</td><td>@item.Source</td><td>@item.DestinationGroup</td><td>@item.Grower<br /><span class="muted">@item.Lot / @item.Variety</span></td><td>@item.BinsLoaded</td><td>@item.Bol</td><td><span class="status-pill status-warning">@item.StatusLabel</span></td></tr> }</tbody></table></div> }
     </section>
     <section class="subpanel"><h3>Transfer History</h3>
         @if (Model.History.Count == 0) { <p class="empty-state">No inter-crew transfer history.</p> }

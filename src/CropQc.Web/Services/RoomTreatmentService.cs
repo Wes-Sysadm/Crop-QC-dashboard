@@ -2021,9 +2021,19 @@ public sealed class RoomTreatmentService(
             var moved = await dbContext.TreatmentLineageMovements.AsNoTracking()
                 .Where(x => x.InterCrewTransferId == interCrewTransferId && x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch && x.ReversesTreatmentLineageMovementId == null)
                 .SumAsync(x => x.BinCount, cancellationToken);
-            if (parent is null || parent.SourceWarehouseId != snapshot.WarehouseId || parent.SourceRoomId != snapshot.RoomId
-                || destinationWarehouseId is not null || destinationRoomId is not null || moved + bins > parent.BinsLoaded
-                || !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot))
+            if (parent?.RequiresTruckReceipt == true)
+            {
+                var returned = await dbContext.TreatmentLineageMovements.AsNoTracking()
+                    .Where(x => x.InterCrewTransferId == interCrewTransferId && x.ReversesTreatmentLineageMovementId != null
+                        && x.DestinationRoomId == parent.SourceRoomId && x.SourceRoomId == null)
+                    .SumAsync(x => x.BinCount, cancellationToken);
+                moved -= returned;
+            }
+            if (parent is null || parent.Status != InterCrewTransferStatuses.InTransit
+                || parent.SourceWarehouseId != snapshot.WarehouseId || parent.SourceRoomId != snapshot.RoomId
+                || destinationWarehouseId is not null || destinationRoomId is not null || bins <= 0 || moved + bins > parent.BinsLoaded
+                || (parent.RequiresTruckReceipt ? parent.CropYear != snapshot.CropYear
+                    : !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot)))
                 return "The inter-crew transfer parent does not match the exact treatment lineage movement.";
             return null;
         }

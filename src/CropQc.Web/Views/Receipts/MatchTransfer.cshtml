@@ -1,0 +1,109 @@
+@model TruckReceiptPage
+@using CropQc.Data.Entities
+@{
+    ViewData["Title"] = "Truck Receipt reconciliation";
+    var receipt = Model.Receipt;
+    var transfer = Model.Transfer;
+    var receiptLines = receipt?.VarietyLines.OrderBy(x => x.Id).ToList() ?? [];
+}
+<h1>Truck Receipt reconciliation</h1>
+@if (TempData["Error"] is string error) { <p class="notice warning" role="alert">@error</p> }
+@if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
+@if (Model.Error is not null) { <p class="notice warning">@Model.Error</p> }
+@if (receipt is not null)
+{
+    <p><a href="/Receipts/@receipt.Id">Truck Receipt @receipt.CompuTechReceiptId</a> · @receipt.Warehouse.Code · @receipt.BinCount bins</p>
+}
+@if (transfer is not null)
+{
+    <h2><a href="/BinsRun/InterCrewTransfers/@transfer.Id">Transfer #@transfer.Id</a></h2>
+    <p>@transfer.SourceWarehouse.Code → @(transfer.DestinationCustodyGroup == TransferCustodyGroups.WpDh ? "WP side (WP / DH / McDougall)" : "EBS") · @BusinessTime.FormatPacific(transfer.LoadedAt) · @transfer.BinsLoaded bins</p>
+}
+<p class="notice"><strong>@Model.Status</strong></p>
+@if (receipt is { IsTransferReceipt: true, TransferCompletedAt: null } && transfer is null)
+{
+    <h2>Match Transfer</h2>
+    <p>Select the correct load yourself. Quantities may differ; reconciliation follows selection.</p>
+    @if (Model.Candidates.Count == 0) { <p>No compatible pending transfers for this destination and crop/variety. Correct the receipt varieties if needed.</p> }
+    @foreach (var candidate in Model.Candidates)
+    {
+        <form method="post" action="/Receipts/@receipt.Id/MatchTransfer" class="subpanel">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferId" value="@candidate.Id" />
+            <input type="hidden" name="TransferVersion" value="@candidate.ConcurrencyVersion" />
+            <input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+            <p><a href="/BinsRun/InterCrewTransfers/@candidate.Id/Reconciliation">Transfer #@candidate.Id</a> · @candidate.SourceWarehouse.Code / @candidate.SourceRoom.Code → @(candidate.DestinationCustodyGroup == TransferCustodyGroups.WpDh ? "WP side (WP / DH / McDougall)" : "EBS") · @BusinessTime.FormatPacific(candidate.LoadedAt) · @Model.CandidateVarieties.GetValueOrDefault(candidate.Id) · @candidate.BinsLoaded bins · @candidate.TruckLoadBolNumber</p>
+            <button type="submit" disabled="@(!Model.CanEditReceipt)">Select Transfer #@candidate.Id</button>
+        </form>
+    }
+}
+@if (receipt is not null && transfer is not null)
+{
+    <div class="table-wrap"><table><thead><tr><th>Variety</th><th>Transfer</th><th>Receipt</th><th>Difference (receipt − transfer)</th></tr></thead><tbody>
+        @foreach (var row in Model.Comparison) { <tr><td>@row.Variety</td><td>@row.Transfer</td><td>@row.Receipt</td><td>@row.Difference.ToString("+#;-#;0")</td></tr> }
+        <tr><th>Total</th><th>@Model.Comparison.Sum(x => x.Transfer)</th><th>@Model.Comparison.Sum(x => x.Receipt)</th><th>@Model.Comparison.Sum(x => x.Difference).ToString("+#;-#;0")</th></tr>
+    </tbody></table></div>
+    @if (!Model.IsReconciled)
+    {
+        <p class="notice warning">@(Model.Comparison.Sum(x => x.Difference) == 0 ? "Totals match, but varieties do not." : "Transfer and receipt totals differ.") Receipt cannot be completed until the transfer and receipt match exactly. Correct the underlying record; no override is available.</p>
+    }
+    @if (receipt.TransferCompletedAt is null && Model.CanEditReceipt)
+    {
+        <form method="post" action="/Receipts/@receipt.Id/CompleteTransfer">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferId" value="@transfer.Id" /><input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+            <button type="submit" disabled="@(!Model.IsReconciled)">Complete Receipt</button>
+        </form>
+    }
+    @if (Model.CanAdmin)
+    {
+        <details><summary>Reopen / Unlink Transfer Receipt</summary><p>Completed inventory returns to In Transit only if no subsequent activity makes reversal unsafe. Original history is retained.</p>
+        <form method="post" action="/Receipts/@receipt.Id/ReopenTransfer">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferId" value="@transfer.Id" /><input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+            <label>Reason<input name="Reason" required maxlength="1000" /></label><button type="submit">Reopen / Unlink Transfer Receipt</button>
+        </form></details>
+    }
+}
+@if (receipt is { IsTransferReceipt: true, TransferCompletedAt: null } && Model.CanEditReceipt)
+{
+    <h2>Edit receipt varieties</h2>
+    <p>Enter the received quantity for each variety. Use zero and an empty variety only for unused rows.</p>
+    <form method="post" action="/Receipts/@receipt.Id/TransferVarieties">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+        <div class="table-wrap"><table><thead><tr><th>Variety</th><th>Receipt bins</th></tr></thead><tbody>
+        @for (var i = 0; i < receiptLines.Count + 3; i++)
+        {
+            var line = i < receiptLines.Count ? receiptLines[i] : null;
+            <tr><td><select name="Lines[@i].FruitProfileId" aria-label="Variety @(i + 1)"><option value="0">Unused</option>@foreach (var profile in Model.Profiles) { <option value="@profile.Id" selected="@(line?.FruitProfileId == profile.Id)">@profile.VarietyCode — @profile.Name (@profile.ProductionType)</option> }</select></td><td><input type="number" min="0" name="Lines[@i].BinCount" value="@(line?.BinCount ?? 0)" aria-label="Received bins @(i + 1)" /></td></tr>
+        }
+        </tbody></table></div><button type="submit">Save receipt quantities</button>
+    </form>
+}
+@if (transfer?.Status == InterCrewTransferStatuses.InTransit && Model.CanEditTransfer)
+{
+    <h2>In Transit allocations</h2>
+    <p>Adding bins removes available source inventory. Removing bins restores only the selected allocation to its original source.</p>
+    @foreach (var allocation in Model.Allocations)
+    {
+        var source = allocation.Movement.SourceSegment!;
+        <form method="post" action="/BinsRun/InterCrewTransfers/@transfer.Id/EditTransit" class="subpanel">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="DispatchMovementId" value="@allocation.Movement.Id" />
+            <p>@source.GrowerNameSnapshot / @source.LotNumberSnapshot / @source.VarietyCodeSnapshot / @source.TreatmentState — @allocation.Bins bins</p>
+            <label>Bins to return<input type="number" name="Bins" min="1" max="@allocation.Bins" required /></label><label>Reason<input name="Reason" required maxlength="1000" /></label><button type="submit">Return selected bins to source</button>
+        </form>
+    }
+    <details><summary>Add source inventory to this load</summary>
+    @foreach (var item in Model.Available)
+    {
+        <form method="post" action="/BinsRun/InterCrewTransfers/@transfer.Id/EditTransit" class="subpanel">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="SourceKey" value="@item.SourceKey" /><input type="hidden" name="ExpectedAvailableBins" value="@item.AvailableBins" />
+            <p>@item.GrowerName / @item.LotNumber / @item.VarietyCode — @item.AvailableBins available</p>
+            <label>Bins to add<input type="number" name="Bins" min="1" max="@item.AvailableBins" required /></label><label>Reason<input name="Reason" required maxlength="1000" /></label><button type="submit">Add bins to In Transit</button>
+        </form>
+    }
+    </details>
+}

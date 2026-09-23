@@ -1,4 +1,10 @@
 @model InterCrewTransferDetailViewModel
+@if (Model.RequiresTruckReceipt)
+{
+    <p class="notice">@Model.StatusLabel. <a href="/BinsRun/InterCrewTransfers/@Model.Id/Reconciliation">Truck Receipt reconciliation / edit In Transit load</a></p>
+    @if (Model.ReceivingReceiptId is long receiptId) { <a href="/Receipts/@receiptId/MatchTransfer">Open selected receipt</a> }
+    else { <a href="/Receipts">Create receiving Truck Receipt</a> }
+}
 @inject CropQc.Shared.Time.IBusinessTimeService BusinessTime
 @{ ViewData["Title"] = $"Inter-Crew Transfer #{Model.Id}"; }
 <section class="page-header"><div><p class="eyebrow">Transfers</p><h1>Inter-Crew Transfer #@Model.Id</h1><p class="muted">One truck, one custody transfer, one receiving event.</p></div><a class="secondary-button" href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">Back to Transfers</a></section>
@@ -14,4 +20,4 @@
 }
 @if (!string.IsNullOrWhiteSpace(Model.ReviewNote)) { <section class="panel"><h2>Variance Review</h2><dl class="summary-list"><dt>Note</dt><dd>@Model.ReviewNote</dd><dt>Reviewed by</dt><dd>@Model.ReviewedBy</dd><dt>Reviewed at</dt><dd>@(Model.ReviewedAt is DateTimeOffset at ? BusinessTime.FormatPacific(at) : "—")</dd></dl></section> }
 @if (Model.Status == "Reversed") { <section class="panel"><h2>Administrative Reversal</h2><p>@Model.ReversalReason</p><p class="notice information">The original loaded and received counts remain immutable in history.</p></section> }
-else if (Model.CanAdmin) { <section class="panel danger-zone"><h2>Reverse Incorrect Transfer</h2><p class="notice warning">A received reversal removes the exact received bins from the destination and restores the exact loaded bins to the source. It fails closed if the destination lacks inventory.</p><form method="post" action="/BinsRun/InterCrewTransfers/@Model.Id/Reverse" class="form-grid" onsubmit="return confirm('Reverse this transfer using its exact immutable counts?');"><input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" /><label class="field wide">Required reason<textarea name="Reason" required maxlength="1000"></textarea></label><button type="submit" class="danger-button">Reverse Transfer</button></form></section> }
+else if (Model.CanAdmin && !Model.RequiresTruckReceipt) { <section class="panel danger-zone"><h2>Reverse Incorrect Transfer</h2><p class="notice warning">A received reversal removes the exact received bins from the destination and restores the exact loaded bins to the source. It fails closed if the destination lacks inventory.</p><form method="post" action="/BinsRun/InterCrewTransfers/@Model.Id/Reverse" class="form-grid" onsubmit="return confirm('Reverse this transfer using its exact immutable counts?');"><input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" /><label class="field wide">Required reason<textarea name="Reason" required maxlength="1000"></textarea></label><button type="submit" class="danger-button">Reverse Transfer</button></form></section> }

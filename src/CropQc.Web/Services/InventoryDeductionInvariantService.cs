@@ -554,6 +554,11 @@ public sealed class InventoryDeductionInvariantService(
         IReadOnlyCollection<InventoryIdentityCorrection> canonicalCorrections,
         Action<string, string> add)
     {
+        if (transfer.RequiresTruckReceipt)
+        {
+            ValidateTruckReceiptLedger(transfer, operationAdjustments, add);
+            return;
+        }
         var dispatch = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Dispatch).ToList();
         var receive = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Receive).ToList();
         var reverseDestination = operationAdjustments.Where(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.ReversalDestination).ToList();
@@ -597,6 +602,40 @@ public sealed class InventoryDeductionInvariantService(
         }
         if (adjustment.InterCrewTransferId is null && adjustment.InterCrewTransfer is null)
             add("MissingInterCrewTransferLink", "Inter-crew adjustment is not linked by a persisted transfer ID.");
+    }
+
+    private static void ValidateTruckReceiptLedger(InterCrewTransfer transfer,
+        IReadOnlyCollection<RoomInventoryAdjustment> rows, Action<string, string> add)
+    {
+        var source = rows.Where(x => x.AdjustmentType is InterCrewTransferAdjustmentTypes.Dispatch or TruckReceiptReconciliationService.ReturnToSource).ToList();
+        var destination = rows.Where(x => x.AdjustmentType is InterCrewTransferAdjustmentTypes.Receive or TruckReceiptReconciliationService.ReopenDestination).ToList();
+        if (source.Count + destination.Count != rows.Count || (transfer.BinsLoaded < 0 || transfer.BinsLoaded == 0 && transfer.Status != InterCrewTransferStatuses.Reversed) || source.Sum(x => x.ChangeAmount) != -transfer.BinsLoaded)
+            add("TruckReceiptDispatchMismatch", "The active dispatch ledger must equal the In Transit manifest.");
+        var received = transfer.Status == InterCrewTransferStatuses.Received;
+        if (destination.Sum(x => x.ChangeAmount) != (received ? transfer.BinsLoaded : 0)
+            || received && (transfer.BinsReceived != transfer.BinsLoaded || transfer.VarianceBins != 0 || transfer.ReceivingReceiptId == null))
+            add("TruckReceiptReceiveMismatch", "Receiving must exactly balance the active load and have a linked receipt.");
+        foreach (var row in rows)
+        {
+            var isSource = source.Contains(row);
+            if (isSource && (row.WarehouseId != transfer.SourceWarehouseId || row.RoomId != transfer.SourceRoomId)
+                || row.OldBinCount is null || row.NewBinCount != row.OldBinCount + row.ChangeAmount
+                || row.CropYear is null || row.FruitProfileId is null)
+                add("TruckReceiptIdentityMismatch", "The transfer ledger location, canonical identity or before/after balance is invalid.");
+        }
+        foreach (var location in destination.GroupBy(x => new { x.WarehouseId, x.RoomId }))
+        {
+            var net = location.Sum(x => x.ChangeAmount);
+            if (net < 0 || net != 0 && (!received || location.Key.WarehouseId != transfer.DestinationWarehouseId || location.Key.RoomId != transfer.DestinationRoomId))
+                add("TruckReceiptDestinationMismatch", "Only the current receiving destination may retain transfer inventory.");
+        }
+        foreach (var group in rows.GroupBy(x => new { x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumber, x.VarietyCode }))
+        {
+            var debit = group.Where(source.Contains).Sum(x => x.ChangeAmount);
+            var credit = group.Where(destination.Contains).Sum(x => x.ChangeAmount);
+            if (debit > 0 || credit != (received ? -debit : 0))
+                add("TruckReceiptVarietyMismatch", "Each original inventory identity must be conserved independently.");
+        }
     }
 
     private static void ValidateBinsRun(

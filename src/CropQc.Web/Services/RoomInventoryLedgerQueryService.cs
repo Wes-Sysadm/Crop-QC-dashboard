@@ -159,7 +159,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                     .FirstOrDefault()
                     ?? (x.Receipt == null ? null : x.Receipt.GrowerNumber ?? x.Receipt.LotCode)
                     ?? (dbContext.Receipts
-                            .Where(receipt => receipt.WarehouseId == x.WarehouseId
+                            .Where(receipt => !receipt.IsTransferReceipt && receipt.WarehouseId == x.WarehouseId
                                 && receipt.RoomId == x.RoomId
                                 && receipt.CropYear == x.CropYear
                                 && (x.FruitProfileId == null || receipt.FruitProfileId == x.FruitProfileId)
@@ -170,7 +170,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
                             .Distinct()
                             .Count() == 1
                         ? dbContext.Receipts
-                            .Where(receipt => receipt.WarehouseId == x.WarehouseId
+                            .Where(receipt => !receipt.IsTransferReceipt && receipt.WarehouseId == x.WarehouseId
                                 && receipt.RoomId == x.RoomId
                                 && receipt.CropYear == x.CropYear
                                 && (x.FruitProfileId == null || receipt.FruitProfileId == x.FruitProfileId)

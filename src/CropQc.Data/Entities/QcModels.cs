@@ -2,6 +2,10 @@ namespace CropQc.Data.Entities;
 
 public sealed class Receipt
 {
+    // Reconciliation evidence only: inventory continues to belong to its source lineage.
+    public bool IsTransferReceipt { get; set; }
+    public DateTimeOffset? TransferCompletedAt { get; set; }
+    public ICollection<ReceiptVarietyLine> VarietyLines { get; } = new List<ReceiptVarietyLine>();
     public long Id { get; set; }
     public int CropYear { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
@@ -37,6 +41,16 @@ public sealed class Receipt
     public ICollection<RoomInventoryAdjustment> RoomInventoryAdjustments { get; } = new List<RoomInventoryAdjustment>();
     public ICollection<ReceiptInventoryOverride> InventoryOverrides { get; } = new List<ReceiptInventoryOverride>();
     public ICollection<RoomInventoryLoss> InventoryLosses { get; } = new List<RoomInventoryLoss>();
+}
+
+public sealed class ReceiptVarietyLine
+{
+    public long Id { get; set; }
+    public long ReceiptId { get; set; }
+    public Receipt Receipt { get; set; } = null!;
+    public int FruitProfileId { get; set; }
+    public FruitProfile FruitProfile { get; set; } = null!;
+    public int BinCount { get; set; }
 }
 
 public static class ReceiptInventoryOverrideActionTypes

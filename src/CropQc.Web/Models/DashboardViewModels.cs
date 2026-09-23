@@ -1638,10 +1638,13 @@ public sealed record ReceiptListItemViewModel(
     DateTimeOffset? LastUpdatedAt = null,
     string ProductionType = "",
     bool? IsOrganic = null,
-    IReadOnlyList<VarietyBinPresentationViewModel>? Varieties = null);
+    IReadOnlyList<VarietyBinPresentationViewModel>? Varieties = null,
+    bool IsTransferReceipt = false,
+    DateTimeOffset? TransferCompletedAt = null);
 
 public class CreateReceiptForm
 {
+    public bool IsTransferReceipt { get; set; }
     public int CropYear { get; set; } = DateTimeOffset.UtcNow.Year;
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
     public bool ConfirmCropYear { get; set; }
@@ -1684,6 +1687,7 @@ public sealed class EditReceiptPageViewModel
 
 public class UpdateReceiptForm : CreateReceiptForm
 {
+    public long ReceiptVersion { get; set; }
     public long Id { get; set; }
 }
 

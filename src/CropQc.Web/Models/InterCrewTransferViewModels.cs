@@ -44,7 +44,8 @@ public sealed record InterCrewTransferListItemViewModel(
     string Lot, string Variety, string Treatment, int BinsLoaded, int? BinsReceived,
     int? Variance, string? Bol, string Status, bool CanReceive)
 {
-    public string StatusLabel => InterCrewStatusLabel.Format(Status);
+    public string? ReconciliationStatus { get; set; }
+    public string StatusLabel => ReconciliationStatus ?? InterCrewStatusLabel.Format(Status);
 }
 
 public sealed record InterCrewDestinationRoomViewModel(int Id, string Facility, string Room);
@@ -67,6 +68,8 @@ public sealed class InterCrewTransferPageViewModel
 
 public sealed class InterCrewTransferDetailViewModel
 {
+    public bool RequiresTruckReceipt { get; set; }
+    public long? ReceivingReceiptId { get; set; }
     public long Id { get; set; }
     public string Status { get; set; } = "";
     public string Source { get; set; } = "";
@@ -92,7 +95,8 @@ public sealed class InterCrewTransferDetailViewModel
     public IReadOnlyList<InterCrewDestinationRoomViewModel> DestinationRooms { get; set; } = [];
     public bool CanReceive { get; set; }
     public bool CanAdmin { get; set; }
-    public string StatusLabel => InterCrewStatusLabel.Format(Status);
+    public string? ReconciliationStatus { get; set; }
+    public string StatusLabel => ReconciliationStatus ?? InterCrewStatusLabel.Format(Status);
 }
 
 public static class InterCrewStatusLabel

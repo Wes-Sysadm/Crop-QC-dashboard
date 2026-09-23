@@ -32,12 +32,21 @@
     <section class="panel">
         <h2>@Model.Receipt.CompuTechReceiptId</h2>
         <p>@Model.Receipt.CropYear | @BusinessTime.FormatPacific(Model.Receipt.ReceivedAt) | @Model.Receipt.ReceiptType | @Model.Receipt.Warehouse / @Model.Receipt.Room | Lot # @(string.IsNullOrWhiteSpace(Model.Receipt.GrowerNumber) ? "-" : Model.Receipt.GrowerNumber) | @Model.Receipt.GrowerName | @Model.Receipt.VarietyCode | @Model.Receipt.BinCount bins</p>
+        @if (Model.Receipt.IsTransferReceipt)
+        {
+            <p class="notice information">This Truck Receipt confirms transferred fruit. Current inventory and treatments follow the original source lots and receipts. Open reconciliation for all received varieties.</p>
+        }
         <div class="metric-grid">
             <div><strong>@Model.Receipt.BinCount</strong><span>Received bins</span></div>
             <div><strong>@Model.ActiveDroppedBins</strong><span>Dropped after receiving</span></div>
             <div><strong>@(Model.CurrentPackableBins?.ToString() ?? "-")</strong><span>Current packable inventory</span></div>
         </div>
         <div class="action-bar">
+            @if (Model.Receipt.IsTransferReceipt)
+            {
+                <a class="button secondary-button" href="/Receipts/@Model.Receipt.Id/MatchTransfer">Match Transfer / Reconciliation</a>
+                <span>@(Model.Receipt.TransferCompletedAt is null ? "Awaiting transfer completion" : "Transfer received")</span>
+            }
             @if (canViewReceiptQc && Model.Samples.Count <= 1)
             {
                 <form method="post" action="/Receipts/@Model.Receipt.Id/receiving/open" class="inline-form">

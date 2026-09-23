@@ -150,6 +150,8 @@
     </datalist>
     <div class="field"><label>Bin Count</label><input name="BinCount" type="number" inputmode="numeric" min="0" required /></div>
     <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
+    <label class="checkbox-field"><input type="checkbox" name="IsTransferReceipt" value="true" /> Await transfer reconciliation (EBS ↔ WP / DH / McDougall)</label>
+    <p class="muted">For transferred fruit, save this receipt without adding inventory, then choose Match Transfer. The Computech Truck Receipt number remains the receipt ID.</p>
     @await Html.PartialAsync("_StagedReceiptPhotos")
     <button type="submit" class="mobile-sticky-primary" data-receipt-submit disabled="@(!hasRequiredMasterData)">Add Receipt</button>
 </form>
@@ -205,6 +207,10 @@
                 {
                     <span class="status review" title="Historical samples require reconciliation">QC reconciliation required</span>
                 }
+                @if (receipt.IsTransferReceipt)
+                {
+                    <a class="button secondary-button" href="/Receipts/@receipt.Id/MatchTransfer">@(receipt.TransferCompletedAt is null ? "Match Transfer / Reconciliation" : "Completed transfer")</a>
+                }
                 <a class="button secondary-button" href="/Receipts/@receipt.Id">View Receipt Summary</a>
             </div>
         </div>
@@ -213,7 +219,8 @@
             <dt>Receipt Type</dt><dd>@receipt.ReceiptType</dd>
             <dt>Lot #</dt><dd>@(string.IsNullOrWhiteSpace(receipt.GrowerNumber) ? "-" : receipt.GrowerNumber)</dd>
             <dt>Variety</dt><dd>
-                @foreach (var variety in receiptVarieties)
+                @if (receipt.IsTransferReceipt) { <a href="/Receipts/@receipt.Id/MatchTransfer">View received varieties</a> }
+                @foreach (var variety in receipt.IsTransferReceipt ? Array.Empty<VarietyBinPresentationViewModel>() : receiptVarieties)
                 {
                     <span class="receipt-variety-label @(variety.IsOrganic == true ? "organic" : "")" style="--variety-color: @variety.HexColor"><i></i>@variety.DisplayName — @IdentityLabel(variety.ProductionType, variety.OrganicLabel)@($" · {variety.BinCount:N0} bins")</span>
                 }

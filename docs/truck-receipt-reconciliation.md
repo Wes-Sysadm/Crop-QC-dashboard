@@ -1,0 +1,54 @@
+# Truck Receipt reconciliation implementation
+
+Affected workflows: cross-custody dispatch, pending transfer edits, normal receipt creation and editing, receipt inventory exclusion, receiving completion, treatment lineage, inventory invariants, transfer attention UI, controlled Admin reopen. Historical receipts, transfer movements, treatment applications and ledger entries must survive unchanged.
+
+Production investigation (read-only, 2026-09-23): warehouse codes/IDs are EBS/1, DH/2, McDougall/3, WP/4. Domain routing uses warehouse codes, not numeric IDs or display names. There are 15 cross-company custody transfers, all EBS to WP_DH and InTransit, with exact dispatch lineage and source ledger debits and no destination/downstream activity. There are no cross-company RoomTransfers. Seven completed custody transfers are McDougall to WP, outside the new cross-company requirement. No production writes were performed for this feature.
+
+Use the existing InTransit/Received states. Derive Awaiting Receipt, Reconciliation Required and Reconciled from live receipt lines and dispatch allocations. Existing completed transfers are grandfathered. Existing open cross-company transfers must prove their untouched transit evidence before linking; no historical conversion or inventory rewrite is part of the migration.
+
+Receipt matching confirms custody, never creates ReceiptAdd inventory. Normal receipts retain their existing path. Receipt variety lines are reconciliation evidence; source grower/lot, crop, organic identity, receipt and treatment provenance remain attached to the original dispatch lineage. Completion credits that lineage to the selected destination room, after which normal independent room movements apply.
+
+Validation: focused service, HTTP authorization/antiforgery, concurrency, conservation and history tests; full suite explicitly requested; additive migration/model checks; fresh disposable PostgreSQL restore/migration rehearsal. No production deployment, migration or repair is authorized by this implementation request.
+
+## Operator workflow
+
+1. Dispatch a load through Transfers. EBS and WP-side crews use the existing custody destinations. WP side includes WP, DH and McDougall for cross-company receipt matching; existing internal movement rules remain in force.
+2. Add further varieties from the same source room through the load's reconciliation page if required. Each addition is an actual source debit with exact lineage allocations. Returning an allocation restores its original source; returning the last allocation cancels the load and unlinks its open receipt, with audit evidence retained.
+3. Create a normal Truck receipt in Receiving, enter the Computech number, and select **Await transfer reconciliation**. This selection prevents the ordinary ReceiptAdd. A receipt that already created inventory cannot also receive a transfer. Crop QC does not communicate with Computech.
+4. Open **Match Transfer**, explicitly select an eligible load, and correct quantities/varieties on the responsible side. Candidate ordering is chronological, without ranking, suggestion or automatic selection. Quantity differences never hide candidates. Compatibility requires the receiving custody group, same crop and overlapping canonical FruitProfiles; completion requires every FruitProfile and quantity to agree.
+5. Complete the receipt. Inventory appears in the selected destination room and can subsequently split/move independently. The new receiving receipt is reconciliation evidence; original source receipts and treatment applications remain on lineage. Ledger entries use movement dates so an older source receipt cannot cause a later transfer to disappear behind an opening baseline.
+6. Admin **Reopen / Unlink Transfer Receipt** reverses destination entries into transit using compensating movements. Downstream lineage, treatment or ledger activity blocks reopening. Original rows are never deleted. Normal receipt edits, inventory overrides, API edits and purge cannot bypass this workflow.
+
+Differences consistently mean receipt minus transfer. Live status is derived on both transfer and receipt reconciliation pages. No stored browser difference, quantity override, or legacy receive/review endpoint can complete a new cross-company mismatch. Existing open cross-company loads also require the new receiving workflow.
+
+## Schema and concurrency
+
+`20260923202144_AddTruckReceiptReconciliation` adds receipt intent/completion fields, a unique nullable transfer receiving-receipt FK, and canonical `ReceiptVarietyLines`. The original source `ReceiptId` remains distinct from the new `ReceivingReceiptId`. Existing dispatch lineage movements supply the multi-variety manifest; there is no duplicate bin table. The transfer ledger index remains indexed but permits multiple allocation and compensating rows.
+
+All new writes require the existing page permissions, an active user and the correct crew. Completion and editing use existing concurrency versions and serializable transactions. Both receipt and transfer versions are checked for matching/completion. A unique database index enforces one receipt per transfer association; EF concurrency tokens reject concurrent/stale writes. Completion retries are idempotent. Nested callers use savepoints. A failure after destination entries were saved rolls back quantity, lineage, statuses and audit together.
+
+Receiving reports exclude pending evidence and use completed canonical variety lines. Room reconciliation, storage fallback, planning, conservation and depletion exclude independent inventory for the evidence receipt. Original source inventory remains the basis for further movement and treatment.
+
+## PostgreSQL release procedure
+
+No merge, deployment, production migration or data conversion was performed for this implementation.
+
+For an explicitly authorized release, follow `AGENTS.md` and `overnight-release-standard.md`: freeze the reviewed commit, obtain and verify a new full production backup, rehearse the candidate, enter the bounded maintenance window, apply `scripts/postgresql/truck-receipt-reconciliation.sql`, run `verify-truck-receipt-reconciliation.sql`, then deploy and smoke the affected authenticated screens. Refresh the read-only open-transfer accounting before release. Stop if an existing pending load no longer has exact dispatch evidence; do not convert historical destination inventory automatically.
+
+The checked-in SQL is generated from the previous model migration to this one and applies only this feature in one transaction. It deliberately fails on an already-applied or incompatible schema. Production has historical manually managed PostgreSQL schema; do not blindly run the complete EF migration chain. The disposable restore demonstrated an older migration trying to add an already-existing `RunProjectionSources.TotalDefectPercentageSnapshot` column. That attempt rolled back; the feature-only script then applied successfully.
+
+Grandfather completed history. The migration contains no operational UPDATE, inventory correction or historical conversion. At investigation, the 15 applicable open loads totalled 630 bins, all already in transit with exact dispatch ledger/lineage and zero destination/downstream movements. Seven completed McDougall-to-WP loads remain on the existing internal workflow. The Bartlett repair and other audit discrepancies are not part of this feature.
+
+## Rollback boundary
+
+Before any new workflow data exists, the additive schema can remain during an application rollback. Once transfer receipt evidence or multi-allocation edits exist, do **not** roll back to an application that ignores the new receipt flag: its receipt fallback could misrepresent inventory. Keep this schema and use a feature-aware forward fix or maintenance/read-only state while preparing a reviewed compatible rollback. Do not restore an old backup over newer legitimate activity. The migration's Down path rejects removal when new workflow evidence exists. The launch checklist must include an agreed feature-aware rollback candidate and operator training on the receipt intent selection.
+
+## Validation scope and known baseline failure
+
+Tests exercise routing, manual candidates, totals/variety mismatches, one-to-one matching, receipt and transfer edits, source return/cancellation, server versions, atomic rollback, six PostgreSQL routes, treatment applications, independent post-receipt movement, controlled reopen, receipt inventory exclusion, received/conservation reports and HTTP authentication/antiforgery. Internal McDougall-to-WP tests retain legacy receive/review/reversal coverage; cross-company tests assert strict reconciliation.
+
+A fresh disposable database was restored from verified production backup run 163 (2026-09-23, source commit c014528). Archive size, SHA-256, manifest/component hashes and dump validity were rechecked. Existing row fingerprints stayed identical after migration and rollback-scoped PostgreSQL exercises: 3,482 ledger rows, 624 segments, 635 movements, 22 transfers and 2,049 receipts. This is a fresh restore of the verified predeployment backup, not a newly triggered production backup; no production backup command was required for local development.
+
+The requested full suite exposes one pre-existing failure: `LegacyGrowerLotReconciliationTests.Stale_inventory_status_treatment_projection_is_normalized_as_part_of_proven_untreated_backfill`. It fails identically on isolated unchanged c014528, with "Destination treatment lineage status or identity requires review." This PR does not weaken that guard or silently repair unrelated historical data. Report the suite as failing until that baseline issue is separately resolved or explicitly reviewed. Hardware/WinForms behavior is unchanged; no MSI rebuild is needed. PostgreSQL mutation rehearsal and authenticated TestServer HTTP checks were run; production feature smoke and a human browser acceptance check remain release steps.
+
+Final validation recorded for this implementation: 58 new feature cases passed (including 8 PostgreSQL cases and 7 authenticated HTTP cases). The requested complete suite reported 1,900 passed, one independently confirmed baseline failure, and two skipped optional integration tests, out of 1,903. Solution restore/build, EF model consistency, scoped whitespace formatting and diff checks passed. Affected-area validation also includes existing transfer, reporting, receipt purge and reconciliation tests. Detailed machine-specific rehearsal proof and delivery metadata are kept outside source control.
