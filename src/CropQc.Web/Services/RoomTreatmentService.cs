@@ -1521,6 +1521,9 @@ public sealed class RoomTreatmentService(
             if (!result.Success) return result;
             lastMovementId = result.MovementId;
             remaining -= allocated;
+            // The ledger debit is saved by the caller after the entire allocation.
+            // Do not materialize already allocated bins again on the next segment.
+            snapshot = snapshot with { CurrentBins = snapshot.CurrentBins - allocated };
             if (remaining == 0) break;
         }
         if (remaining != 0) return new(false, "The exact treatment provenance allocation did not balance.");
@@ -1555,6 +1558,7 @@ public sealed class RoomTreatmentService(
             if (!result.Success) return result;
             last = result.MovementId;
             remaining -= allocated;
+            snapshot = snapshot with { CurrentBins = snapshot.CurrentBins - allocated };
             if (remaining == 0) break;
         }
         return remaining == 0 ? new(true, null, last) : new(false, "The inter-crew treatment allocation did not balance.");
@@ -1805,7 +1809,7 @@ public sealed class RoomTreatmentService(
         {
             var sameRequest = existingMovement.MovementType == movementType
                 && existingMovement.BinCount == bins
-                && existingMovement.IdentityKey == IdentityKey(snapshot)
+                && CompatibleIdentityKeys(snapshot).Contains(existingMovement.IdentityKey)
                 && existingMovement.SourceRoomId == snapshot.RoomId
                 && existingMovement.TreatmentSignatureSnapshot == (string.IsNullOrWhiteSpace(treatmentSignature) ? existingMovement.TreatmentSignatureSnapshot : treatmentSignature)
                 && existingMovement.DestinationRoomId == destinationRoomId
@@ -1847,7 +1851,14 @@ public sealed class RoomTreatmentService(
             else
             {
                 var receiptCandidates = signatureCandidates.Where(x => x.ReceiptId == receiptId).ToList();
-                candidates = receiptCandidates.Count > 0
+                // A null segment for shared untreated inventory denotes the
+                // authoritative remainder just materialized under the snapshot key.
+                var implicitSource = receiptId is null && treatmentSignature == "u"
+                    ? receiptCandidates.SingleOrDefault(x => x.IdentityKey == IdentityKey(snapshot))
+                    : null;
+                candidates = implicitSource is not null
+                    ? [implicitSource]
+                    : receiptCandidates.Count > 0
                     ? receiptCandidates
                     : signatureCandidates.Count == 1
                         ? signatureCandidates
@@ -2361,15 +2372,16 @@ public sealed class RoomTreatmentService(
     private async Task<List<TreatmentLineageSegment>> MaterializeAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
         var key = IdentityKey(snapshot);
+        var compatibleKeys = CompatibleIdentityKeys(snapshot);
         var segments = await dbContext.TreatmentLineageSegments.Include(x => x.Applications)
-            .Where(x => x.RoomId == snapshot.RoomId && x.IdentityKey == key)
+            .Where(x => x.RoomId == snapshot.RoomId && compatibleKeys.Contains(x.IdentityKey))
             .ToListAsync(cancellationToken);
         var explicitBins = segments.Sum(x => x.CurrentBins);
         if (explicitBins > snapshot.CurrentBins) throw new InvalidOperationException($"Treatment lineage exceeds authoritative inventory for room {snapshot.RoomId}, identity {key}.");
         var missing = snapshot.CurrentBins - explicitBins;
         if (missing > 0)
         {
-            var untreated = segments.SingleOrDefault(x => x.TreatmentSignature == "u" && x.ReceiptId == null)
+            var untreated = segments.SingleOrDefault(x => x.IdentityKey == key && x.TreatmentSignature == "u" && x.ReceiptId == null)
                 ?? await GetOrCreateSegmentAsync(snapshot, TreatmentLineageStates.Untreated, "u", businessTime.UtcNow, cancellationToken);
             untreated.CurrentBins += missing;
             untreated.UpdatedAt = businessTime.UtcNow;
@@ -2394,7 +2406,7 @@ public sealed class RoomTreatmentService(
         var result = authoritative.Keys.ToDictionary(x => x, _ => new List<CurrentTreatmentSegmentViewModel>(), StringComparer.OrdinalIgnoreCase);
         if (authoritative.Count == 0) return result;
         var roomIds = authoritative.Values.Select(x => x.RoomId).Distinct().ToList();
-        var identityKeys = authoritative.Values.Select(IdentityKey).Distinct().ToList();
+        var identityKeys = authoritative.Values.SelectMany(CompatibleIdentityKeys).Distinct().ToList();
         var segments = await dbContext.TreatmentLineageSegments.AsNoTracking()
             .Include(x => x.Applications)
             .ThenInclude(x => x.RoomTreatmentApplication)
@@ -2405,7 +2417,8 @@ public sealed class RoomTreatmentService(
         {
             var key = IdentityKey(snapshot);
             var output = result[SelectionLookupKey(snapshot)];
-            foreach (var segment in segments.Where(x => x.RoomId == snapshot.RoomId && x.IdentityKey == key))
+            var compatibleKeys = CompatibleIdentityKeys(snapshot);
+            foreach (var segment in segments.Where(x => x.RoomId == snapshot.RoomId && compatibleKeys.Contains(x.IdentityKey)))
             {
                 var applications = segment.Applications.OrderBy(x => x.Sequence).Select(x => new TreatmentApplicationSummaryViewModel(
                     x.RoomTreatmentApplicationId,
@@ -2422,12 +2435,13 @@ public sealed class RoomTreatmentService(
             var implicitBins = snapshot.CurrentBins - explicitBins;
             if (implicitBins < 0)
             {
+                var evidence = string.Join(", ", output.Select(x => $"segment #{x.SegmentId}: {x.Bins} bins (Receipt {x.ReceiptId?.ToString() ?? "shared"})"));
                 output.Clear();
                 output.Add(new CurrentTreatmentSegmentViewModel(
                     null, key, snapshot.GrowerNumber ?? snapshot.Lot, snapshot.Grower, snapshot.VarietyName,
                     snapshot.ProductionType, snapshot.IsOrganic, snapshot.CurrentBins, "NeedsReview",
                     "needs-review", [], null, false,
-                    $"Treatment lineage requires review: {explicitBins} explicit bins exceed {snapshot.CurrentBins} authoritative bins.",
+                    $"Treatment lineage requires review: {explicitBins} explicit bins exceed {snapshot.CurrentBins} authoritative bins. {evidence}. Other reconciled inventory positions remain available.",
                     explicitBins));
                 continue;
             }
@@ -2574,6 +2588,15 @@ public sealed class RoomTreatmentService(
             snapshot.IsOrganic?.ToString() ?? "-", NormalizeKey(snapshot.InventoryStatus));
 
     public static string SelectionLookupKey(RoomInventoryLedgerSnapshot snapshot) => $"{snapshot.RoomId}:{IdentityKey(snapshot)}";
+
+    // Older transfers persisted the production type as InventoryStatus. The ledger
+    // does not split these positions. Accept only this redundant status alias;
+    // distinct statuses (hold, etc.) and all canonical identity fields stay exact.
+    private static string[] CompatibleIdentityKeys(RoomInventoryLedgerSnapshot snapshot) =>
+        string.IsNullOrWhiteSpace(snapshot.InventoryStatus)
+            || NormalizeKey(snapshot.InventoryStatus) == NormalizeKey(snapshot.ProductionType)
+            ? new[] { IdentityKey(snapshot with { InventoryStatus = "" }), IdentityKey(snapshot with { InventoryStatus = snapshot.ProductionType }) }.Distinct().ToArray()
+            : [IdentityKey(snapshot)];
 
     private static string AppendApplication(string signature, long id) =>
         signature.Contains("|a:", StringComparison.Ordinal)

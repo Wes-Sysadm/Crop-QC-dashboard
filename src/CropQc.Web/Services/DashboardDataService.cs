@@ -557,6 +557,7 @@ public sealed class DashboardDataService(
                 TrueUpForm = new RoomInventoryTrueUpForm { RoomId = roomId, AdjustmentAt = BusinessTime.NowPacific },
                 TransferForm = new RoomTransferForm
                 {
+                    ExpectedInventoryToken = TransferInventoryToken(transferProjection),
                     FromRoomId = roomId,
                     DestinationWarehouseId = transferDestinations.SourceWarehouseId,
                     TransferAt = BusinessTime.NowPacific
@@ -973,6 +974,104 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
     {
+        if (!form.TransferAllEligible && form.OperationKey?.StartsWith("bulk:", StringComparison.Ordinal) == true)
+            return "This operation key is reserved for bulk room transfers.";
+        try
+        {
+            return form.TransferAllEligible
+                ? await CreateBulkRoomTransferAsync(form, cancellationToken)
+                : await CreateRoomTransferCoreAsync(form, cancellationToken);
+        }
+        catch (Exception exception) when (exception is DbUpdateConcurrencyException
+            || exception is Npgsql.PostgresException { SqlState: "40001" or "40P01" }
+            || exception is DbUpdateException { InnerException: Npgsql.PostgresException { SqlState: "40001" or "40P01" or "23505" } })
+        {
+            dbContext.ChangeTracker.Clear();
+            return "Inventory changed during the transfer. Refresh and review the current room inventory before retrying.";
+        }
+    }
+
+    private async Task<string?> CreateBulkRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
+    {
+        if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken))
+            return "Room Transactions Edit access is required to transfer room inventory.";
+        if (!Guid.TryParseExact(form.OperationKey, "N", out _)
+            || string.IsNullOrWhiteSpace(form.ExpectedInventoryToken) || form.ExpectedInventoryToken.Length != 64
+            || !form.ExpectedInventoryToken.All(Uri.IsHexDigit))
+            return "Refresh and review the room before submitting a bulk transfer.";
+        if (form.BinCount <= 0 || string.IsNullOrWhiteSpace(form.Reason))
+            return "A positive eligible bin count and reason are required.";
+
+        await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
+        var prefix = $"bulk:{form.OperationKey}:";
+        var batchPrefix = $"{prefix}{form.ExpectedInventoryToken}:";
+        var existing = await dbContext.RoomTransfers.AsNoTracking()
+            .Where(x => x.OperationKey.StartsWith(prefix)).ToListAsync(cancellationToken);
+        if (existing.Count > 0)
+        {
+            return existing.All(x => x.OperationKey.StartsWith(batchPrefix, StringComparison.Ordinal)
+                    && x.SourceRoomId == form.FromRoomId
+                    && x.DestinationRoomId == form.DestinationRoomId
+                    && x.DestinationWarehouseId == form.DestinationWarehouseId
+                    && x.TransferredAt == form.TransferAt.ToUniversalTime()
+                    && x.Reason == form.Reason.Trim()
+                    && x.Notes == (string.IsNullOrWhiteSpace(form.Notes) ? null : form.Notes.Trim()))
+                && existing.Sum(x => x.BinCount) == form.BinCount
+                ? null : "The operation key already belongs to a different bulk room transfer.";
+        }
+
+        var projection = await BuildTreatmentTransferProjectionAsync(form.FromRoomId, cancellationToken);
+        if (!projection.Reconciles || TransferInventoryToken(projection) != form.ExpectedInventoryToken
+            || projection.AvailableBins != form.BinCount)
+            return "Room inventory or treatment eligibility changed. Refresh and review the transfer again.";
+
+        // One serializable transaction for every eligible position. Work is per
+        // lot/treatment segment, never per physical bin. Excluded positions are untouched.
+        var movedByPosition = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var index = 0;
+        foreach (var entry in projection.Entries.Where(x => x.Option.IsAvailable))
+        {
+            var moved = movedByPosition.GetValueOrDefault(entry.Option.LotKey);
+            var currentEntry = entry with { Snapshot = entry.Snapshot with { CurrentBins = entry.Snapshot.CurrentBins - moved } };
+            var error = await CreateRoomTransferCoreAsync(new RoomTransferForm
+            {
+                OperationKey = $"{batchPrefix}{index++}",
+                FromRoomId = form.FromRoomId,
+                DestinationWarehouseId = form.DestinationWarehouseId,
+                DestinationRoomId = form.DestinationRoomId,
+                SourceLotKey = entry.Option.LotKey,
+                TreatmentSignature = entry.Option.TreatmentSignature,
+                TreatmentSegmentId = entry.Option.TreatmentSegmentId,
+                BinCount = entry.Option.CurrentBins,
+                TransferAt = form.TransferAt,
+                Reason = form.Reason,
+                Notes = form.Notes
+            }, cancellationToken, currentEntry);
+            if (error is not null)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return error;
+            }
+            movedByPosition[entry.Option.LotKey] = moved + entry.Option.CurrentBins;
+        }
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return null;
+    }
+
+    private static string TransferInventoryToken(RoomTransferInventoryProjection projection) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(projection.Entries.OrderBy(x => x.Option.LotKey, StringComparer.Ordinal)
+                .ThenBy(x => x.Option.TreatmentSegmentId).Select(x => new
+                {
+                    x.Option,
+                    x.Snapshot.CurrentBins,
+                    x.Snapshot.LatestAdjustmentId
+                })))));
+
+    private async Task<string?> CreateRoomTransferCoreAsync(RoomTransferForm form, CancellationToken cancellationToken,
+        RoomTransferInventoryEntry? preparedEntry = null)
+    {
         if (!await HasAccessAsync(ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken))
         {
             return "Room Transactions Edit access is required to transfer room inventory.";
@@ -1046,17 +1145,16 @@ public sealed class DashboardDataService(
             BusinessTime,
             cancellationToken);
         if (sealError is not null) return sealError;
-        var sourceLots = (await BuildRoomLotSummariesAsync(form.FromRoomId, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
-        var transferProjection = await BuildTreatmentTransferProjectionAsync(form.FromRoomId, cancellationToken);
-        if (!transferProjection.Reconciles)
+        var selectedEntry = preparedEntry;
+        if (selectedEntry is null)
         {
-            return TransferInventoryReconciliationError;
+            var transferProjection = await BuildTreatmentTransferProjectionAsync(form.FromRoomId, cancellationToken);
+            if (!transferProjection.Reconciles) return TransferInventoryReconciliationError;
+            selectedEntry = transferProjection.Entries.SingleOrDefault(x =>
+                string.Equals(x.Option.LotKey, form.SourceLotKey, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.Option.TreatmentSignature, form.TreatmentSignature ?? "", StringComparison.Ordinal)
+                && x.Option.TreatmentSegmentId == form.TreatmentSegmentId);
         }
-
-        var selectedEntry = transferProjection.Entries.SingleOrDefault(x =>
-            string.Equals(x.Option.LotKey, form.SourceLotKey, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(x.Option.TreatmentSignature, form.TreatmentSignature ?? "", StringComparison.Ordinal)
-            && x.Option.TreatmentSegmentId == form.TreatmentSegmentId);
         if (selectedEntry is null || !selectedEntry.Option.IsAvailable)
         {
             return selectedEntry?.Option.UnavailableReason
@@ -6965,7 +7063,7 @@ public sealed class DashboardDataService(
     private async Task<IDbContextTransaction?> BeginInventoryTransactionIfSupportedAsync(CancellationToken cancellationToken)
     {
         var provider = dbContext.Database.ProviderName ?? "";
-        return provider.Contains("InMemory", StringComparison.OrdinalIgnoreCase)
+        return provider.Contains("InMemory", StringComparison.OrdinalIgnoreCase) || dbContext.Database.CurrentTransaction is not null
             ? null
             : await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
     }

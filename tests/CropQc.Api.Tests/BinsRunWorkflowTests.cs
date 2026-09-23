@@ -2521,7 +2521,10 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("room.value = ''", view);
         Assert.Contains("Fruit to transfer", view);
         Assert.Contains("Current Room Inventory", view);
-        Assert.Contains("Operable bins", view);
+        Assert.Contains("Eligible to transfer", view);
+        Assert.Contains("Transfer all eligible inventory", view);
+        Assert.Contains("name=\"ExpectedInventoryToken\"", view);
+        Assert.Contains("name=\"TransferAllEligible\"", view);
         Assert.Contains("Needs reconciliation", view);
         Assert.Contains("TransferInventoryReconciles", view);
         Assert.Contains("TransferInventoryError", view);
