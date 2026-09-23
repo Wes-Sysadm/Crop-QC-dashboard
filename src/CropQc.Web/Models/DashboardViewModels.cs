@@ -596,6 +596,8 @@ public sealed class RoomInventoryTrueUpForm
 
 public sealed class RoomTransferForm
 {
+    public bool TransferAllEligible { get; set; }
+    public string ExpectedInventoryToken { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int FromRoomId { get; set; }
     public int DestinationWarehouseId { get; set; }

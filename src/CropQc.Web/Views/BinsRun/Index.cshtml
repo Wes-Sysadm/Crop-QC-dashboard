@@ -1591,7 +1591,7 @@ else
             {
                 <dl class="summary-list transfer-inventory-reconciliation" aria-label="Transfer inventory reconciliation">
                     <dt>Current Room Inventory</dt><dd>@Model.TransferCurrentRoomBins bins</dd>
-                    <dt>Operable bins</dt><dd>@Model.TransferAvailableBins bins</dd>
+                    <dt>Eligible to transfer</dt><dd>@Model.TransferAvailableBins bins</dd>
                     <dt>Needs reconciliation</dt><dd>@Model.TransferNeedsReconciliationBins bins</dd>
                 </dl>
                 @if (!Model.TransferInventoryReconciles)
@@ -1608,6 +1608,8 @@ else
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
+                    <input type="hidden" name="ExpectedInventoryToken" value="@Model.TransferForm.ExpectedInventoryToken" />
+                    <input type="hidden" name="TransferAllEligible" value="false" />
                     <input type="hidden" name="FromRoomId" value="@Model.Filter.RoomId" />
                     <input type="hidden" name="TreatmentSignature" id="transfer-treatment-signature" value="" />
                     <input type="hidden" name="TreatmentSegmentId" id="transfer-treatment-segment-id" value="" />
@@ -1636,6 +1638,17 @@ else
                     <fieldset class="field wide transfer-fruit-fieldset">
                         <legend>Fruit to transfer</legend>
                         <div class="transfer-fruit-options">
+                            <label class="transfer-fruit-option">
+                                <input type="radio" name="SourceLotKey" value="__all__" required
+                                       checked="@(string.IsNullOrWhiteSpace(Model.Filter.SourceKey))"
+                                       disabled="@(Model.TransferAvailableBins == 0)"
+                                       data-bulk="true" data-available="@Model.TransferAvailableBins"
+                                       data-grower="All eligible room inventory" data-variety="All eligible varieties"
+                                       data-treatment="Existing treatment and Receipt links retained" />
+                                <span>Transfer all eligible inventory — @Model.TransferAvailableBins bins
+                                    <small>@Model.TransferNeedsReconciliationBins bins remain in this room for review. Inspect the unavailable positions below.</small>
+                                </span>
+                            </label>
                             @foreach (var option in Model.TransferLotOptions)
                             {
                                 <label class="transfer-fruit-option">
@@ -1689,6 +1702,12 @@ else
                     const syncSelection = () => {
                         if (signature) signature.value = selectedFruit()?.dataset.treatmentSignature ?? '';
                         if (segmentId) segmentId.value = selectedFruit()?.dataset.treatmentSegmentId ?? '';
+                        const bulk = selectedFruit()?.dataset.bulk === 'true';
+                        form.querySelector('input[name="TransferAllEligible"]').value = String(bulk);
+                        const quantity = form.querySelector('input[name="BinCount"]');
+                        quantity.readOnly = bulk;
+                        quantity.max = selectedFruit()?.dataset.available ?? '';
+                        if (bulk) quantity.value = selectedFruit().dataset.available;
                     };
                     const hideReview = () => { reviewReady = false; if (review) review.hidden = true; };
                     const filterRooms = () => {

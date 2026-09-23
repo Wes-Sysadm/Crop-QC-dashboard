@@ -92,6 +92,7 @@ public sealed class OutsideWarehouseTransferTests
             .ToListAsync();
         Assert.Equal(320, movements.Sum(x => x.BinCount));
         Assert.Equal([8844L, 8850L], movements.Select(x => x.ReceiptId!.Value).Distinct().Order().ToArray());
+        Assert.Equal(20, await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.RoomId).SumAsync(x => x.CurrentBins));
     }
 
     [Fact]

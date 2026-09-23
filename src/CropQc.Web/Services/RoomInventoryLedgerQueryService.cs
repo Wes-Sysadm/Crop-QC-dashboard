@@ -517,7 +517,7 @@ public sealed class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) :
             && rows.Where(x => x.CropYear is not null).Select(x => x.CropYear).Distinct().Count() <= 1
             && (rows.Select(x => x.GrowerLotId).Distinct().Count() == 1 || sameBinsRunLineage)
             && (sameBinsRunLineage || DistinctNonEmpty(rows.Select(x => x.GrowerNumber)) <= 1)
-            && DistinctNonEmpty(rows.Select(x => x.InventoryStatus)) <= 1
+            && DistinctNonEmpty(rows.Select(x => InventoryStatusIdentity.Normalize(x.InventoryStatus, x.ProductionType))) <= 1
             && DistinctNonEmpty(rows.Select(x => x.ProductionType)) <= 1
             && rows.Where(x => x.IsOrganic is not null).Select(x => x.IsOrganic).Distinct().Count() <= 1;
     }
