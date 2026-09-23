@@ -127,7 +127,8 @@ public sealed class TreatmentLineageReadinessService(
                 var snapshot = item.Snapshot;
                 var identityKey = RoomTreatmentService.IdentityKey(snapshot);
                 var explicitBins = explicitByIdentity
-                    .Where(x => x.RoomId == snapshot.RoomId && x.IdentityKey == identityKey)
+                    .Where(x => x.RoomId == snapshot.RoomId
+                        && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identityKey)
                     .Sum(x => x.Bins);
                 return explicitBins <= item.CurrentBins
                     ? null

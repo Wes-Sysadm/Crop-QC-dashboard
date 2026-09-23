@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Data.Common;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Storage;
@@ -8,6 +9,7 @@ using CropQc.Web.Models;
 using CropQc.Web.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -102,15 +104,18 @@ public sealed class BulkRoomTransferTests
         Assert.Equal(25, (await f.Ledger.GetSnapshotsAsync(null, [2], default)).Sum(x => x.CurrentBins));
     }
 
-    [Fact]
-    public async Task Blank_and_redundant_production_status_retain_all_798_bins_after_reviewed_repair()
+    [Theory]
+    [InlineData("CONVENTIONAL", false)]
+    [InlineData(" conventional ", true)]
+    [InlineData("Conventional", false)]
+    public async Task Blank_and_legacy_production_status_count_once(string status, bool lowerCaseKey)
     {
         await using var f = await Fixture.CreateAsync();
         await f.SeedAsync(798);
         var snapshot = Assert.Single(await f.Ledger.GetSnapshotsAsync(null, [1], default));
-        f.Db.TreatmentLineageSegments.AddRange(
-            f.Segment(snapshot with { InventoryStatus = "Conventional" }, 256, receiptId: 1),
-            f.Segment(snapshot with { InventoryStatus = "" }, 542));
+        var legacy = f.Segment(snapshot with { InventoryStatus = status }, 256, receiptId: 1);
+        if (lowerCaseKey) legacy.IdentityKey = legacy.IdentityKey.ToLowerInvariant();
+        f.Db.TreatmentLineageSegments.AddRange(legacy, f.Segment(snapshot with { InventoryStatus = "" }, 542));
         await f.Db.SaveChangesAsync();
         var selections = await f.Treatments.GetSelectionsAsync(snapshot, default);
         Assert.Equal(798, selections.Sum(x => x.CurrentBins));
@@ -123,6 +128,41 @@ public sealed class BulkRoomTransferTests
         Assert.Equal(798, await f.Db.TreatmentLineageSegments.Where(x => x.RoomId == 2).SumAsync(x => x.CurrentBins));
         Assert.Equal(2, await f.Db.RoomTransfers.CountAsync());
         Assert.Equal(0, await f.Db.RoomInventoryAdjustments.SumAsync(x => x.RoomTransferId != null ? x.ChangeAmount : 0));
+    }
+
+    [Fact]
+    public async Task Negative_lineage_cannot_be_filled_as_new_implicit_inventory()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.SeedAsync(100);
+        var snapshot = Assert.Single(await f.Ledger.GetSnapshotsAsync(null, [1], default));
+        f.Db.TreatmentLineageSegments.Add(f.Segment(snapshot, -4));
+        await f.Db.SaveChangesAsync();
+        var page = await f.Dashboard.GetRoomDetailAsync(1, default);
+        Assert.Equal(0, page.TransferAvailableBins);
+        Assert.Equal(100, page.TransferNeedsReconciliationBins);
+        Assert.Contains("negative inventory", Assert.Single(page.TransferLotOptions).UnavailableReason);
+        Assert.Equal(-4, (await f.Db.TreatmentLineageSegments.SingleAsync()).CurrentBins);
+        Assert.Empty(await f.Db.TreatmentLineageMovements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Distinct_status_is_visible_for_review_and_cannot_be_recreated_as_untreated_inventory()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.SeedAsync(100);
+        await f.SeedAsync(20, id: 2);
+        var snapshot = (await f.Ledger.GetSnapshotsAsync(null, [1], default)).Single(x => x.GrowerLotId == 1);
+        f.Db.TreatmentLineageSegments.Add(f.Segment(snapshot with { InventoryStatus = "Hold" }, 100));
+        await f.Db.SaveChangesAsync();
+        var page = await f.Dashboard.GetRoomDetailAsync(1, default);
+        Assert.Equal(100, page.TransferNeedsReconciliationBins);
+        Assert.Equal(20, page.TransferAvailableBins);
+        Assert.Contains("conflicting status", Assert.Single(page.TransferLotOptions, x => !x.IsAvailable).UnavailableReason);
+        Assert.Null(await f.Dashboard.CreateRoomTransferAsync(await f.FormAsync(), default));
+        Assert.Equal(100, (await f.Ledger.GetSnapshotsAsync(null, [1], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(100, await f.Db.TreatmentLineageSegments.Where(x => x.RoomId == 1).SumAsync(x => x.CurrentBins));
+        Assert.Equal("Hold", (await f.Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == 1 && x.GrowerLotId == 1)).InventoryStatusSnapshot);
     }
 
     [Fact]
@@ -187,6 +227,8 @@ public sealed class BulkRoomTransferTests
         await f.Db.SaveChangesAsync();
         var result = await f.Treatments.DispatchAsync(snapshot, "u", 66, "split", 22, Now, 1, default);
         Assert.True(result.Success, result.Error);
+        var retry = await f.Treatments.DispatchAsync(snapshot, "u", 66, "split", 22, Now, 1, default);
+        Assert.True(retry.Success, retry.Error);
         f.Db.ChangeTracker.Clear();
         Assert.Equal(798, await f.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
         Assert.Equal(new[] { 4, 62 }, await f.Db.TreatmentLineageMovements.OrderBy(x => x.Id).Select(x => x.BinCount).ToArrayAsync());
@@ -221,6 +263,120 @@ public sealed class BulkRoomTransferTests
         Assert.Empty(await f.Db.RoomTransfers.ToListAsync());
         Assert.Null(await f.Dashboard.CreateRoomTransferAsync(await f.FormAsync(), default));
         Assert.Equal(798, (await f.Ledger.GetSnapshotsAsync(null, [2], default)).Sum(x => x.CurrentBins));
+    }
+
+    [Fact]
+    public async Task PostgreSql_concurrent_requests_cannot_both_consume_eighty_of_one_hundred_bins()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ROOM_TRANSFER_TEST_POSTGRES"))) return;
+        await using var f = await Fixture.CreateAsync();
+        await f.SeedAsync(100);
+        var snapshot = Assert.Single(await f.Ledger.GetSnapshotsAsync(null, [1], default));
+        f.Db.TreatmentLineageSegments.Add(f.Segment(snapshot, 100));
+        await f.Db.SaveChangesAsync();
+        var option = Assert.Single((await f.Dashboard.GetRoomDetailAsync(1, default)).TransferLotOptions);
+        var gate = new ConcurrentReadGate();
+        await using var first = f.Fork(gate);
+        await using var second = f.Fork(gate);
+        RoomTransferForm Form() => new()
+        {
+            OperationKey = Guid.NewGuid().ToString("N"),
+            FromRoomId = 1,
+            DestinationWarehouseId = 3,
+            DestinationRoomId = 2,
+            SourceLotKey = option.LotKey,
+            TreatmentSignature = option.TreatmentSignature,
+            TreatmentSegmentId = option.TreatmentSegmentId,
+            BinCount = 80,
+            TransferAt = Now,
+            Reason = "Concurrent allocation regression"
+        };
+        var firstForm = Form();
+        var secondForm = Form();
+        var results = await Task.WhenAll(first.Dashboard.CreateRoomTransferAsync(firstForm, default),
+            second.Dashboard.CreateRoomTransferAsync(secondForm, default));
+        Assert.Single(results, x => x is null);
+        Assert.Single(results, x => x is not null);
+        Assert.Equal(2, gate.Arrivals);
+        f.Db.ChangeTracker.Clear();
+        Assert.Equal(20, (await f.Ledger.GetSnapshotsAsync(null, [1], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(80, (await f.Ledger.GetSnapshotsAsync(null, [2], default)).Sum(x => x.CurrentBins));
+        Assert.Single(await f.Db.RoomTransfers.ToListAsync());
+        Assert.Single(await f.Db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(100, await f.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+        Assert.All(await f.Db.TreatmentLineageSegments.ToListAsync(), x => Assert.True(x.CurrentBins >= 0));
+        Assert.Equal(0, await f.Db.RoomInventoryAdjustments.Where(x => x.RoomTransferId != null).SumAsync(x => x.ChangeAmount));
+        var loser = results[0] is null ? secondForm : firstForm;
+        Assert.NotNull(await f.Dashboard.CreateRoomTransferAsync(loser, default));
+        Assert.Single(await f.Db.RoomTransfers.ToListAsync());
+    }
+
+    private sealed class ConcurrentReadGate
+    {
+        public int Arrivals;
+        public TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class InventoryReadBarrier(ConcurrentReadGate gate) : DbCommandInterceptor
+    {
+        private bool entered;
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            // Synchronize immediately before the existing room lock. Waiting
+            // after that lock would deadlock the test's artificial barrier.
+            if (!entered && command.CommandText.Contains("FOR UPDATE", StringComparison.Ordinal))
+            {
+                entered = true;
+                if (Interlocked.Increment(ref gate.Arrivals) == 2) gate.Ready.TrySetResult();
+                await gate.Ready.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    [Fact]
+    public async Task PostgreSql_failure_in_second_segment_rolls_back_split_dispatch()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ROOM_TRANSFER_TEST_POSTGRES"))) return;
+        await using var f = await Fixture.CreateAsync();
+        await f.SeedAsync(100);
+        var snapshot = Assert.Single(await f.Ledger.GetSnapshotsAsync(null, [1], default));
+        f.Db.TreatmentLineageSegments.AddRange(f.Segment(snapshot, 4, 1), f.Segment(snapshot, 96));
+        f.Db.InterCrewTransfers.Add(new InterCrewTransfer
+        {
+            Id = 71,
+            OperationKey = "split-rollback",
+            SourceWarehouseId = 3,
+            SourceRoomId = 1,
+            DestinationCustodyGroup = "WP/DH",
+            CropYear = 2026,
+            GrowerLotId = 1,
+            FruitProfileId = 17,
+            GrowerNameSnapshot = "Test Grower",
+            LotNumberSnapshot = snapshot.Lot,
+            VarietyCodeSnapshot = snapshot.Variety,
+            ProductionTypeSnapshot = snapshot.ProductionType,
+            TreatmentStateSnapshot = "Untreated",
+            TreatmentSignatureSnapshot = "u",
+            TreatmentSummarySnapshot = "Untreated",
+            BinsLoaded = 66,
+            LoadedAt = Now,
+            CreatedAt = Now,
+            LoadedByUserId = 1,
+            Status = "InTransit"
+        });
+        await f.Db.SaveChangesAsync();
+        await f.Db.Database.ExecuteSqlRawAsync("""
+            CREATE FUNCTION reject_second_segment() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN IF NEW."BinCount" = 62 THEN RAISE EXCEPTION 'injected second-segment failure'; END IF; RETURN NEW; END $$;
+            CREATE TRIGGER reject_segment BEFORE INSERT ON "TreatmentLineageMovements" FOR EACH ROW EXECUTE FUNCTION reject_second_segment();
+            """);
+        await Assert.ThrowsAsync<DbUpdateException>(() => f.Treatments.DispatchAsync(snapshot, "u", 66, "split-failure", 71, Now, 1, default));
+        f.Db.ChangeTracker.Clear();
+        Assert.Equal(new[] { 4, 96 }, await f.Db.TreatmentLineageSegments.OrderBy(x => x.ReceiptId == null).Select(x => x.CurrentBins).ToArrayAsync());
+        Assert.Empty(await f.Db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(100, (await f.Ledger.GetSnapshotsAsync(null, [1], default)).Sum(x => x.CurrentBins));
     }
 
     [Fact]
@@ -269,7 +425,7 @@ public sealed class BulkRoomTransferTests
             INSERT INTO "TreatmentLineageMovements" ("Id","DestinationSegmentId","RoomTransferId","BinCount") VALUES (96,160,218,280),(97,160,219,194),(182,160,281,64);
             INSERT INTO "TreatmentLineageMovements" ("Id","SourceSegmentId","InterCrewTransferId","BinCount","MovementType") VALUES (590,159,22,4,'InterCrewDispatch'),(591,160,22,62,'InterCrewDispatch');
             INSERT INTO "RoomInventoryAdjustments" ("Id","ReceiptId","RoomId","ChangeAmount","LotNumber","FruitProfileId","InterCrewTransferId") VALUES
-            (1298,763,66,66,'1372',17,null),(3180,null,66,-66,'1372',17,22),(1,null,66,798,'1372',17,null);
+            (1298,763,66,66,'1372',17,null),(3180,null,66,-66,'1372',17,22),(1,null,66,798,'1372',17,null),(2,null,66,1722,'other',18,null);
             """);
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CropQc.sln"))) directory = directory.Parent;
@@ -287,7 +443,7 @@ public sealed class BulkRoomTransferTests
         Assert.Equal(798, await Scalar("SELECT SUM(\"CurrentBins\")::integer AS \"Value\" FROM \"TreatmentLineageSegments\""));
         Assert.Equal(1, await f.Db.AuditLogs.CountAsync());
         Assert.Equal(5, await f.Db.TreatmentLineageMovements.CountAsync());
-        Assert.Equal(3, await f.Db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(4, await f.Db.RoomInventoryAdjustments.CountAsync());
         Assert.Contains("802", (await f.Db.AuditLogs.Select(x => x.BeforeValuesJson).SingleAsync())!);
         Assert.Contains("542", (await f.Db.AuditLogs.Select(x => x.AfterValuesJson).SingleAsync())!);
         Task<int> Scalar(string sql) => f.Db.Database.SqlQueryRaw<int>(sql).SingleAsync();
@@ -322,11 +478,20 @@ public sealed class BulkRoomTransferTests
             await db.Database.EnsureCreatedAsync();
             // Seed identities above repository seed ranges.
 
-            db.Rooms.AddRange(new Room { Id = 1, WarehouseId = 3, Code = "MCD-14", Name = "Room 14" },
-                new Room { Id = 2, WarehouseId = 3, Code = "MCD-15", Name = "Room 15" });
+            db.Rooms.AddRange(new Room { Id = 1, WarehouseId = 3, Code = "TEST-A", Name = "Source" },
+                new Room { Id = 2, WarehouseId = 3, Code = "TEST-B", Name = "Destination" });
             db.Users.Add(new User { Id = 1, Email = ApplicationAreas.OwnerEmail, DisplayName = "Test", Domain = "fruitandland.com", CreatedAt = Now });
             db.UserRoles.Add(new UserRole { UserId = 1, RoleId = 1 });
             await db.SaveChangesAsync();
+            return CreateServices(db, admin, databaseName);
+        }
+
+        public Fixture Fork(ConcurrentReadGate gate) => CreateServices(new CropQcDbContext(
+            new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(Db.Database.GetConnectionString())
+                .AddInterceptors(new InventoryReadBarrier(gate)).Options));
+
+        private static Fixture CreateServices(CropQcDbContext db, string? admin = null, string? databaseName = null)
+        {
             var configuration = new ConfigurationBuilder().Build();
             var access = new UserAccessService(db, configuration);
             var accessor = new FixedAccessor
@@ -393,7 +558,8 @@ public sealed class BulkRoomTransferTests
             CropYear = s.CropYear,
             GrowerLotId = s.GrowerLotId,
             FruitProfileId = s.FruitProfileId,
-            IdentityKey = RoomTreatmentService.IdentityKey(s),
+            IdentityKey = RoomTreatmentService.IdentityKey(s)[..(RoomTreatmentService.IdentityKey(s).LastIndexOf('|') + 1)]
+                + s.InventoryStatus.Trim().ToUpperInvariant(),
             ReceiptId = receiptId,
             GrowerNumberSnapshot = s.GrowerNumber,
             GrowerNameSnapshot = s.Grower,

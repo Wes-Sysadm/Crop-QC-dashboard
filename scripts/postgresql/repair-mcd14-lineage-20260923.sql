@@ -4,12 +4,17 @@
 -- Stop application writes during the bounded repair window. All guards must pass.
 \set ON_ERROR_STOP on
 BEGIN ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL lock_timeout = '15s';
+SET LOCAL statement_timeout = '60s';
 SELECT set_config('cropqc.repair_actor', :'actor_user_id', true);
 LOCK TABLE "TreatmentLineageSegments", "TreatmentLineageMovements", "RoomInventoryAdjustments", "AuditLogs" IN SHARE ROW EXCLUSIVE MODE;
 DO $repair$
 DECLARE
     before_row jsonb;
     after_row jsonb;
+    other_segments_hash text;
+    ledger_hash text;
+    movement_hash text;
     actor integer := current_setting('cropqc.repair_actor')::integer;
     repair_key text := 'mcd14-lineage-20260923-segment160';
 BEGIN
@@ -37,6 +42,7 @@ BEGIN
         WHERE "RoomId"=66 AND "GrowerLotId"=448 AND "FruitProfileId"=17 AND "CropYear"=2026) <> 1058
         OR (SELECT COALESCE(SUM("ChangeAmount"),0) FROM "RoomInventoryAdjustments"
             WHERE "RoomId"=66 AND "LotNumber"='1372' AND "FruitProfileId"=17) <> 798
+        OR (SELECT COALESCE(SUM("ChangeAmount"),0) FROM "RoomInventoryAdjustments" WHERE "RoomId"=66) <> 2520
         OR EXISTS (SELECT 1 FROM "RoomInventoryAdjustments" WHERE "RoomId"=66 AND "AdjustmentType"='StartingInventoryImport') THEN
         RAISE EXCEPTION 'Current inventory evidence changed; do not extrapolate this historical repair';
     END IF;
@@ -52,6 +58,9 @@ BEGIN
         OR NOT EXISTS (SELECT 1 FROM "RoomInventoryAdjustments" WHERE "Id"=3180 AND "InterCrewTransferId"=22 AND "RoomId"=66 AND "ChangeAmount"=-66) THEN
         RAISE EXCEPTION 'Required receiving/transfer evidence is missing';
     END IF;
+    SELECT md5(string_agg(to_jsonb(s)::text, '' ORDER BY "Id")) INTO other_segments_hash FROM "TreatmentLineageSegments" s WHERE "Id"<>160;
+    SELECT md5(string_agg(to_jsonb(a)::text, '' ORDER BY "Id")) INTO ledger_hash FROM "RoomInventoryAdjustments" a;
+    SELECT md5(string_agg(to_jsonb(m)::text, '' ORDER BY "Id")) INTO movement_hash FROM "TreatmentLineageMovements" m;
     SELECT to_jsonb(s) INTO before_row FROM "TreatmentLineageSegments" s WHERE "Id"=160;
     UPDATE "TreatmentLineageSegments" SET "CurrentBins"=542, "ConcurrencyVersion"="ConcurrencyVersion"+1,
         "UpdatedAt"=CURRENT_TIMESTAMP WHERE "Id"=160;
@@ -65,5 +74,11 @@ BEGIN
         WHERE "RoomId"=66 AND "GrowerLotId"=448 AND "FruitProfileId"=17 AND "CropYear"=2026) <> 798 THEN
         RAISE EXCEPTION 'Post-repair lineage failed to reconcile';
     END IF;
+    IF other_segments_hash IS DISTINCT FROM (SELECT md5(string_agg(to_jsonb(s)::text, '' ORDER BY "Id")) FROM "TreatmentLineageSegments" s WHERE "Id"<>160)
+        OR ledger_hash IS DISTINCT FROM (SELECT md5(string_agg(to_jsonb(a)::text, '' ORDER BY "Id")) FROM "RoomInventoryAdjustments" a)
+        OR movement_hash IS DISTINCT FROM (SELECT md5(string_agg(to_jsonb(m)::text, '' ORDER BY "Id")) FROM "TreatmentLineageMovements" m) THEN
+        RAISE EXCEPTION 'Protected historical evidence changed; rolling back';
+    END IF;
+    RAISE NOTICE 'Repair complete: segment160=542; segments148/154=256; lot1372=798; room66=2520. Other segments, ledger and movement fingerprints unchanged.';
 END $repair$;
 COMMIT;

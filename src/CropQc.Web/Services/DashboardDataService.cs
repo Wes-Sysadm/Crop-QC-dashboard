@@ -982,12 +982,15 @@ public sealed class DashboardDataService(
                 ? await CreateBulkRoomTransferAsync(form, cancellationToken)
                 : await CreateRoomTransferCoreAsync(form, cancellationToken);
         }
-        catch (Exception exception) when (exception is DbUpdateConcurrencyException
-            || exception is Npgsql.PostgresException { SqlState: "40001" or "40P01" }
-            || exception is DbUpdateException { InnerException: Npgsql.PostgresException { SqlState: "40001" or "40P01" or "23505" } })
+        catch (Exception exception) when (InventoryMovementConcurrency.IsConflict(exception))
         {
             dbContext.ChangeTracker.Clear();
-            return "Inventory changed during the transfer. Refresh and review the current room inventory before retrying.";
+            return InventoryMovementConcurrency.RefreshMessage;
+        }
+        catch (TreatmentLineageReviewException exception)
+        {
+            dbContext.ChangeTracker.Clear();
+            return exception.Message;
         }
     }
 

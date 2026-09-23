@@ -196,10 +196,10 @@ public sealed class InterCrewTransferService(
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return new(true, false, transfer.Id, null);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException)
+        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException || InventoryMovementConcurrency.IsConflict(exception))
         {
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
-            return Fail(exception.Message);
+            return Fail(InventoryMovementConcurrency.IsConflict(exception) ? InventoryMovementConcurrency.RefreshMessage : exception.Message);
         }
     }
 
@@ -266,10 +266,10 @@ public sealed class InterCrewTransferService(
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return new(true, false, transfer.Id, null);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException)
+        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException || InventoryMovementConcurrency.IsConflict(exception))
         {
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
-            return Fail(exception.Message);
+            return Fail(InventoryMovementConcurrency.IsConflict(exception) ? InventoryMovementConcurrency.RefreshMessage : exception.Message);
         }
     }
 
@@ -341,10 +341,10 @@ public sealed class InterCrewTransferService(
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return null;
         }
-        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException)
+        catch (Exception exception) when (exception is InvalidOperationException or DbUpdateException || InventoryMovementConcurrency.IsConflict(exception))
         {
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
-            return exception.Message;
+            return InventoryMovementConcurrency.IsConflict(exception) ? InventoryMovementConcurrency.RefreshMessage : exception.Message;
         }
     }
 

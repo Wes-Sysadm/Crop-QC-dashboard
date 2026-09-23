@@ -230,10 +230,10 @@ public sealed class ProcessorShipmentService(
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return new(true, false, shipment.Id, null);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException)
+        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException || InventoryMovementConcurrency.IsConflict(ex))
         {
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
-            return new(false, false, null, ex.Message);
+            return new(false, false, null, InventoryMovementConcurrency.IsConflict(ex) ? InventoryMovementConcurrency.RefreshMessage : ex.Message);
         }
     }
 
@@ -380,10 +380,10 @@ public sealed class ProcessorShipmentService(
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return null;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException)
+        catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException || InventoryMovementConcurrency.IsConflict(ex))
         {
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
-            return ex.Message;
+            return InventoryMovementConcurrency.IsConflict(ex) ? InventoryMovementConcurrency.RefreshMessage : ex.Message;
         }
     }
 
