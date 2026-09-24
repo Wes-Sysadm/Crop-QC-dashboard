@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -152,7 +153,26 @@ public sealed class TruckReceiptHttpTests
         Assert.True(match.Success); return WebUtility.HtmlDecode(match.Groups[1].Value);
     }
 
-    private sealed class Factory(TruckReceiptReconciliationTests.Fixture fixture, bool enabled = true) : WebApplicationFactory<Program>
+    internal static async Task VerifyAdoptedUiAsync(TruckReceiptReconciliationTests.Fixture f, long receiptId)
+    {
+        await using var factory = new Factory(f, shareTransaction: true);
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add("Test-Email", f.Actor.Email);
+        var html = await client.GetStringAsync($"/Receipts/{receiptId}/MatchTransfer");
+        foreach (var id in Enumerable.Range(1, 15)) Assert.Contains($"Select Transfer #{id}</button>", html);
+        Assert.Contains("ORHC", html);
+        Assert.Contains("EBS", html);
+        Assert.Contains("WP side", html);
+        Assert.DoesNotContain("Complete Receipt", html);
+        foreach (var id in Enumerable.Range(1, 15))
+        {
+            var detail = await client.GetStringAsync($"/BinsRun/InterCrewTransfers/{id}/Reconciliation");
+            Assert.Contains("Awaiting Receipt", detail);
+            Assert.DoesNotContain("legacy transfer keeps its original", detail);
+        }
+    }
+
+    private sealed class Factory(TruckReceiptReconciliationTests.Fixture fixture, bool enabled = true, bool shareTransaction = false) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -172,6 +192,16 @@ public sealed class TruckReceiptHttpTests
                 services.RemoveAll<IDbContextOptionsConfiguration<CropQcDbContext>>();
                 services.RemoveAll<CropQcDbContext>(); services.RemoveAll<IHostedService>();
                 services.AddSingleton(fixture.Options); services.AddScoped<CropQcDbContext>();
+                if (shareTransaction)
+                {
+                    services.RemoveAll<CropQcDbContext>();
+                    services.AddScoped(_ =>
+                    {
+                        var db = new CropQcDbContext(new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(fixture.Db.Database.GetDbConnection()).Options);
+                        db.Database.UseTransaction(fixture.Transaction!.GetDbTransaction());
+                        return db;
+                    });
+                }
                 services.RemoveAll<IUserAccessService>(); services.AddSingleton<IUserAccessService>(fixture.Access);
                 services.AddDataProtection().UseEphemeralDataProtectionProvider();
                 services.AddAuthentication(options => { options.DefaultAuthenticateScheme = "TruckTest"; options.DefaultChallengeScheme = "TruckTest"; })

@@ -481,7 +481,7 @@ public sealed class TruckReceiptReconciliationTests
         public DashboardDataService Dashboard = null!;
         public Func<IInventoryDeductionInvariantService, TruckReceiptReconciliationService> ServiceWithInvariant = null!;
         public Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? Transaction;
-        public static async Task<Fixture> CreateAsync(string? connection = null, string sourceCode = "EBS", string destinationCode = "WP")
+        public static async Task<Fixture> CreateAsync(string? connection = null, string sourceCode = "EBS", string destinationCode = "WP", bool serializable = false)
         {
             var f = new Fixture();
             var options = new DbContextOptionsBuilder<CropQcDbContext>();
@@ -490,7 +490,7 @@ public sealed class TruckReceiptReconciliationTests
             f.Options = options.Options;
             f.Db = new(f.Options);
             if (connection is null) await f.Db.Database.EnsureCreatedAsync();
-            else f.Transaction = await f.Db.Database.BeginTransactionAsync();
+            else f.Transaction = await f.Db.Database.BeginTransactionAsync(serializable ? System.Data.IsolationLevel.Serializable : System.Data.IsolationLevel.ReadCommitted);
             var key = Guid.NewGuid().ToString("N")[..12];
             var source = await f.Db.Warehouses.SingleOrDefaultAsync(x => x.Code == sourceCode) ?? new Warehouse { Code = sourceCode, Name = sourceCode };
             var destination = await f.Db.Warehouses.SingleOrDefaultAsync(x => x.Code == destinationCode) ?? new Warehouse { Code = destinationCode, Name = destinationCode };
