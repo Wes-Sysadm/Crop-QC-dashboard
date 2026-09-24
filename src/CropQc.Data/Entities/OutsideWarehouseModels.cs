@@ -39,7 +39,8 @@ public static class InterCrewTransferAdjustmentTypes
 
 public sealed class InterCrewTransfer
 {
-    public bool RequiresTruckReceipt { get; set; }
+    // Persisted at creation; existing rows default to legacy. Flag changes never reclassify a load.
+    public bool RequiresTruckReceipt { get; init; }
     public long? ReceivingReceiptId { get; set; }
     public Receipt? ReceivingReceipt { get; set; }
     public long Id { get; set; }

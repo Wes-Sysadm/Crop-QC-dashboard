@@ -148,9 +148,6 @@ public sealed class InterCrewTransferService(
                 && x.RoomId == form.SourceRoomId);
             if (option is null) return Fail("The selected current inventory is no longer available. Refresh and retry.");
             if (!option.IsAvailable) return Fail(option.UnavailableReason ?? "The selected treatment lineage requires review and cannot be dispatched.");
-            if (truckReceiptOptions?.Enabled != true && TruckReceiptRoutes.RequiresReceiptForGroup(option.Facility, form.DestinationCustodyGroup)
-                && !await TruckReceiptReleaseSafety.CanUsePreFeatureApplicationAsync(dbContext, cancellationToken))
-                return Fail(TruckReceiptOptions.DisabledMessage);
             var allowed = AllowedDestinationGroups(option.Facility);
             if (!allowed.Contains(form.DestinationCustodyGroup, StringComparer.Ordinal))
                 return Fail("That source and destination must use the existing immediate internal transfer workflow.");
@@ -234,9 +231,7 @@ public sealed class InterCrewTransferService(
             if (transfer is null) return Fail("Inter-crew transfer was not found.");
             if (transfer.ReceiveOperationKey == key) return new(true, true, transfer.Id, null);
             if (transfer.Status != InterCrewTransferStatuses.InTransit) return Fail("Only an in-transit load can be received.");
-            var sourceCode = await dbContext.Warehouses.Where(x => x.Id == transfer.SourceWarehouseId).Select(x => x.Code).SingleAsync(cancellationToken);
-            if (transfer.RequiresTruckReceipt || transfer.ReceivingReceiptId != null || TruckReceiptRoutes.RequiresReceiptForGroup(sourceCode, transfer.DestinationCustodyGroup)
-                && (truckReceiptOptions?.Enabled == true || !await TruckReceiptReleaseSafety.CanUsePreFeatureApplicationAsync(dbContext, cancellationToken)))
+            if (transfer.RequiresTruckReceipt || transfer.ReceivingReceiptId != null)
                 return Fail("Create a normal Truck Receipt, choose Match Transfer and reconcile every variety before completing receiving.");
             if (!CanAccessGroup(CustodyGroupForUser(actor), canAdmin, transfer.DestinationCustodyGroup))
                 return Fail("This load belongs to another receiving crew.");
@@ -381,9 +376,7 @@ public sealed class InterCrewTransferService(
         var rooms = await dbContext.Rooms.AsNoTracking().Include(r => r.Warehouse)
             .Where(r => r.IsActive && !r.Warehouse.Code.ToUpper().Contains("MCD") && r.Warehouse.Code != "McDougall")
             .OrderBy(r => r.Warehouse.Code).ThenBy(r => r.SortOrder).ToListAsync(cancellationToken);
-        var strictReceipts = truckReceiptOptions?.Enabled == true || !await TruckReceiptReleaseSafety.CanUsePreFeatureApplicationAsync(dbContext, cancellationToken);
-        var requiresReceipt = x.RequiresTruckReceipt || x.ReceivingReceiptId != null || strictReceipts && x.Status == InterCrewTransferStatuses.InTransit
-            && TruckReceiptRoutes.RequiresReceiptForGroup(x.SourceWarehouse.Code, x.DestinationCustodyGroup);
+        var requiresReceipt = x.RequiresTruckReceipt || x.ReceivingReceiptId != null;
         return new InterCrewTransferDetailViewModel
         {
             Id = x.Id,
@@ -421,7 +414,7 @@ public sealed class InterCrewTransferService(
     private async Task<string?> ReconciliationStatusAsync(InterCrewTransfer transfer, CancellationToken ct)
     {
         if (transfer.Status != InterCrewTransferStatuses.InTransit) return null;
-        if (!transfer.RequiresTruckReceipt && transfer.ReceivingReceiptId is null && truckReceiptOptions?.Enabled != true) return null;
+        if (!transfer.RequiresTruckReceipt && transfer.ReceivingReceiptId is null) return null;
         if (!TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)) return null;
         if (transfer.ReceivingReceiptId is null) return "Awaiting Receipt";
         if (truckReceipts is null) return "Receipt selected — reconcile before completion";

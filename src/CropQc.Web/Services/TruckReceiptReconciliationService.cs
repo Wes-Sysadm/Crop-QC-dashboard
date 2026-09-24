@@ -22,6 +22,7 @@ public sealed class TruckReceiptReconciliationService(
     TruckReceiptOptions? options = null)
 {
     private bool Enabled => options?.Enabled == true;
+    public const string LegacyTransferMessage = "This legacy transfer keeps its original receiving workflow and cannot use Truck Receipt reconciliation.";
     public const string ReturnToSource = "TransitAllocationReturn";
     public const string ReopenDestination = "TransferReceiptReopen";
     private ClaimsPrincipal Principal => context.HttpContext?.User ?? new ClaimsPrincipal();
@@ -45,6 +46,12 @@ public sealed class TruckReceiptReconciliationService(
             CanEditReceipt = Enabled && await access.HasAccessAsync(Principal, ApplicationAreas.Receipts, PageAccessLevel.Edit, ct),
             CanEditTransfer = Enabled && await access.HasAccessAsync(Principal, ApplicationAreas.Transfers, PageAccessLevel.Edit, ct)
         };
+        if (transfer is { RequiresTruckReceipt: false })
+        {
+            page.Error = LegacyTransferMessage;
+            page.WritesEnabled = page.CanAdmin = page.CanEditReceipt = page.CanEditTransfer = false;
+            return page;
+        }
         if (transfer is not null)
         {
             page.Allocations = await ActiveAllocationsAsync(transfer.Id, ct);
@@ -54,7 +61,7 @@ public sealed class TruckReceiptReconciliationService(
         }
         if (receipt is { IsTransferReceipt: true, TransferCompletedAt: null } && transfer is null)
         {
-            var pending = await Transfers().Where(x => x.Status == InterCrewTransferStatuses.InTransit && x.ReceivingReceiptId == null).OrderBy(x => x.LoadedAt).ToListAsync(ct);
+            var pending = await Transfers().Where(x => x.RequiresTruckReceipt && x.Status == InterCrewTransferStatuses.InTransit && x.ReceivingReceiptId == null).OrderBy(x => x.LoadedAt).ToListAsync(ct);
             var candidates = new List<InterCrewTransfer>();
             foreach (var candidate in pending)
             {
@@ -91,7 +98,6 @@ public sealed class TruckReceiptReconciliationService(
         Require(transfer.ReceivingReceiptId is null && !await db.InterCrewTransfers.AnyAsync(x => x.ReceivingReceiptId == receipt.Id, ct), "The transfer or receipt is already linked. Reload the current match.");
         var allocations = await ValidateTransitAsync(transfer, ct);
         Require(Compatible(allocations, receipt), "The receipt and transfer must have compatible canonical varieties and crop year.");
-        transfer.RequiresTruckReceipt = true;
         transfer.ReceivingReceiptId = receipt.Id;
         transfer.ConcurrencyVersion++;
         receipt.ConcurrencyVersion++;
@@ -132,6 +138,7 @@ public sealed class TruckReceiptReconciliationService(
         var receipt = await db.Receipts.Include(x => x.VarietyLines).Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, ct);
         var transfer = await db.InterCrewTransfers.Include(x => x.SourceWarehouse).SingleOrDefaultAsync(x => x.Id == form.TransferId, ct);
         Require(receipt is { IsTransferReceipt: true } && transfer is not null, "The transfer receipt was not found.");
+        Require(transfer!.RequiresTruckReceipt, LegacyTransferMessage);
         await RequireCrewAsync(actor, transfer!.DestinationCustodyGroup, ct);
         Require(transfer.ReceivingReceiptId == receipt!.Id && RouteMatches(transfer, receipt), "The receipt relationship or destination changed. Reload the match.");
         if (receipt.TransferCompletedAt is not null && transfer.Status == InterCrewTransferStatuses.Received) return; // Safe retry, no writes.
@@ -164,7 +171,6 @@ public sealed class TruckReceiptReconciliationService(
             await AddLedgerAsync(transfer, source, receipt.WarehouseId, receipt.RoomId, allocation.Bins, InterCrewTransferAdjustmentTypes.Receive, movement.OperationKey, actor, ct);
             await db.SaveChangesAsync(ct);
         }
-        transfer.RequiresTruckReceipt = true;
         transfer.DestinationWarehouseId = receipt.WarehouseId;
         transfer.DestinationRoomId = receipt.RoomId;
         transfer.BinsReceived = transfer.BinsLoaded;
@@ -193,7 +199,6 @@ public sealed class TruckReceiptReconciliationService(
         var allocations = await ValidateTransitAsync(transfer, ct);
         var key = $"transit-edit:{transfer.Id}:v{transfer.ConcurrencyVersion}";
         var before = transfer.BinsLoaded;
-        transfer.RequiresTruckReceipt = true;
         if (form.DispatchMovementId is long movementId)
         {
             var allocation = allocations.SingleOrDefault(x => x.Movement.Id == movementId);
@@ -350,7 +355,7 @@ public sealed class TruckReceiptReconciliationService(
     }
 
     private static bool RouteMatches(InterCrewTransfer transfer, Receipt receipt) =>
-        TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)
+        transfer.RequiresTruckReceipt && TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)
         && TruckReceiptRoutes.Group(receipt.Warehouse.Code) == transfer.DestinationCustodyGroup;
     private static bool Compatible(IReadOnlyList<TransitAllocation> allocations, Receipt receipt) => allocations.Count > 0
         && allocations.All(x => x.Movement.SourceSegment?.CropYear == receipt.CropYear)
@@ -368,6 +373,7 @@ public sealed class TruckReceiptReconciliationService(
     {
         var transfer = await db.InterCrewTransfers.Include(x => x.SourceWarehouse).SingleOrDefaultAsync(x => x.Id == id, ct);
         Require(transfer is not null && transfer.ConcurrencyVersion == version, "Transfer changed or was not found. Reload before saving.");
+        Require(transfer!.RequiresTruckReceipt, LegacyTransferMessage);
         return transfer!;
     }
     private async Task RejectChangedIdentityAsync(TreatmentLineageSegment segment, CancellationToken ct)

@@ -399,8 +399,8 @@ public sealed class PerformanceDiagnosticsTests
         var sampleView = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Views", "Samples", "Details.cshtml"));
 
         Assert.Contains("PerformanceDiagnostics__RecentRequestLimit\n        value: 0", render);
-        Assert.Contains("PerformanceDiagnostics__IncludeUserIdentifier\n        value: false", render);
-        Assert.Contains("PerformanceDiagnostics__LogEveryRequest\n        value: false", render);
+        Assert.Contains("PerformanceDiagnostics__IncludeUserIdentifier\n        value: \"false\"", render);
+        Assert.Contains("PerformanceDiagnostics__LogEveryRequest\n        value: \"false\"", render);
         Assert.Contains("PerformanceDiagnostics__RuntimeMemoryTelemetryIntervalSeconds\n        value: 60", render);
         Assert.Contains("Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command\n        value: Warning", render);
         Assert.DoesNotContain("setInterval(refreshFieldSample, 3000)", autosave);

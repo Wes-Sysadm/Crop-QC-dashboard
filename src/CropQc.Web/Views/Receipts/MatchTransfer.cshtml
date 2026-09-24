@@ -7,7 +7,7 @@
     var receiptLines = receipt?.VarietyLines.OrderBy(x => x.Id).ToList() ?? [];
 }
 <h1>Truck Receipt reconciliation</h1>
-@if (!Model.WritesEnabled) { <p class="notice warning">@TruckReceiptOptions.DisabledMessage</p> }
+@if (!Model.WritesEnabled && transfer is not { RequiresTruckReceipt: false }) { <p class="notice warning">@TruckReceiptOptions.DisabledMessage</p> }
 @if (TempData["Error"] is string error) { <p class="notice warning" role="alert">@error</p> }
 @if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
 @if (Model.Error is not null) { <p class="notice warning">@Model.Error</p> }

@@ -51,41 +51,6 @@ public sealed class TruckReceiptReleaseSafetyTests
         Assert.Equal(87, await f.BalanceAsync(f.Destination.Id));
     }
 
-    [Fact]
-    public async Task Pause_after_first_use_cannot_create_or_receive_new_legacy_cross_company_loads()
-    {
-        await using var f = await TruckReceiptReconciliationTests.Fixture.CreateAsync();
-        f.Feature.Enabled = false;
-        var legacy = await f.DispatchAsync(10);
-        f.Feature.Enabled = true;
-        await f.DispatchAsync(70);
-        f.Feature.Enabled = false;
-        var option = Assert.Single(await f.Inventory.GetInventoryAsync(default), x => x.RoomId == f.Source.Id && x.FruitProfileId == f.First.Id);
-        var result = await f.Transfers.DispatchAsync(new()
-        {
-            SourceWarehouseId = f.Source.WarehouseId,
-            SourceRoomId = f.Source.Id,
-            SourceKey = option.SourceKey,
-            ExpectedAvailableBins = option.AvailableBins,
-            BinsLoaded = 10,
-            DestinationCustodyGroup = TransferCustodyGroups.WpDh,
-            LoadedAt = f.Now.UtcDateTime.AddHours(-7),
-            ConfirmedReview = true
-        }, default);
-        Assert.Contains("paused", result.Error);
-        Assert.False((await f.Transfers.ReceiveAsync(new()
-        {
-            TransferId = legacy.Id,
-            DestinationRoomId = f.Destination.Id,
-            BinsReceived = 10,
-            ReceivedAt = f.Now.UtcDateTime.AddHours(-7),
-            OperationKey = "paused-legacy-load"
-        }, default)).Success);
-        Assert.Equal(220, await f.BalanceAsync(f.Source.Id));
-        Assert.Equal(0, await f.BalanceAsync(f.Destination.Id));
-        Assert.False((await f.Transfers.GetDetailsAsync(legacy.Id, default))!.CanReceive);
-    }
-
     [Theory]
     [InlineData("B")]
     [InlineData("C")]

@@ -1,6 +1,6 @@
 # PR #252 final release review
 
-This review is for `codex/truck-receipt-reconciliation`, based on `c014528ebab82de8c9ce0e5ef0f5f5e920b5a8ae`. It supersedes the original always-on activation and generic rollback guidance. No merge, deployment, production configuration change, production migration, backup execution, or inventory repair was performed.
+This review is for `codex/truck-receipt-reconciliation`, based on `c014528ebab82de8c9ce0e5ef0f5f5e920b5a8ae`. It supersedes the original always-on activation, conversion of existing open loads, and generic rollback guidance. The final grandfathering revision permanently retains legacy behavior for all transfers created while activation was off, including all existing production transfers. No merge, deployment, production configuration change, production migration, backup execution, or inventory repair was performed.
 
 ## 1. Exact rollback incompatibility
 
@@ -35,7 +35,8 @@ Full backward compatibility would require changing pre-252 binaries or disguisin
 ## 3. Code, schema and activation changes
 
 - `TruckReceiptReconciliation__Enabled` defaults **false**. Before first use, normal receiving and untouched legacy transfer behavior continue. New receipt intent controls are hidden and new reconciliation writes are rejected server-side.
-- After feature evidence exists, switching the flag off preserves all read semantics and blocks reconciliation writes, new cross-company dispatch and legacy cross-company receiving. It never turns evidence receipts into ordinary inventory. Existing feature loads cannot use legacy receive/reverse/review paths. Normal receiving and WP-side internal movement remain available.
+- `InterCrewTransfers.RequiresTruckReceipt` is the persisted creation-time workflow designation, assigned only in dispatch creation from the activation flag and qualifying route. The entity property is init-only; matching, editing, completion and reopen cannot promote legacy loads. All new transfer mutation paths require the stored flag, candidate searches exclude legacy loads, and direct legacy reconciliation URLs explain the original receiving workflow. Status and current configuration never classify an existing load. A malformed legacy row with a receipt link fails closed rather than enabling legacy receiving.
+- Switching the flag off pauses new reconciliation writes and evidence creation, while retaining read semantics and the stored mode of every existing load. Newly created transfers during the pause use legacy behavior, even after prior feature use. Legacy receiving remains available both on and off. Existing feature loads cannot use legacy receive/reverse/review paths. Reactivation changes neither cohort. Normal receiving and WP-side internal movement remain available. The pre-feature rollback check governs application compatibility only; it is no longer used to decide operational workflow mode.
 - New web launcher: `sh /app/start-truck-receipt-web.sh`. The file is copied into the new Docker image; the default image entrypoint uses it. **Also set this exact command in the existing Render web service's Docker Command.** That external setting is essential: pre-feature images lack the file and fail to start instead of silently running old code. Do not remove it after first use. A future build retaining the file still needs compatibility review; this is not a cryptographic attestation of arbitrary source changes.
 - The launcher runs `--verify-truck-receipt-schema` before opening the web listener. It checks migration evidence, mapped columns/table, PostgreSQL unique/nonunique indexes and restrictive FKs, and fails closed on missing schema/connectivity. No runtime schema mutation is added.
 - Admin reopen explicitly checks treatment application source history, including reversed applications. Treatment/reversal can modify segments without transfer-movement rows, so movement checks alone were insufficient. This is conservative for equal timestamps and may require manual review rather than unsafe undo.
@@ -43,7 +44,7 @@ Full backward compatibility would require changing pre-252 binaries or disguisin
 - Grower/Lot progress excludes transfer evidence from original fruit received totals. Receipt-provenance candidates exclude it as an original source. Receiving exports show each canonical receipt variety and its own quantity, retain primary-variety QC attribution, and append an explicit pending/completed transfer receipt status.
 - Migration Down now rejects linked/completed/variety-only evidence as well as the feature flags. No additional tables or columns were needed for this review.
 
-There is one feature migration: `20260923202144_AddTruckReceiptReconciliation`. Existing rows get false flags and null links/timestamps; no historical conversion or operational UPDATE is performed. Existing completed transfers remain grandfathered, existing receipts remain normal, and existing inventory does not become transit inventory. The former unique transfer/adjustment-type ledger index becomes nonunique because multiple allocations/compensations are legitimate. The nullable unique ReceivingReceiptId index plus one scalar receiving-receipt FK on each transfer enforce one-to-one matching. Receipt/profile uniqueness and restrictive FKs protect variety identity and history. Positive quantities and exact totals are validated transactionally by the application.
+There is one feature migration: `20260923202144_AddTruckReceiptReconciliation`. Existing rows get false flags and null links/timestamps; no historical conversion or operational UPDATE is performed. All existing transfers, open or completed, remain grandfathered; existing receipts remain normal, and existing inventory does not become transit inventory. This final revision changes no schema, SQL or migration: the existing false default provides the historical boundary. The former unique transfer/adjustment-type ledger index becomes nonunique because multiple allocations/compensations are legitimate. The nullable unique ReceivingReceiptId index plus one scalar receiving-receipt FK on each transfer enforce one-to-one matching. Receipt/profile uniqueness and restrictive FKs protect variety identity and history. Positive quantities and exact totals are validated transactionally by the application.
 
 ## 4. Migration rehearsals and tooling boundaries
 
@@ -77,21 +78,31 @@ The updated Blueprint validates with zero errors against [Render's published JSO
 
 ## 6. Production routes and open loads
 
-Read-only production IDs/codes: EBS **1/EBS**, WP DH **2/DH**, McDougal **3/McDougall**, WP **4/WP**. Routing uses canonical warehouse codes and custody groups, not these numeric IDs or display labels. With the flag on, it applies exactly to 1→4, 1→2, 1→3, 4→1, 2→1, 3→1. WP/DH/McDougall internal pairs stay outside this requirement; their existing routing restrictions are preserved, not expanded.
+Read-only production IDs/codes: EBS **1/EBS**, WP DH **2/DH**, McDougal **3/McDougall**, WP **4/WP**. Routing uses canonical warehouse codes and custody groups, not these numeric IDs or display labels. For qualifying transfers created while the flag is on, it applies exactly to 1→4, 1→2, 1→3, 4→1, 2→1, 3→1. WP/DH/McDougall internal pairs stay outside this requirement; their existing routing restrictions are preserved, not expanded.
 
-All qualifying open records are already InTransit, destination custody WP_DH, BinsReceived null:
+Read-only production recheck on September 23 Pacific / September 24 UTC confirmed **15 open loads, 630 bins**. Production still has the pre-feature schema, so the marker column is not yet present. Grandfathering below is the result of the reviewed migration's false default, verified on a fresh restore, not a claim that production was migrated.
 
-| Transfer | Bins | Transfer | Bins | Transfer | Bins |
-|---|---:|---|---:|---|---:|
-| 1 | 64 | 6 | 66 | 11 | 40 |
-| 2 | 27 | 7 | 29 | 12 | 34 |
-| 3 | 45 | 8 | 41 | 13 | 25 |
-| 4 | 70 | 9 | 59 | 14 | 30 |
-| 5 | 70 | 10 | 11 | 15 | 19 |
+| Load | Source | Destination custody | Bins | Created UTC | Current status | Grandfathered |
+|---|---|---|---:|---|---|---|
+| 1 | EBS / Lamb Street 13 | WP_DH | 64 | 2026-09-01 15:35:21 | InTransit | Yes |
+| 2 | EBS / Lamb Street 13 | WP_DH | 27 | 2026-09-01 16:16:26 | InTransit | Yes |
+| 3 | EBS / Lamb Street 13 | WP_DH | 45 | 2026-09-01 16:17:31 | InTransit | Yes |
+| 4 | EBS / Lamb Street 13 | WP_DH | 70 | 2026-09-01 16:19:33 | InTransit | Yes |
+| 5 | EBS / Lamb Street 13 | WP_DH | 70 | 2026-09-01 16:20:43 | InTransit | Yes |
+| 6 | EBS / Lamb Street 13 | WP_DH | 66 | 2026-09-01 16:22:08 | InTransit | Yes |
+| 7 | EBS / Lamb Street 13 | WP_DH | 29 | 2026-09-01 16:23:15 | InTransit | Yes |
+| 8 | EBS / Lamb Street 13 | WP_DH | 41 | 2026-09-01 16:26:16 | InTransit | Yes |
+| 9 | EBS / Lamb Street 13 | WP_DH | 59 | 2026-09-01 16:27:24 | InTransit | Yes |
+| 10 | EBS / Lamb Street 13 | WP_DH | 11 | 2026-09-01 16:30:25 | InTransit | Yes |
+| 11 | EBS / Lamb Street 13 | WP_DH | 40 | 2026-09-01 16:32:33 | InTransit | Yes |
+| 12 | EBS / Lamb Street 13 | WP_DH | 34 | 2026-09-01 16:33:39 | InTransit | Yes |
+| 13 | EBS / Lamb Street 13 | WP_DH | 25 | 2026-09-01 16:34:32 | InTransit | Yes |
+| 14 | EBS / Lamb Street 13 | WP_DH | 30 | 2026-09-01 16:35:37 | InTransit | Yes |
+| 15 | EBS / Lamb Street 13 | WP_DH | 19 | 2026-09-01 16:37:18 | InTransit | Yes |
 
-Total **630 bins**. Each has source dispatch ledger exactly negative its quantity, dispatch lineage exactly its quantity, zero other ledger rows and zero downstream lineage movements. No cross-company RoomTransfers exist. Transfers 16–22 are completed McDougall→WP internal history and remain grandfathered.
+Every destination is the WP_DH custody group; no destination warehouse or room has been assigned. All 15 already have legacy `InTransit` status, null BinsReceived, and version 1. Activation leaves that status and existing behavior unchanged; it does not convert them to the new reconciliation workflow or require a Truck Receipt. Each source debit equals negative BinsLoaded, each dispatch lineage quantity equals BinsLoaded, and these loads have zero non-dispatch ledger rows and zero non-dispatch movement rows. Transfers 16–22 remain completed legacy internal history. Existing destination inventory is not removed or reclassified by activation.
 
-No data conversion is needed or authorized. Before activation, operations must identify the actual Computech receipt and physical arrival status for each open load, and ensure receiving has not independently created ordinary inventory for the same fruit. The database evidence proves transit accounting, not physical truck location. After activation, open loads require deliberate matching with fresh transit validation; no automatic link or state rewrite occurs. Stop/manual review if evidence or physical status disagrees.
+**Operational review:** the loads were entered September 1 but LoadedAt is August 27–29. Remaining open for roughly four weeks from load date is potentially stale. The entries balance numerically, but database evidence does not establish physical truck location or whether ordinary receiving was independently entered elsewhere. Operations should review that aging under the existing legacy process; no closing, matching, repair or historical rewrite is included here. Existing 15 are never eligible for the new matching workflow, regardless of later activation or status changes.
 
 ## 7. Receiving, reconciliation and reopen findings
 
@@ -111,7 +122,7 @@ Reopen succeeds only with untouched completed inventory, uses compensating ledge
 6. Set the web's persistent Docker Command to `sh /app/start-truck-receipt-web.sh`, and flag `TruckReceiptReconciliation__Enabled=false`. Retain the existing schema predeploy check. Deploy the pinned compatible web SHA. Verify requested, built, activated and live SHA, launcher setting and `/health` / `/health/db`. Do not serve new web code before schema exists.
 7. Perform the read-only authenticated checklist below with activation off. Preserve a tested compatible release artifact/SHA for post-use recovery. Deliberately deploy the same pinned backup worker build and confirm its backup command and disabled auto-deploy policy.
 8. After schema, app, operations handoff and rollback guard are verified, activate the flag on the same pinned release while writes are quiesced. Verify all web instances use that configuration/commit; do not overlap old and feature-enabled web writers. Re-run read-only screens, then leave maintenance only after required gates pass.
-9. Use the next genuine operational receipt as the first live transaction, with operators responsible for both sides. Record reconciliation/accounting afterward. No fake fruit, invented transfer, automatic historic conversion or repair is allowed.
+9. Use a genuine qualifying transfer newly created while activation is on, followed by its actual receiving receipt, for the first live workflow. The existing 15 loads are excluded permanently. Operators remain responsible for both sides. Record reconciliation/accounting afterward. No fake fruit, invented transfer, automatic historic conversion or repair is allowed.
 
 Configuration changes may restart/deploy Render services, so keep the candidate pinned and reverify the actual SHA each time.
 
@@ -119,17 +130,19 @@ Configuration changes may restart/deploy Render services, so keep the candidate 
 
 - Verify Render deployment SHA and runtime RENDER_GIT_COMMIT equal the frozen candidate; confirm maintenance/auto-deploy/launcher/flag values explicitly. `/health` and `/health/db` must return success.
 - Sign in with a normal authorized operator. GET `/Receipts`, an existing ordinary receipt `/Receipts/{id}`, its edit screen without saving, its QC sample and receiving treatment views. Confirm existing quantity/identity and normal controls.
-- GET `/BinsRun?Section=Transfer&TransferType=InterCrew`, each selected open transfer detail `/BinsRun/InterCrewTransfers/{id}`, and `/BinsRun/InterCrewTransfers/{id}/Reconciliation`. Confirm the 15 loads remain at the verified counts with no selected receipt and no destination credits.
-- With flag off, receipt intent controls are absent and reconciliation context is visibly paused. Do not submit production forms merely to test denial. With flag on, eligible open loads show Awaiting Receipt and the new receipt intent control appears. No transfer is automatically selected.
+- GET `/BinsRun?Section=Transfer&TransferType=InterCrew`, each selected open transfer detail `/BinsRun/InterCrewTransfers/{id}`, and `/BinsRun/InterCrewTransfers/{id}/Reconciliation`. Confirm the 15 loads remain at the verified counts with legacy Receive controls, no reconciliation requirement and unchanged ledger/history. A direct reconciliation URL must explain that the load uses legacy receiving, without edit/match controls.
+- With flag off, receipt intent controls are absent and existing new-workflow contexts are visibly paused. Newly created loads use legacy behavior. Do not submit production forms merely to test denial. With flag on, only qualifying loads created while on show Awaiting Receipt; the 15 grandfathered loads still use legacy Receive. The new receipt intent control appears, but candidates exclude all legacy loads. No transfer is automatically selected.
 - GET source and destination room detail `/Rooms/{id}` for an affected load and Room 66; verify authoritative quantities, available inventory, original treatment lineage and unrelated lots. Review a completed internal McDougall→WP transfer and its original records. Do not change the Bartlett repair or the 26 audit discrepancies.
 - Read affected received/Grower-Lot progress reports and the receiving export. Evidence must not increase original grower receipts or appear as original-source provenance; multi-variety evidence must show separate variety quantities and pending/completed status.
 - Inspect production logs from deployment onward for missing-column/index errors, inventory invariant failures, repeated 500s, authorization failures, OOM/restarts or treatment/provenance errors. No release success while unexpected failures remain.
-- First live operation: choose a genuinely arriving, simple single-variety load with an actual Computech receipt, proven source allocation and no independently posted receiving inventory. Transfer 10 is the smallest current database load (11 bins), but use it only if operators verify that it is the real pending arrival; otherwise use the next genuine load. Do not manufacture a test movement.
+- First live operation: choose a genuine new qualifying load created after activation, with an actual Computech receipt, proven source allocation and no independently posted receiving inventory. Do not use transfers 1–15, including transfer 10: they are permanently legacy. Do not manufacture a test movement.
 - Enter that actual receipt with Await transfer reconciliation, explicitly select its load, check identity/crop/organic status, actual total and each FruitProfile, and complete once only when exact. Read back: source debit unchanged; active transit cleared by completed status; destination credit equals actual allocations; transfer Received and receipt completed; one association; expected audit; no ReceiptAdd for the evidence; original source receipt/treatment history preserved. Do not exercise retries, edits or reopen on live inventory as synthetic tests.
 
 ## 10. Recovery
 
 Before first use: pause/quiesce, execute the read-only pre-feature rollback command with the compatible candidate, and require exit 0. Leave schema in place. A deliberate guarded rollback to c014528 requires changing the service-level command under maintenance after the no-use proof. Recheck health and affected reads before restoring service.
+
+The exact pre-feature rollback cutoff is the first committed creation of either a qualifying transfer with `RequiresTruckReceipt=true` or a receipt with `IsTransferReceipt=true` (which also creates variety evidence), whichever happens first. Merely enabling the flag is not that cutoff; matching and receiving completion are not required. A cancelled, unlinked or soft-deleted record still prohibits rollback. Existing and paused-period legacy loads alone do not cross the cutoff.
 
 After first use: keep the launcher and schema, disable the flag under a bounded maintenance/configuration change, and deploy a reviewed **feature-aware** fix or compatible release. The first feature-aware candidate itself, with activation off, is the initial recovery baseline; c014528 is not. Disabling operations is not a data repair and does not undo legitimate transfers. Capture failed operation keys, versions, audit and accounting before a reviewed corrective action. Safe Admin reopen is a genuine business correction only, never an automatic software rollback.
 
@@ -137,10 +150,14 @@ An affected critical HTTP 500 is a stop/rollback-or-disable trigger. Unresolved 
 
 ## 11. Validation and review status
 
-Final validation: **231 affected-area tests passed**. The full suite has **1,919 passed, one pre-existing failure, two optional skips (1,922 total)**. This review adds 19 regression cases. Restore/build, default-provider EF model check, scoped whitespace verification and diff checks passed. PostgreSQL feature schema, workflow, Down/refusal and CLI safety checks passed. See the accompanying delivery report for final commit and historical fingerprint evidence. The new regression coverage includes flag off before/after first use, server/HTTP write rejection, receipt type round-trip duplication prevention, real downstream transfer/treatment/reversal, evidence treatment exclusion, worker schema compatibility, multi-variety export and original grower/provenance accounting.
+Final grandfathering validation: **233 affected-area tests passed**. The full suite has **1,921 passed, one pre-existing failure, two optional skips (1,924 total)**. Full-suite testing was explicitly requested. Three new lifecycle/HTTP regression cases replace the obsolete pause-blocks-legacy test: SQLite and PostgreSQL OFF → ON → OFF → ON lifecycles, plus an authenticated forged legacy match. The full run also caught a stale literal assertion expecting unquoted YAML booleans; it now requires the quoted false strings used by the reviewed Render configuration, preserving the privacy assertions. The subsequent full run has only the independently reproduced baseline failure.
+
+Restore/build, default-provider EF model check, scoped whitespace verification and diff checks passed. The build has six existing nullable warnings in QcSummaryEmailComposerTests and no errors. A fresh disposable restore of verified backup run 163 rechecked all archive/component hashes, applied the unchanged feature SQL, and verified all 22 original transfers retain false/null workflow defaults. All 15 open restored loads remain legacy, total 630, with versions/history untouched. Read-only candidate schema and pre-feature rollback CLI gates both exit 0. The original SQL, schema objects, migration history and ledger/index semantics are unchanged by the grandfathering revision.
+
+Earlier review evidence for empty-schema compatibility, used/unused Down behavior, actual old-code corruption probes and the Render Blueprint remains applicable because those migration/launcher/configuration files did not change. Fresh tests cover PostgreSQL workflow, pause/resume, new and legacy receiving, no conversion through direct new endpoints, inventory conservation, worker compatibility and authenticated HTTP.
 
 The protected original-column fingerprints remain unchanged: 3,482 ledger rows, 624 segments, 635 movements, 22 transfers and 2,049 receipts. Added schema fields are checked separately for false/null defaults.
 
 The known LegacyGrowerLotReconciliation test failure remains reproducible on unchanged main; its historical safety guard was not weakened. The two optional integration skips remain explicit. PostgreSQL workflows, actual old-code compatibility probes, authenticated TestServer requests, schema reversal/refusal, launcher missing-file rejection and CLI gates were tested locally. A Linux Docker image/start was not executed because the local Docker daemon is unavailable; actual Render launcher/configuration, Google-authenticated production smoke and the first real transaction remain release gates.
 
-This is a candidate for **human Ready for Review**, not automatic approval or production release clearance. Leave PR #252 unmerged and do not activate production during this review. No WinForms changes or MSI rebuild are required.
+PR #252 remains **Draft**, not Ready for Review, because the requested full-suite gate still fails on the independently reproduced historical reconciliation test. No production release clearance is claimed. Resolve that baseline gate separately before advancing the PR under the requested all-pass rule. Leave it unmerged and do not activate production during this review. No WinForms changes or MSI rebuild are required.

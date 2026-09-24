@@ -52,7 +52,8 @@ public sealed class TruckReceiptPage
     public bool CanEditTransfer { get; set; }
     public Dictionary<long, string> CandidateVarieties { get; set; } = [];
     public bool IsReconciled => Comparison.Count > 0 && Comparison.All(x => x.Difference == 0);
-    public string Status => Transfer?.Status == InterCrewTransferStatuses.Reversed ? "Cancelled - returned to source"
+    public string Status => Transfer is { RequiresTruckReceipt: false } ? "Legacy transfer — existing receiving workflow"
+        : Transfer?.Status == InterCrewTransferStatuses.Reversed ? "Cancelled - returned to source"
         : Transfer?.Status == InterCrewTransferStatuses.Received ? "Completed"
         : Receipt is null || Transfer is null ? "Awaiting Receipt"
         : IsReconciled ? "Reconciled — ready to complete" : "Reconciliation Required";

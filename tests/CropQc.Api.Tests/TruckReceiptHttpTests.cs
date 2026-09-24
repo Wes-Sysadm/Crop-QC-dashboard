@@ -74,6 +74,44 @@ public sealed class TruckReceiptHttpTests
     }
 
     [Fact]
+    public async Task Activated_receiving_excludes_legacy_load_and_rejects_forged_match_with_valid_token()
+    {
+        await using var f = await TruckReceiptReconciliationTests.Fixture.CreateAsync();
+        f.Feature.Enabled = false;
+        var legacy = await f.DispatchAsync(70);
+        f.Feature.Enabled = true;
+        var current = await f.DispatchAsync(70);
+        var receipt = await f.CreateReceiptAsync(70);
+        await using var factory = new Factory(f);
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = true });
+        client.DefaultRequestHeaders.Add("Test-Email", f.Actor.Email);
+        var html = await client.GetStringAsync($"/Receipts/{receipt.Id}/MatchTransfer");
+        Assert.DoesNotContain($"Select Transfer #{legacy.Id}", html);
+        Assert.Contains($"Select Transfer #{current.Id}", html);
+        var detail = await client.GetStringAsync($"/BinsRun/InterCrewTransfers/{legacy.Id}/Reconciliation");
+        Assert.Contains("legacy transfer keeps its original receiving workflow", detail);
+        Assert.DoesNotContain("Awaiting Receipt", detail);
+        Assert.DoesNotContain("reconciliation is paused", detail);
+        var form = await f.FormAsync(receipt.Id, legacy.Id);
+        var before = await f.Db.AuditLogs.CountAsync();
+        var response = await client.PostAsync($"/Receipts/{receipt.Id}/MatchTransfer", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = Token(html),
+            ["TransferId"] = legacy.Id.ToString(),
+            ["TransferVersion"] = form.TransferVersion.ToString(),
+            ["ReceiptVersion"] = form.ReceiptVersion.ToString()
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        f.Db.ChangeTracker.Clear();
+        var unchanged = await f.Db.InterCrewTransfers.SingleAsync(x => x.Id == legacy.Id);
+        Assert.False(unchanged.RequiresTruckReceipt);
+        Assert.Null(unchanged.ReceivingReceiptId);
+        Assert.Equal(form.TransferVersion, unchanged.ConcurrencyVersion);
+        Assert.Equal(before, await f.Db.AuditLogs.CountAsync());
+        Assert.Equal(0, await f.BalanceAsync(f.Destination.Id));
+    }
+
+    [Fact]
     public async Task Paused_feature_keeps_authenticated_evidence_readable_and_rejects_post_with_valid_token()
     {
         await using var f = await TruckReceiptReconciliationTests.Fixture.CreateAsync();
