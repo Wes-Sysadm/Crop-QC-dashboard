@@ -805,7 +805,7 @@ public static class DatabaseStartupDiagnostics
         ,new("IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_DestinationCustodyGroup_Status_LoadedAt")
         ,new("IX_InterCrewTransfers_SourceRoomId_LoadedAt", "InterCrewTransfers", "IX_InterCrewTransfers_SourceRoomId_LoadedAt")
         ,new("IX_RoomInventoryAdjustments_InterCrewTransferId", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId")
-        ,new("IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", "RoomInventoryAdjustments", "IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType", RequireUnique: true)
+        ,new(TruckReceiptLedgerIndexContract.IndexName, "RoomInventoryAdjustments", TruckReceiptLedgerIndexContract.IndexName, RequireTruckReceiptLedgerContract: true)
         ,new("IX_TreatmentLineageMovements_InterCrewTransferId", "TreatmentLineageMovements", "IX_TreatmentLineageMovements_InterCrewTransferId")
         ,new("UX_InventoryIdentityCorrections_ReceiptSource", "InventoryIdentityCorrections", "UX_InventoryIdentityCorrections_ReceiptSource", RequireUnique: true)
         ,new("IX_InventoryIdentityCorrections_CreatedByUserId", "InventoryIdentityCorrections", "IX_InventoryIdentityCorrections_CreatedByUserId")
@@ -1268,7 +1268,9 @@ public static class DatabaseStartupDiagnostics
 
             foreach (var expectation in RequiredIndexExpectations)
             {
-                if (!await NamedObjectExistsAsync(
+                if (expectation.RequireTruckReceiptLedgerContract
+                    ? !await TruckReceiptLedgerIndexContract.IsSatisfiedAsync(connection, provider, cancellationToken)
+                    : !await NamedObjectExistsAsync(
                     connection,
                     provider,
                     expectation,
@@ -1444,7 +1446,8 @@ public static class DatabaseStartupDiagnostics
         string DisplayName,
         string TableName,
         string ObjectName,
-        bool RequireUnique = false);
+        bool RequireUnique = false,
+        bool RequireTruckReceiptLedgerContract = false);
 
     private enum SchemaNamedObjectKind
     {

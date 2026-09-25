@@ -19,15 +19,15 @@ public static class TruckReceiptReleaseSafety
         {
             var indexes = await db.Database.SqlQueryRaw<int>("""
                 SELECT count(*)::integer AS "Value" FROM pg_indexes WHERE schemaname=current_schema() AND
-                  ((indexname IN ('IX_InterCrewTransfers_ReceivingReceiptId','IX_ReceiptVarietyLines_ReceiptId_FruitProfileId') AND indexdef LIKE 'CREATE UNIQUE%')
-                   OR (indexname='IX_RoomInventoryAdjustments_InterCrewTransferId_AdjustmentType' AND indexdef NOT LIKE 'CREATE UNIQUE%'))
+                  indexname IN ('IX_InterCrewTransfers_ReceivingReceiptId','IX_ReceiptVarietyLines_ReceiptId_FruitProfileId') AND indexdef LIKE 'CREATE UNIQUE%'
                 """).SingleAsync(ct);
             var foreignKeys = await db.Database.SqlQueryRaw<int>("""
                 SELECT count(*)::integer AS "Value" FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
                 WHERE n.nspname=current_schema() AND c.contype='f' AND c.confdeltype='r' AND c.conname IN
                   ('FK_InterCrewTransfers_Receipts_ReceivingReceiptId','FK_ReceiptVarietyLines_Receipts_ReceiptId','FK_ReceiptVarietyLines_FruitProfiles_FruitProfileId')
                 """).SingleAsync(ct);
-            if (indexes != 3 || foreignKeys != 3)
+            if (indexes != 2 || foreignKeys != 3
+                || !await TruckReceiptLedgerIndexContract.IsSatisfiedAsync(db.Database.GetDbConnection(), db.Database.ProviderName!, ct))
                 throw new InvalidOperationException("Truck Receipt indexes or restrictive relationships are incomplete.");
         }
     }
