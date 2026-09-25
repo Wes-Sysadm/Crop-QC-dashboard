@@ -81,6 +81,7 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
     [HttpPut("samples/{sampleId:long}/pressures")]
     [HttpPut("samples/{sampleId:long}/pressure")]
     [HttpPost("samples/{sampleId:long}/pressure")]
+    [IgnoreAntiforgeryToken] // Station code + hashed API key; browser cookies are insufficient.
     public async Task<IActionResult> UpdatePressures(long sampleId, UpdateQcStationPressuresRequest request, CancellationToken cancellationToken)
     {
         var auth = await AuthenticateStationAsync(cancellationToken);
@@ -237,10 +238,20 @@ public sealed class QcStationController(CropQcDbContext dbContext, ILogger<QcSta
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "QC Station is inactive." }));
         }
 
-        station.LastSeenAt = DateTimeOffset.UtcNow;
-        station.LastSeenIp = remoteIp;
-        await dbContext.SaveChangesAsync(cancellationToken);
         return (station, null);
+    }
+
+    [HttpPost("heartbeat")]
+    [IgnoreAntiforgeryToken] // Station code + hashed API key; browser cookies are insufficient.
+    public async Task<IActionResult> Heartbeat(CancellationToken cancellationToken)
+    {
+        var auth = await AuthenticateStationAsync(cancellationToken);
+        if (auth.Result is not null) return auth.Result;
+
+        auth.Station!.LastSeenAt = DateTimeOffset.UtcNow;
+        auth.Station.LastSeenIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     private static QcStationSampleDetail ToDetail(QcSample sample)

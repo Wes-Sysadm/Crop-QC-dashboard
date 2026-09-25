@@ -73,7 +73,7 @@
 
     @if (Model.IsEditingMetadata && Model.CanEdit)
     {
-        <form method="post" action="/FieldSamples/@Model.SampleId/metadata" class="panel stack-form" data-field-metadata-form>
+        <form asp-antiforgery="true" method="post" action="/FieldSamples/@Model.SampleId/metadata" class="panel stack-form" data-field-metadata-form>
             <h2>Edit Field Sample Details</h2>
             <input type="hidden" name="SampleId" value="@Model.SampleId" />
             <div class="grid-two">
@@ -128,7 +128,7 @@
                 <div class="button-row">
                     @if (Model.CanMarkComplete)
                     {
-                        <form method="post" action="/FieldSamples/@Model.SampleId/complete" data-requires-autosave>
+                        <form asp-antiforgery="true" method="post" action="/FieldSamples/@Model.SampleId/complete" data-requires-autosave>
                             <button type="submit">Mark Complete</button>
                         </form>
                     }

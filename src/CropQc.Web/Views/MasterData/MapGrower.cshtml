@@ -70,7 +70,7 @@
 
 <section class="panel grower-mapping-panel">
     <h2>Resolve mapping</h2>
-    <form class="form-grid" method="post" action="/MasterData/canonical-growers/Map">
+    <form asp-antiforgery="true" class="form-grid" method="post" action="/MasterData/canonical-growers/Map">
         <input type="hidden" name="SourceGrowerName" value="@form.SourceGrowerName" />
         <input type="hidden" name="GrowerNumber" value="@form.GrowerNumber" />
         <input type="hidden" name="Facility" value="@form.Facility" />

@@ -1051,6 +1051,8 @@ button.chip:hover, button.chip:focus { background: #eaf2f8; border-color: #235a9
 
 .projection-list { display: grid; gap: 8px; margin-bottom: 20px; }
 .projection-list-row { align-items: stretch; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr) auto; }
+.projection-list-row > form { margin: 0; min-width: 0; }
+button.projection-list-item { background: transparent; font: inherit; text-align: left; width: 100%; }
 .projection-print-action { align-items: center; display: inline-flex; justify-content: center; white-space: nowrap; }
 .projection-list-item {
     align-items: center;

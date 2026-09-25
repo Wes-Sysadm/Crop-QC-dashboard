@@ -251,14 +251,28 @@
                 @foreach (var item in Model.Planner.Projections)
                 {
                     <div class="projection-list-row">
+                    @if (item.IsDeleted)
+                    {
+                        <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@item.Id/InspectDeleted">
+                            <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
+                            <input type="hidden" name="Facility" value="@plannerFacility" />
+                            <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                            <button type="submit" class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")">
+                                <span class="status pending">@item.ProjectionMode</span>
+                                <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@ProjectionStatusLabel(item.Status) · @item.SourceCount source(s) · Deleted</small></span>
+                                <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">Inspect deleted record</small></span>
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
                     <a class="projection-list-item @(selected?.Id == item.Id ? "selected" : "")"
-                       href="@(item.IsDeleted
-                           ? $"/BinsRun?Section=Planner&PlannedDate={item.PlannedRunDate:yyyy-MM-dd}&ProjectionId={item.Id}&RoomId={Model.Filter.RoomId}&Facility={plannerFacility}&ProjectionVisibility={plannerVisibility}&ProjectionSort={plannerSort}"
-                           : $"/BinsRun/Projections/{item.Id}/Outcome")">
+                       href="/BinsRun/Projections/@item.Id/Outcome">
                         <span class="status pending">@item.ProjectionMode</span>
                         <span><strong><span class="facility-badge">@item.FacilityCode</span> @item.Name</strong><small>@ProjectionStatusLabel(item.Status) · @item.SourceCount source(s) @(item.IsDeleted ? "· Deleted" : "")</small></span>
                         <span><strong>@item.TotalPlannedBins bins</strong><small>@decimal.Floor(item.TotalPackedProjectedBoxes) whole packed boxes · @(item.EffectivePackoutPercent is decimal pct ? $"{pct:0.##}% packout" : "packout n/a") · @BusinessTime.FormatPacific(item.UpdatedAt)</small><small class="projection-card-action">@(item.IsDeleted ? "Inspect deleted record" : "View Outcome")</small></span>
                     </a>
+                    }
                     @if (!item.IsDeleted)
                     {
                         <a class="button secondary-button projection-print-action" href="/BinsRun/Projections/@item.Id/Outcome#print-report">Print Projection</a>
@@ -269,7 +283,7 @@
             }
             @if (Model.Planner.CanEdit)
             {
-                <form class="form-grid compact-form" method="post" action="/BinsRun/Projections">
+                <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections">
                     <h3 class="wide">Create Projection</h3>
                     <input type="hidden" name="Facility" value="@plannerFacility" />
                     <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
@@ -350,7 +364,7 @@
 
                 @if (selected.CanEditRecord)
                 {
-                    <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
+                    <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Header">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="Facility" value="@plannerFacility" />
                         <input type="hidden" name="ProjectionVisibility" value="@plannerVisibility" />
@@ -372,7 +386,7 @@
                         <button type="submit">Save Draft</button>
                     </form>
 
-                    <form class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources"
+                    <form asp-antiforgery="true" class="form-grid compact-form run-source-search" method="post" action="/BinsRun/Projections/@selected.Id/Sources"
                           data-projection-mode="@selected.ProjectionMode" data-projection-id="@selected.Id"
                           data-facility-warehouse-id="@selected.FacilityWarehouseId">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
@@ -416,7 +430,7 @@
                 }
                 @if (selected.Sources.Count > 0)
                 {
-                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Packout/ApplyAll">
+                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Packout/ApplyAll">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <label>Apply Expected Packout % to all current sources
@@ -560,7 +574,7 @@
                         }
                         @if (selected.CanEditRecord && source.ActualBinsRunEntryId is null)
                         {
-                            <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
+                            <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id" data-projection-source-form>
                                 <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                 <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                 <label class="field">@(source.SourceType == "GrowerLot" ? "Total Projected Bins" : selected.ProjectionMode == "Preharvest" ? "Estimated Bins to Harvest/Pack" : "Planned bins")
@@ -599,12 +613,12 @@
                                 <span class="muted" data-autosave-status>Saved</span>
                             </form>
                             <div class="action-bar">
-                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
+                                <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Remove">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                     <button type="submit" class="secondary-button">Remove Source</button>
                                 </form>
-                                <form method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
+                                <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Sources/@source.Id/Refresh">
                                     <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                                     <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                                     <input type="hidden" name="confirmRefresh" value="true" />
@@ -678,7 +692,7 @@
                     }
                     else
                     {
-                        <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/PackPlan/Preview">
+                        <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/PackPlan/Preview">
                             <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                             <input type="hidden" name="PlannedRunDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                             <label>Pack-plan scenario
@@ -882,7 +896,7 @@
                     <p class="muted">This preserves the Preharvest estimate and creates a separate Inventory projection only after every block is explicitly mapped to a real received lot.</p>
                     @if (selected.Sources.All(x => x.InventoryMappingChoices.Count > 0) && selected.CanEditRecord)
                     {
-                        <form class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/CreateInventory">
+                        <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/BinsRun/Projections/@selected.Id/CreateInventory">
                             <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                             <input type="hidden" name="FacilityWarehouseId" value="@selected.FacilityWarehouseId" />
                             <label class="field">Run date
@@ -925,13 +939,13 @@
                 <a class="button" href="/BinsRun/Projections/@selected.Id/Outcome">View Outcome</a>
                 @if (selected.CanEditRecord)
                 {
-                    <form method="post" action="/BinsRun/Projections/@selected.Id/Ready">
+                    <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@selected.Id/Ready">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <button type="submit">Mark Ready</button>
                     </form>
                 }
-                <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
+                <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Duplicate">
                     <label>Duplicate to <input type="date" name="PlannedRunDate" value="@selected.PlannedRunDate.AddDays(1).ToString("yyyy-MM-dd")" required /></label>
                     <label>Facility
                         <select name="FacilityWarehouseId" required>
@@ -945,7 +959,7 @@
                 </form>
                 @if (Model.Planner.CanAdmin && selected.Status is "Draft" or "Ready")
                 {
-                    <form class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Cancel">
+                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/Projections/@selected.Id/Cancel">
                         <input type="hidden" name="ConcurrencyVersion" value="@selected.ConcurrencyVersion" />
                         <input type="hidden" name="plannedDate" value="@selected.PlannedRunDate.ToString("yyyy-MM-dd")" />
                         <label>Reason <input name="Reason" maxlength="500" required /></label>
@@ -978,7 +992,20 @@
                     {
                         <tr>
                             <td><span class="facility-badge">@item.FacilityCode</span></td>
-                            <td><a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a></td>
+                            <td>
+                                @if (item.IsDeleted)
+                                {
+                                    <form asp-antiforgery="true" method="post" action="/BinsRun/Projections/@item.Id/InspectDeleted">
+                                        <input type="hidden" name="Facility" value="@plannerFacility" />
+                                        <input type="hidden" name="ProjectionSort" value="@plannerSort" />
+                                        <button type="submit" class="secondary-button">@item.Name — Inspect deleted record</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <a href="/BinsRun?Section=Planner&amp;PlannedDate=@item.PlannedRunDate.ToString("yyyy-MM-dd")&amp;ProjectionId=@item.Id&amp;Facility=@plannerFacility&amp;ProjectionVisibility=@plannerVisibility&amp;ProjectionSort=@plannerSort">@item.Name</a>
+                                }
+                            </td>
                             <td>@item.ProjectionMode</td>
                             <td>@ProjectionStatusLabel(item.Status) @(item.IsDeleted ? "· Deleted" : "")</td>
                             <td>@item.PlannedRunDate</td>
@@ -1537,7 +1564,7 @@ else
                                 </tbody>
                             </table>
                         </div>
-                        <form class="inline-form" method="post" action="/BinsRun/ActualRunOverrides/@request.Id/Approve">
+                        <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/ActualRunOverrides/@request.Id/Approve">
                             <label>Required override reason <input name="Reason" maxlength="1000" required /></label>
                             <button type="submit">Approve and Apply</button>
                         </form>
@@ -1604,7 +1631,7 @@ else
                 {
                     <p class="notice warning" role="status">@Model.TransferInventoryNotice</p>
                 }
-                <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
+                <form asp-antiforgery="true" class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
@@ -1777,7 +1804,7 @@ else
             }
             else
             {
-                <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                <form asp-antiforgery="true" class="form-grid" method="post" action="/BinsRun/TrueUp">
                     <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Current receipt-backed lot
@@ -1840,7 +1867,7 @@ else
                                 }
                                 @if (Model.CanAdmin)
                                 {
-                                    <form class="inline-form" method="post" action="/BinsRun/ActualRuns/@run.Id/Cancel">
+                                    <form asp-antiforgery="true" class="inline-form" method="post" action="/BinsRun/ActualRuns/@run.Id/Cancel">
                                         <input type="hidden" name="ConcurrencyVersion" value="@run.ConcurrencyVersion" />
                                         <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
                                         <label>Cancellation reason <input name="Reason" maxlength="1000" required /></label>

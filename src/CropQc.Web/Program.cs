@@ -27,6 +27,9 @@ builder.Services.Configure<FormOptions>(options =>
 });
 builder.Services.AddControllersWithViews(options =>
 {
+    // Browser writes are protected by default. Machine exceptions are action-scoped
+    // and covered by the Batch 1C endpoint architecture test.
+    options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
     options.ModelBinderProviders.Insert(0, new PacificDateTimeOffsetModelBinderProvider());
 });
 ConfigureDataProtection(builder.Services, builder.Configuration);

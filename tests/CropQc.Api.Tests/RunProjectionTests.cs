@@ -1136,6 +1136,8 @@ public sealed class RunProjectionTests
         Assert.Single(deleted.Projections);
         Assert.True(deleted.SelectedProjection!.IsDeleted);
         Assert.False(deleted.SelectedProjection.CanEditRecord);
+        Assert.False(await db.AuditLogs.AnyAsync(x => x.Action == "InspectDeleted"));
+        Assert.Equal(projection.PlannedRunDate, await service.InspectDeletedAsync(projection.Id, Owner(), CancellationToken.None));
         Assert.True(await db.AuditLogs.AnyAsync(x => x.EntityName == nameof(RunProjection)
             && x.EntityKey == projection.Id.ToString()
             && x.Action == "InspectDeleted"));

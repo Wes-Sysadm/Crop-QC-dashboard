@@ -8,7 +8,6 @@ namespace CropQc.Web.Services;
 public interface ICanonicalGrowerService
 {
     Task<CanonicalGrowerResolutionSet> LoadResolutionSetAsync(CancellationToken cancellationToken);
-    Task EnsureSeedMappingsAsync(CancellationToken cancellationToken);
     void InvalidateResolutionSet();
 }
 
@@ -152,15 +151,10 @@ public sealed partial class CanonicalGrowerService(
     {
         if (resolutionCache is null)
         {
-            await EnsureSeedMappingsAsync(cancellationToken);
             return await BuildResolutionSetAsync(cancellationToken);
         }
 
-        return await resolutionCache.GetOrCreateAsync(async ct =>
-        {
-            await EnsureSeedMappingsAsync(ct);
-            return await BuildResolutionSetAsync(ct);
-        }, cancellationToken);
+        return await resolutionCache.GetOrCreateAsync(BuildResolutionSetAsync, cancellationToken);
     }
 
     public void InvalidateResolutionSet() => resolutionCache?.Invalidate();
@@ -227,55 +221,6 @@ public sealed partial class CanonicalGrowerService(
                 StringComparer.OrdinalIgnoreCase);
 
         return new CanonicalGrowerResolutionSet(aliasMap, numberMap);
-    }
-
-    public async Task EnsureSeedMappingsAsync(CancellationToken cancellationToken)
-    {
-        foreach (var group in KnownAliases.GroupBy(x => x.CanonicalName, StringComparer.OrdinalIgnoreCase))
-        {
-            var identity = NormalizeGrowerKey(group.Key);
-            var grower = await dbContext.CanonicalGrowers
-                .Include(x => x.Aliases)
-                .SingleOrDefaultAsync(x => x.NormalizedKey == identity, cancellationToken);
-            if (grower is null)
-            {
-                grower = new CanonicalGrower
-                {
-                    DisplayName = group.Key,
-                    NormalizedKey = identity,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                    IsActive = true
-                };
-                dbContext.CanonicalGrowers.Add(grower);
-            }
-            else if (!grower.DisplayName.Equals(group.Key, StringComparison.Ordinal))
-            {
-                grower.DisplayName = group.Key;
-                grower.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-
-            foreach (var alias in group)
-            {
-                var aliasKey = NormalizeGrowerKey(alias.Alias);
-                if (!grower.Aliases.Any(x => x.NormalizedAliasKey == aliasKey))
-                {
-                    grower.Aliases.Add(new CanonicalGrowerAlias
-                    {
-                        AliasName = alias.Alias,
-                        NormalizedAliasKey = aliasKey,
-                        CreatedAt = DateTimeOffset.UtcNow,
-                        UpdatedAt = DateTimeOffset.UtcNow,
-                        IsActive = true
-                    });
-                }
-            }
-        }
-
-        if (await dbContext.SaveChangesAsync(cancellationToken) > 0)
-        {
-            InvalidateResolutionSet();
-        }
     }
 
     public static bool TryGetKnownCanonicalAlias(string? value, out KnownGrowerAlias alias)

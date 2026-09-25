@@ -17,7 +17,7 @@
 <section class="panel" id="users">
     <h2>Users</h2>
     <h3>Add User</h3>
-    <form class="toolbar" method="post" action="/Admin/Users/Add">
+    <form asp-antiforgery="true" class="toolbar" method="post" action="/Admin/Users/Add">
         <div class="field"><label>Email</label><input name="Email" type="email" required /></div>
         <div class="field"><label>Display Name</label><input name="DisplayName" /></div>
         <div class="field">
@@ -48,7 +48,7 @@
                     <td>@user.Email</td>
                     <td>@(user.IsActive ? "Active" : "Inactive")</td>
                     <td>
-                        <form class="stack-form compact-form" method="post" action="/Admin/Users/Update">
+                        <form asp-antiforgery="true" class="stack-form compact-form" method="post" action="/Admin/Users/Update">
                             <input type="hidden" name="UserId" value="@user.Id" />
                             <select name="RoleId" aria-label="Role for @user.DisplayName" required>
                                 @foreach (var role in Model.Roles.Where(x => x.IsActive || x.Id == user.RoleId))
@@ -67,7 +67,7 @@
                             <summary><strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong></summary>
                             <strong>@(user.EmploymentFacility == CropQc.Data.Entities.EmploymentFacilities.Shared ? "Shared / Management" : user.EmploymentFacility)</strong>
                             <div class="muted">Effective @BusinessTime.FormatPacific(user.EmploymentEffectiveAt, empty: "Not assigned")</div>
-                            <form class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
+                            <form asp-antiforgery="true" class="form-grid compact-form" method="post" action="/Admin/Users/Employment">
                                 <input type="hidden" name="UserId" value="@user.Id" />
                                 <label class="field">Assignment
                                     <select name="EmploymentFacility" required>
@@ -129,7 +129,7 @@
 
     <details>
         <summary>Create custom role</summary>
-        <form class="form-grid" method="post" action="/Admin/Users/Roles/Create">
+        <form asp-antiforgery="true" class="form-grid" method="post" action="/Admin/Users/Roles/Create">
             <label class="field">Name<input name="Name" required maxlength="100" /></label>
             <label class="field">Description<textarea name="Description" maxlength="500"></textarea></label>
             <label class="field">Copy permissions from
@@ -160,7 +160,7 @@
         <h3>@selected.Name</h3>
         @if (selected.IsImportedMigrationRole) { <p class="notice warning"><strong>Migration role — review recommended.</strong> This editable custom role preserves imported legacy access until its assigned users are deliberately reassigned.</p> }
         <p><strong>Assigned users:</strong> @(selected.AssignedUsers.Count == 0 ? "None" : string.Join(", ", selected.AssignedUsers))</p>
-        <form class="toolbar" method="post" action="/Admin/Users/Roles/Update">
+        <form asp-antiforgery="true" class="toolbar" method="post" action="/Admin/Users/Roles/Update">
             <input type="hidden" name="RoleId" value="@selected.Id" />
             <label class="field">Name<input name="Name" value="@selected.Name" maxlength="100" readonly="@selected.IsSystemRole" required /></label>
             <label class="field">Description<input name="Description" value="@selected.Description" maxlength="500" /></label>
@@ -184,7 +184,7 @@
             <p class="notice warning">Move all assigned users to another role before deleting this role.</p>
         }
 
-        <form class="access-user-card" method="post" action="/Admin/Users/Roles/Matrix">
+        <form asp-antiforgery="true" class="access-user-card" method="post" action="/Admin/Users/Roles/Matrix">
             <input type="hidden" name="RoleId" value="@selected.Id" />
             @foreach (var group in Model.Areas.GroupBy(x => x.Group))
             {

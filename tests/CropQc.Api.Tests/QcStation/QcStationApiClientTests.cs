@@ -15,6 +15,8 @@ public sealed class QcStationApiClientTests
 
         await client.GetTodaySamplesAsync("MCD");
 
+        Assert.Equal(new[] { "POST /api/qc-station/heartbeat", "GET /api/qc-station/samples/today" }, handler.Requests);
+
         Assert.Equal("MCD-12", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.StationCodeHeaderName).Single());
         Assert.Equal("secret-key", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.HeaderName).Single());
         Assert.Equal("MCD 12", handler.LastRequest?.Headers.GetValues("X-QC-STATION-NAME").Single());
@@ -28,6 +30,8 @@ public sealed class QcStationApiClientTests
 
         await client.GetSampleDetailAsync(123);
 
+        Assert.Equal(new[] { "POST /api/qc-station/heartbeat", "GET /api/qc-station/samples/123/pressure" }, handler.Requests);
+
         Assert.Equal("WP-FTA-01", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.StationCodeHeaderName).Single());
         Assert.Equal("secret-key", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.HeaderName).Single());
         Assert.Equal("/api/qc-station/samples/123/pressure", handler.LastRequest?.RequestUri?.AbsolutePath);
@@ -40,6 +44,8 @@ public sealed class QcStationApiClientTests
         var client = QcStationApiClient.Create(handler, "https://dashboard.example", "DH-FTA-02", "secret-key");
 
         await client.SavePressuresAsync(123, [new QcStationPressureRowUpdate(1, 12.3m, 13.4m)]);
+
+        Assert.Equal(new[] { "POST /api/qc-station/heartbeat", "PUT /api/qc-station/samples/123/pressure" }, handler.Requests);
 
         Assert.Equal("DH-FTA-02", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.StationCodeHeaderName).Single());
         Assert.Equal("secret-key", handler.LastRequest?.Headers.GetValues(QcStationApiKeyValidator.HeaderName).Single());
@@ -63,10 +69,15 @@ public sealed class QcStationApiClientTests
     private sealed class CapturingHandler(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
+        public List<string> Requests { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             LastRequest = request;
+            Requests.Add(request.Method + " " + request.RequestUri!.AbsolutePath);
+            Assert.True(request.Headers.Contains(QcStationApiKeyValidator.StationCodeHeaderName));
+            Assert.True(request.Headers.Contains(QcStationApiKeyValidator.HeaderName));
+            Assert.False(request.Headers.Contains("RequestVerificationToken"));
             return Task.FromResult(new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(responseJson, Encoding.UTF8, "application/json")

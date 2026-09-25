@@ -19,7 +19,7 @@
     <p class="notice">Station Name is a friendly label and can be reused. Station Code must be unique and is what the QC Station app uses to authenticate.</p>
     <p class="notice">After installing Crop QC Station, open the app and choose Import / Replace Station Config. Select the JSON file you downloaded here. The app will install it into ProgramData automatically. Confirm the Station Name and Station Code shown in the app match this station. The MSI contains no station secrets.</p>
     <p class="notice warning">Station codes for new stations may use only letters, numbers, dashes, and underscores. Use dashes instead of spaces, for example <code>MCD-12</code>.</p>
-    <form class="toolbar" method="post" action="/Admin/QcStations/Create">
+    <form asp-antiforgery="true" class="toolbar" method="post" action="/Admin/QcStations/Create">
         <div class="field"><label>Station name</label><input id="new-station-name" name="StationName" placeholder="WP QC Station 1" required /></div>
         <div class="field"><label>Station code</label><input id="new-station-code" name="StationCode" placeholder="WP-QC-01" pattern="[A-Za-z0-9_-]+" title="Use letters, numbers, dashes, and underscores only. Use dashes instead of spaces." required /></div>
         <div class="field">
@@ -101,21 +101,21 @@
                 }
             </div>
             <div class="action-bar">
-                <form method="post" action="/Admin/QcStations/RotateKey">
+                <form asp-antiforgery="true" method="post" action="/Admin/QcStations/RotateKey">
                     <input type="hidden" name="id" value="@station.Id" />
                     <button class="secondary-button" type="submit">Rotate Key and Download Config JSON</button>
                 </form>
-                <form method="post" action="/Admin/QcStations/DownloadConfig">
+                <form asp-antiforgery="true" method="post" action="/Admin/QcStations/DownloadConfig">
                     <input type="hidden" name="id" value="@station.Id" />
                     <button class="secondary-button" type="submit">Download Config</button>
                 </form>
                 @if (station.IsActive)
                 {
-                    <form method="post" action="/Admin/QcStations/Deactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Deactivate</button></form>
+                    <form asp-antiforgery="true" method="post" action="/Admin/QcStations/Deactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Deactivate</button></form>
                 }
                 else
                 {
-                    <form method="post" action="/Admin/QcStations/Reactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Reactivate</button></form>
+                    <form asp-antiforgery="true" method="post" action="/Admin/QcStations/Reactivate"><input type="hidden" name="id" value="@station.Id" /><button class="secondary-button" type="submit">Reactivate</button></form>
                 }
             </div>
             @if (!station.IsActive)
@@ -124,7 +124,7 @@
             }
             <details>
                 <summary>Edit</summary>
-                <form class="stack-form" method="post" action="/Admin/QcStations/Update">
+                <form asp-antiforgery="true" class="stack-form" method="post" action="/Admin/QcStations/Update">
                     <input type="hidden" name="Id" value="@station.Id" />
                     <label>Station name <input name="StationName" value="@station.StationName" required /></label>
                     <label>Station code <input name="StationCode" value="@station.StationCode" title="Use letters, numbers, dashes, and underscores only for new station codes. Existing codes with spaces can be saved unchanged." required /></label>

@@ -17,7 +17,7 @@
 
     @if (googleConfigured)
     {
-        <form method="post" action="/Login/Google">
+        <form asp-antiforgery="true" method="post" action="/Login/Google">
             <button type="submit">Sign in with Google</button>
         </form>
     }

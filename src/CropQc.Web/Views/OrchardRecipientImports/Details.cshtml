@@ -77,7 +77,7 @@
                     <td>
                     @if (Model.Status == "Reviewing")
                     {
-                        <form method="post" action="/Admin/OrchardRecipientImports/@Model.Id/Review" class="stack-form compact-form">
+                        <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipientImports/@Model.Id/Review" class="stack-form compact-form">
                             <input type="hidden" name="RowId" value="@row.Id" />
                             <label>Decision
                                 <select name="Decision" required>
@@ -130,7 +130,7 @@
             <p class="status warning">Apply is blocked until every token is Approved, Rejected, or explicitly Deferred.</p>
         }
         <p>Apply verifies the exact workbook checksum and a successful durable backup from the last 24 hours. Approved rows are applied in one transaction. Rejected and deferred rows remain untouched.</p>
-        <form method="post" enctype="multipart/form-data" action="/Admin/OrchardRecipientImports/@Model.Id/Apply" class="stack-form">
+        <form asp-antiforgery="true" method="post" enctype="multipart/form-data" action="/Admin/OrchardRecipientImports/@Model.Id/Apply" class="stack-form">
             <label>Exact reviewed workbook
                 <input type="file" name="Workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
             </label>

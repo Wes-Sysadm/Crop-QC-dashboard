@@ -14,7 +14,7 @@
 <section class="panel" aria-labelledby="add-grower-recipient-heading">
     <h2 id="add-grower-recipient-heading">Add Grower Number recipient</h2>
     <p class="muted">Choose any active Grower Number from the reviewed Grower master. A canonical orchard is not required.</p>
-    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="stack-form">
+    <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="stack-form">
         <label for="grower-number-filter">Find Grower Number
             <input id="grower-number-filter" type="search" autocomplete="off" placeholder="Search number or Grower name" data-grower-number-filter />
         </label>
@@ -61,7 +61,7 @@
                 <td>@row.GrowerNumber</td>
                 <td>@row.GrowerName</td>
                 <td>
-                    <form id="grower-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="inline-form">
+                    <form asp-antiforgery="true" id="grower-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/Save" class="inline-form">
                         <input type="hidden" name="Id" value="@row.RecipientId" />
                         <input type="hidden" name="CanonicalGrowerNumberId" value="@row.CanonicalGrowerNumberId" />
                         <input type="email" name="EmailAddress" value="@row.EmailAddress" maxlength="320" required aria-label="Recipient email for Grower Number @row.GrowerNumber" />
@@ -73,11 +73,11 @@
                 <td>@row.LastModifiedBy</td>
                 <td class="button-row">
                     <button type="submit" form="grower-recipient-@row.RecipientId">Save</button>
-                    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Enabled" class="inline-form">
+                    <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Enabled" class="inline-form">
                         <input type="hidden" name="enabled" value="@((!row.IsActive).ToString().ToLowerInvariant())" />
                         <button type="submit" class="secondary-button">@(row.IsActive ? "Disable" : "Enable")</button>
                     </form>
-                    <form method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this Grower Number recipient?');">
+                    <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/GrowerNumbers/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this Grower Number recipient?');">
                         <button type="submit" class="danger-button">Remove</button>
                     </form>
                 </td>
@@ -90,7 +90,7 @@
 <section class="panel" aria-labelledby="add-orchard-recipient-heading">
     <h2 id="add-orchard-recipient-heading">Add orchard-specific recipient</h2>
     <p class="muted">Existing orchard-scoped recipient behavior remains available for reports with a confirmed canonical orchard.</p>
-    <form method="post" action="/Admin/OrchardRecipients/Save" class="stack-form">
+    <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/Save" class="stack-form">
         <label>Orchard
             <select name="CanonicalOrchardId" required>
                 <option value="">Select an orchard</option>
@@ -126,7 +126,7 @@
                 else
                 {
                     <td>
-                        <form id="orchard-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/Save" class="inline-form">
+                        <form asp-antiforgery="true" id="orchard-recipient-@row.RecipientId" method="post" action="/Admin/OrchardRecipients/Save" class="inline-form">
                             <input type="hidden" name="Id" value="@row.RecipientId" />
                             <input type="hidden" name="CanonicalOrchardId" value="@row.CanonicalOrchardId" />
                             <input type="email" name="EmailAddress" value="@row.EmailAddress" maxlength="320" required />
@@ -138,11 +138,11 @@
                     <td>@row.LastModifiedBy</td>
                     <td class="button-row">
                         <button type="submit" form="orchard-recipient-@row.RecipientId">Save</button>
-                        <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Enabled" class="inline-form">
+                        <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Enabled" class="inline-form">
                             <input type="hidden" name="enabled" value="@((!row.IsActive).ToString().ToLowerInvariant())" />
                             <button type="submit" class="secondary-button">@(row.IsActive ? "Disable" : "Enable")</button>
                         </form>
-                        <form method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this orchard recipient?');">
+                        <form asp-antiforgery="true" method="post" action="/Admin/OrchardRecipients/@row.RecipientId/Delete" class="inline-form" onsubmit="return confirm('Remove this orchard recipient?');">
                             <button type="submit" class="danger-button">Remove</button>
                         </form>
                     </td>

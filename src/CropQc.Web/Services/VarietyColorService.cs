@@ -40,8 +40,6 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
 
     public async Task<VarietyColorsAdminViewModel> GetAdminPageAsync(bool canManage, CancellationToken cancellationToken)
     {
-        await EnsureSchemaAsync(cancellationToken);
-        await ConsolidateAliasConfigurationsAsync(cancellationToken);
         var identities = await GetKnownVarietiesAsync(cancellationToken);
         var configs = await GetResolvedConfigurationRowsAsync(cancellationToken);
 
@@ -71,11 +69,8 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
         };
     }
 
-    public async Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken)
-    {
-        await EnsureSchemaAsync(cancellationToken);
-        return await ResolveColorsCoreAsync(varietyKeys, cancellationToken);
-    }
+    public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsAsync(IEnumerable<string> varietyKeys, CancellationToken cancellationToken) =>
+        ResolveColorsCoreAsync(varietyKeys, cancellationToken);
 
     public Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsReadOnlyAsync(
         IEnumerable<string> varietyKeys,
@@ -118,8 +113,6 @@ public sealed partial class VarietyColorService(CropQcDbContext dbContext) : IVa
 
     public async Task<IReadOnlyDictionary<string, VarietyColorResolved>> GetResolvedColorsForMasterDataAsync(CancellationToken cancellationToken)
     {
-        await EnsureSchemaAsync(cancellationToken);
-        await ConsolidateAliasConfigurationsAsync(cancellationToken);
         var identities = await GetKnownVarietiesAsync(cancellationToken);
         return await GetResolvedColorsAsync(identities.Select(x => x.Key), cancellationToken);
     }

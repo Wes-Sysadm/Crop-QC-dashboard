@@ -59,7 +59,7 @@
         }
     </section>
 
-    <form class="panel form-grid" method="post" action="/Samples/@Model.Sample.Id/OverrideSend">
+    <form asp-antiforgery="true" class="panel form-grid" method="post" action="/Samples/@Model.Sample.Id/OverrideSend">
         <h2>Confirm Override</h2>
         <input type="hidden" name="SampleId" value="@Model.Sample.Id" />
         <label class="field wide">Override reason
