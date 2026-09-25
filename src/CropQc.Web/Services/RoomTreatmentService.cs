@@ -2235,6 +2235,9 @@ public sealed class RoomTreatmentService(
             return new(false, "The selected treatment segment changed or is no longer available. Refresh and review the true-up again.");
 
         var selected = matches[0];
+        // Selection is read-only. Persist its proven normalization inside the
+        // caller's receipt correction transaction before crediting the segment.
+        await MaterializeAsync(snapshot, cancellationToken);
         TreatmentLineageSegment? source = null;
         if (selected.SegmentId is not null)
         {
@@ -2390,8 +2393,47 @@ public sealed class RoomTreatmentService(
 
     private async Task<List<TreatmentLineageSegment>> MaterializeAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
+        await using var transaction = dbContext.Database.IsRelational() && dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
         var key = IdentityKey(snapshot);
         var segments = await LoadIdentitySegmentsAsync(snapshot, cancellationToken, includeConflicts: true);
+        var proof = await new ProvenLineageReconciliation(dbContext).ProveAsync(snapshot, segments, cancellationToken);
+        if (proof is not null)
+        {
+            var before = segments.Where(x => proof.Quantities.ContainsKey(x.Id))
+                .Select(x => new { x.Id, x.CurrentBins, x.ConcurrencyVersion, x.IdentityKey, x.ReceiptId, x.CreatedAt, x.UpdatedAt, x.TreatmentState, x.TreatmentSignature, x.WarehouseId, x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId, x.IsOrganicSnapshot }).ToArray();
+            var now = businessTime.UtcNow;
+            foreach (var segment in segments.Where(x => proof.Quantities.ContainsKey(x.Id)))
+            {
+                if (segment.CurrentBins == proof.Quantities[segment.Id]) continue;
+                segment.CurrentBins = proof.Quantities[segment.Id];
+                segment.ConcurrencyVersion++;
+                segment.UpdatedAt = now;
+            }
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                UserId = httpContextAccessor is null ? null : (await CurrentUserAsync(cancellationToken))?.Id,
+                Action = "NormalizeHistoricalTreatmentLineage",
+                EntityName = nameof(TreatmentLineageSegment),
+                EntityKey = SelectionLookupKey(snapshot),
+                BeforeValuesJson = JsonSerializer.Serialize(before, AuditJson),
+                AfterValuesJson = JsonSerializer.Serialize(new
+                {
+                    snapshot.CurrentBins,
+                    proof.LedgerIds,
+                    proof.ReceiptIds,
+                    proof.IncomingMovementIds,
+                    proof.OccupiedSince,
+                    Segments = segments.Where(x => proof.Quantities.ContainsKey(x.Id))
+                        .Select(x => new { x.Id, x.CurrentBins, x.ConcurrencyVersion, x.UpdatedAt }),
+                    Reason = "Authoritative occupancy replay proves shared untreated historical overrepresentation."
+                }, AuditJson),
+                SourceApplication = SourceApplication,
+                CreatedAt = now
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         if (segments.Any(x => x.CurrentBins < 0))
             throw new TreatmentLineageReviewException("Negative treatment lineage requires review before moving this inventory.");
         if (segments.Any(x => x.CurrentBins > 0 && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != key))
@@ -2409,6 +2451,7 @@ public sealed class RoomTreatmentService(
             if (!segments.Contains(untreated)) segments.Add(untreated);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return segments;
     }
 
@@ -2437,6 +2480,11 @@ public sealed class RoomTreatmentService(
             var key = IdentityKey(snapshot);
             var output = result[SelectionLookupKey(snapshot)];
             var positionSegments = segments.Where(x => BelongsToPosition(x, snapshot)).ToList();
+            var proof = await new ProvenLineageReconciliation(dbContext).ProveAsync(snapshot, positionSegments, cancellationToken);
+            if (proof is not null)
+                foreach (var segment in positionSegments)
+                    if (proof.Quantities.TryGetValue(segment.Id, out var reconciled)) segment.CurrentBins = reconciled;
+            positionSegments = positionSegments.Where(x => x.CurrentBins != 0).ToList();
             var negativeLineage = positionSegments.Any(x => x.CurrentBins < 0);
             var conflictingIdentity = positionSegments.Any(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != key);
             foreach (var segment in positionSegments)

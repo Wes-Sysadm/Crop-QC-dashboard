@@ -242,8 +242,11 @@ public sealed class ReceiptInventoryOverrideTests
         await fixture.AddTransferAsync(17, completePair: true);
         var unavailableSnapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 10);
         var eligibleSnapshot = fixture.Snapshot(OverrideFixture.SecondRoomId, OverrideFixture.FruitId, 17);
-        fixture.Db.TreatmentLineageSegments.Add(
-            fixture.TreatmentSegment(8890, unavailableSnapshot, TreatmentLineageStates.Untreated, "u", 11));
+        var ambiguous = fixture.TreatmentSegment(8890, unavailableSnapshot, TreatmentLineageStates.Untreated, "u", 11);
+        // A receipt-specific over-allocation is still ambiguous; a proven shared
+        // untreated overcount is now eligible and cannot stand in for this case.
+        ambiguous.ReceiptId = OverrideFixture.ReceiptId;
+        fixture.Db.TreatmentLineageSegments.Add(ambiguous);
         await fixture.Db.SaveChangesAsync();
         fixture.Db.ChangeTracker.Clear();
         fixture.SetCurrentSnapshots(unavailableSnapshot, eligibleSnapshot);
@@ -301,6 +304,31 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Contains("var bindingIndex = allocationIndex++;", view);
         Assert.Contains("TrueUpAllocations[@bindingIndex].TargetKey", view);
         Assert.DoesNotContain("TrueUpAllocations[@index].TargetKey", view);
+    }
+
+    [Fact]
+    public async Task Positive_true_up_normalizes_proven_shared_overcount_before_adding_only_the_requested_inventory()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 20);
+        var snapshot = fixture.Snapshot(OverrideFixture.RoomId, OverrideFixture.FruitId, 20);
+        fixture.Db.Add(fixture.TreatmentSegment(8891, snapshot, TreatmentLineageStates.Untreated, "u", 30));
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var originalLedger = await fixture.Db.RoomInventoryAdjustments.AsNoTracking().OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.ChangeAmount, x.AdjustmentType }).ToListAsync();
+        var form = await fixture.PositiveFormAsync(25, Guid.NewGuid().ToString("D"));
+
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(25, await fixture.Db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+        Assert.Equal(25, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        Assert.Equal(originalLedger, await fixture.Db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(x => x.ReceiptInventoryOverrideId == null).OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.ChangeAmount, x.AdjustmentType }).ToListAsync());
+        Assert.Single(await fixture.Db.AuditLogs.Where(x => x.Action == "NormalizeHistoricalTreatmentLineage").ToListAsync());
+        Assert.True((await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, CancellationToken.None)).WasIdempotent);
+        Assert.Single(await fixture.Db.AuditLogs.Where(x => x.Action == "NormalizeHistoricalTreatmentLineage").ToListAsync());
     }
 
     [Fact]

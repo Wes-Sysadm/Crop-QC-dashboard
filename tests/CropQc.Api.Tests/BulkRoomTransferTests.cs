@@ -76,7 +76,7 @@ public sealed class BulkRoomTransferTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Stale_or_duplicate_lineage_excludes_only_ambiguous_position_and_preserves_it(bool duplicate)
+    public async Task Proven_shared_overcount_moves_but_receipt_ambiguity_remains_isolated(bool duplicate)
     {
         await using var f = await Fixture.CreateAsync();
         await f.SeedAsync(798);
@@ -88,6 +88,16 @@ public sealed class BulkRoomTransferTests
         var before = await f.Db.TreatmentLineageSegments.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
         var page = await f.Dashboard.GetRoomDetailAsync(1, default);
         Assert.Equal(823, page.TransferCurrentRoomBins);
+        if (!duplicate)
+        {
+            Assert.Equal(823, page.TransferAvailableBins);
+            Assert.Equal(0, page.TransferNeedsReconciliationBins);
+            Assert.Null(await f.Dashboard.CreateRoomTransferAsync(await f.FormAsync(), default));
+            Assert.Equal(0, (await f.Ledger.GetSnapshotsAsync(null, [1], default)).Sum(x => x.CurrentBins));
+            Assert.Equal(823, (await f.Ledger.GetSnapshotsAsync(null, [2], default)).Sum(x => x.CurrentBins));
+            Assert.Single(await f.Db.AuditLogs.Where(x => x.Action == "NormalizeHistoricalTreatmentLineage").ToListAsync());
+            return;
+        }
         Assert.Equal(25, page.TransferAvailableBins);
         Assert.Equal(798, page.TransferNeedsReconciliationBins);
         Assert.Contains("802 explicit bins exceed 798", Assert.Single(page.TransferLotOptions, x => !x.IsAvailable).UnavailableReason);
