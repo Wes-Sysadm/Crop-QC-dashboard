@@ -294,10 +294,10 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public async Task Inter_crew_dispatch_receive_review_and_reversal_preserve_exact_custody_counts()
+    public async Task Internal_WP_side_Inter_crew_dispatch_receive_review_and_reversal_preserve_exact_custody_counts()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync(internalWpSide: true);
         var page = await service.GetPageAsync(SourceFilter(), default);
         var source = Assert.Single(page.Inventory);
         var dispatched = await service.DispatchAsync(new()
@@ -307,7 +307,7 @@ public sealed class OutsideWarehouseTransferTests
             SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
-            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            DestinationCustodyGroup = TransferCustodyGroups.WpDh,
             BinsLoaded = 70,
             LoadedAt = DateTime.Parse("2026-08-27T10:00"),
             TruckLoadBolNumber = "BOL-70",
@@ -360,7 +360,7 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public async Task Inter_crew_receive_after_in_transit_identity_correction_uses_canonical_inventory_and_treatment_identity()
+    public async Task Internal_WP_side_Inter_crew_receive_after_in_transit_identity_correction_uses_canonical_inventory_and_treatment_identity()
     {
         await using var fixture = await Fixture.CreateAsync();
         var growerLot = new GrowerLot
@@ -399,7 +399,7 @@ public sealed class OutsideWarehouseTransferTests
         await fixture.Db.SaveChangesAsync();
         fixture.Db.ChangeTracker.Clear();
 
-        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync(internalWpSide: true);
         var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
@@ -408,7 +408,7 @@ public sealed class OutsideWarehouseTransferTests
             SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
-            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            DestinationCustodyGroup = TransferCustodyGroups.WpDh,
             BinsLoaded = 40,
             LoadedAt = DateTime.Parse("2026-08-27T10:00"),
             ConfirmedReview = true
@@ -487,12 +487,12 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public async Task Inter_crew_dispatch_and_receive_are_idempotent_and_McDougall_is_never_a_destination()
+    public async Task Internal_WP_side_Inter_crew_dispatch_and_receive_are_idempotent_and_McDougall_is_never_a_destination()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync(internalWpSide: true);
         var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
-        var form = new InterCrewDispatchForm { OperationKey = "same-dispatch", SourceWarehouseId = source.WarehouseId, SourceRoomId = source.RoomId, SourceKey = source.SourceKey, ExpectedAvailableBins = source.AvailableBins, DestinationCustodyGroup = TransferCustodyGroups.Ebs, BinsLoaded = 20, LoadedAt = DateTime.Parse("2026-08-27T10:00"), ConfirmedReview = true };
+        var form = new InterCrewDispatchForm { OperationKey = "same-dispatch", SourceWarehouseId = source.WarehouseId, SourceRoomId = source.RoomId, SourceKey = source.SourceKey, ExpectedAvailableBins = source.AvailableBins, DestinationCustodyGroup = TransferCustodyGroups.WpDh, BinsLoaded = 20, LoadedAt = DateTime.Parse("2026-08-27T10:00"), ConfirmedReview = true };
         var first = await service.DispatchAsync(form, default);
         var duplicate = await service.DispatchAsync(form, default);
         Assert.True(first.Success, first.Error); Assert.True(duplicate.AlreadyApplied);
@@ -616,7 +616,8 @@ public sealed class OutsideWarehouseTransferTests
         user.EmploymentFacility = EmploymentFacilities.Ebs;
         await fixture.Db.SaveChangesAsync();
         Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Queue);
-        Assert.True((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
+        Assert.False((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.CanReceive);
+        Assert.True((await service.GetDetailsAsync(dispatched.TransferId.Value, default))!.RequiresTruckReceipt);
 
         user.EmploymentFacility = EmploymentFacilities.Unassigned;
         await fixture.Db.SaveChangesAsync();
@@ -705,10 +706,10 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public async Task Inter_crew_receive_enforces_destination_group_and_posts_one_atomic_room_count()
+    public async Task Internal_WP_side_Inter_crew_receive_enforces_destination_group_and_posts_one_atomic_room_count()
     {
         await using var fixture = await Fixture.CreateAsync();
-        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync();
+        var (service, ebsRoom) = await fixture.CreateInterCrewServiceAsync(internalWpSide: true);
         var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
@@ -717,7 +718,7 @@ public sealed class OutsideWarehouseTransferTests
             SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
-            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            DestinationCustodyGroup = TransferCustodyGroups.WpDh,
             BinsLoaded = 70,
             LoadedAt = DateTime.Parse("2026-08-27T10:00"),
             ConfirmedReview = true
@@ -758,10 +759,10 @@ public sealed class OutsideWarehouseTransferTests
     }
 
     [Fact]
-    public async Task Inter_crew_in_transit_reversal_is_admin_only_reasoned_idempotent_and_restores_loaded_bins()
+    public async Task Internal_WP_side_Inter_crew_in_transit_reversal_is_admin_only_reasoned_idempotent_and_restores_loaded_bins()
     {
         await using var fixture = await Fixture.CreateAsync(canAdmin: false);
-        var (service, _) = await fixture.CreateInterCrewServiceAsync();
+        var (service, _) = await fixture.CreateInterCrewServiceAsync(internalWpSide: true);
         var source = Assert.Single((await service.GetPageAsync(SourceFilter(), default)).Inventory);
         var dispatched = await service.DispatchAsync(new()
         {
@@ -770,7 +771,7 @@ public sealed class OutsideWarehouseTransferTests
             SourceRoomId = source.RoomId,
             SourceKey = source.SourceKey,
             ExpectedAvailableBins = source.AvailableBins,
-            DestinationCustodyGroup = TransferCustodyGroups.Ebs,
+            DestinationCustodyGroup = TransferCustodyGroups.WpDh,
             BinsLoaded = 70,
             LoadedAt = DateTime.Parse("2026-08-27T10:00"),
             ConfirmedReview = true
@@ -808,7 +809,7 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Contains("In Transit", page);
         Assert.Contains("WP / DH", page);
         Assert.Contains("EBS", page);
-        Assert.Contains("authoritative received count", page);
+        Assert.Contains("Truck Receipt", page);
         Assert.Contains("Receive Entire Load", detail);
         Assert.Contains("Review Count Variance", detail);
         Assert.Contains("does not rewrite either count", detail);
@@ -1074,11 +1075,13 @@ public sealed class OutsideWarehouseTransferTests
             return room;
         }
 
-        public async Task<(InterCrewTransferService Service, Room EbsRoom)> CreateInterCrewServiceAsync()
+        public async Task<(InterCrewTransferService Service, Room EbsRoom)> CreateInterCrewServiceAsync(bool internalWpSide = false)
         {
-            var ebs = new Warehouse { Id = 8860, Code = "EBS", Name = "EBS" };
+            // Legacy receiving/review stays supported for McDougall to WP; cross-company tests use the strict Truck Receipt workflow.
+            if (internalWpSide) (await Db.Warehouses.SingleAsync(x => x.Id == WarehouseId)).Code = "McDougall";
+            var ebs = new Warehouse { Id = 8860, Code = internalWpSide ? "WP" : "EBS", Name = internalWpSide ? "WP" : "EBS" };
             var ebsRoom = new Room { Id = 8861, Warehouse = ebs, WarehouseId = ebs.Id, Code = "EVANS-7", Name = "EVANS-7", CropQcRoomName = "EVANS-7", CapacityBins = 1000 };
-            var mcd = new Warehouse { Id = 8862, Code = "McDougall", Name = "McDougall" };
+            var mcd = new Warehouse { Id = 8862, Code = internalWpSide ? "MCD" : "McDougall", Name = "McDougall" };
             var mcdRoom = new Room { Id = 8863, Warehouse = mcd, WarehouseId = mcd.Id, Code = "MCD-3", Name = "MCD-3", CropQcRoomName = "MCD-3", CapacityBins = 1000 };
             Db.AddRange(ebs, ebsRoom, mcd, mcdRoom);
             var user = await Db.Users.SingleAsync(x => x.Id == 8843);
@@ -1087,7 +1090,7 @@ public sealed class OutsideWarehouseTransferTests
             var invariant = new InventoryDeductionInvariantService(Db, NullLogger<InventoryDeductionInvariantService>.Instance);
             return (new InterCrewTransferService(Db, Service, Ledger, Treatments, new InventoryIdentityService(Db), invariant, Access,
                 new FixedHttpContextAccessor(new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, user.Email)], "Test")) }),
-                new PacificBusinessTimeService(new FixedClock(Now))), ebsRoom);
+                new PacificBusinessTimeService(new FixedClock(Now)), truckReceiptOptions: new TruckReceiptOptions { Enabled = true }), ebsRoom);
         }
 
         public async Task<int> CurrentBinsAsync() => (await Ledger.GetSnapshotsAsync(WarehouseId, [RoomId], default)).Sum(x => x.CurrentBins);

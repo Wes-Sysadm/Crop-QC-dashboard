@@ -58,6 +58,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
     public DbSet<OutsideWarehouse> OutsideWarehouses => Set<OutsideWarehouse>();
     public DbSet<OutsideWarehouseTransfer> OutsideWarehouseTransfers => Set<OutsideWarehouseTransfer>();
     public DbSet<InterCrewTransfer> InterCrewTransfers => Set<InterCrewTransfer>();
+    public DbSet<ReceiptVarietyLine> ReceiptVarietyLines => Set<ReceiptVarietyLine>();
     public DbSet<SalesDesk> SalesDesks => Set<SalesDesk>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptInventoryOverride> ReceiptInventoryOverrides => Set<ReceiptInventoryOverride>();
@@ -1445,6 +1446,13 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<ReceiptVarietyLine>(entity =>
+        {
+            entity.HasIndex(x => new { x.ReceiptId, x.FruitProfileId }).IsUnique();
+            entity.HasOne(x => x.Receipt).WithMany(x => x.VarietyLines).HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.FruitProfile).WithMany().HasForeignKey(x => x.FruitProfileId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<ReceiptInventoryOverride>(entity =>
         {
             entity.Property(x => x.ActionType).HasMaxLength(50).IsRequired();
@@ -1589,7 +1597,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             outsideTransferSideIndex.HasFilter(isPostgreSqlProvider
                 ? "\"OutsideWarehouseTransferId\" IS NOT NULL"
                 : "[OutsideWarehouseTransferId] IS NOT NULL");
-            var interCrewTransferSideIndex = entity.HasIndex(x => new { x.InterCrewTransferId, x.AdjustmentType }).IsUnique();
+            var interCrewTransferSideIndex = entity.HasIndex(x => new { x.InterCrewTransferId, x.AdjustmentType });
             interCrewTransferSideIndex.HasFilter(isPostgreSqlProvider
                 ? "\"InterCrewTransferId\" IS NOT NULL"
                 : "[InterCrewTransferId] IS NOT NULL");
@@ -2245,6 +2253,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
         modelBuilder.Entity<InterCrewTransfer>(entity =>
         {
+            entity.HasIndex(x => x.ReceivingReceiptId).IsUnique();
+            entity.HasOne(x => x.ReceivingReceipt).WithOne().HasForeignKey<InterCrewTransfer>(x => x.ReceivingReceiptId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
             entity.Property(x => x.DestinationCustodyGroup).HasMaxLength(20).IsRequired();
             entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);

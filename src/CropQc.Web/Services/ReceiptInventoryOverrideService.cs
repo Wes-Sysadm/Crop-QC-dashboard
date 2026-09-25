@@ -153,6 +153,7 @@ public sealed class ReceiptInventoryOverrideService(
             var receipt = await ReceiptQuery(asTracking: true)
                 .SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
             if (receipt is null) return await RollbackAsync(transaction, Failed("Receipt not found or already voided."), cancellationToken);
+            if (receipt.IsTransferReceipt) return await RollbackAsync(transaction, Failed("Transfer receipts cannot create or override inventory. Use Reopen / Unlink Transfer Receipt."), cancellationToken);
             if (receipt.ConcurrencyVersion != form.ExpectedConcurrencyVersion)
             {
                 return await RollbackAsync(transaction, Conflict("The receipt changed after this override was previewed. Reload and review the current inventory before trying again."), cancellationToken);
@@ -527,6 +528,7 @@ public sealed class ReceiptInventoryOverrideService(
             var receipt = await ReceiptQuery(asTracking: true)
                 .SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
             if (receipt is null) return await RollbackAsync(transaction, Failed("Receipt not found or already voided."), cancellationToken);
+            if (receipt.IsTransferReceipt) return await RollbackAsync(transaction, Failed("Transfer receipts cannot create or override inventory. Use Reopen / Unlink Transfer Receipt."), cancellationToken);
             if (receipt.ConcurrencyVersion != form.ExpectedConcurrencyVersion)
             {
                 return await RollbackAsync(transaction, Conflict("The receipt changed after the void preview. Reload and review it again."), cancellationToken);

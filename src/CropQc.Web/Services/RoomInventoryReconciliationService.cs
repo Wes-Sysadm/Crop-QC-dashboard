@@ -38,7 +38,7 @@ public sealed class RoomInventoryReconciliationService(
         var snapshots = await ledgerQuery.GetSnapshotsAsync(filter.WarehouseId, roomIds, cancellationToken);
 
         var receiptQuery = dbContext.Receipts.AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.IsTestData)
+            .Where(x => !x.IsTransferReceipt && !x.IsDeleted && !x.IsTestData)
             .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
             .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId);
         var receipts = await receiptQuery

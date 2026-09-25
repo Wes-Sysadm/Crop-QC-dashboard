@@ -265,6 +265,9 @@ public sealed class ReceiptPurgeService(
             return new ReceiptPurgeResult(true, false, $"Dry run found {preflight.Receipts.Count} receipt(s) with persisted CropYear {request.TargetCropYear}.", null, preflight, null);
         }
 
+        if (await dbContext.Receipts.AnyAsync(x => x.CropYear == request.TargetCropYear && x.IsTransferReceipt, cancellationToken))
+            return new ReceiptPurgeResult(false, false, "This crop contains transfer receipt evidence. Preserve its reconciliation history; bulk purge is blocked.", null, preflight, null);
+
         if (appEnvironment.IsProduction && !request.ConfirmProduction)
         {
             return new ReceiptPurgeResult(false, false, "Production apply requires --confirm-production.", null, preflight, null);

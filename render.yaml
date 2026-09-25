@@ -3,27 +3,31 @@ services:
     name: crop-qc-dashboard
     runtime: docker
     dockerfilePath: ./Dockerfile
+    autoDeployTrigger: "off"
+    dockerCommand: sh /app/start-truck-receipt-web.sh
     preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260906025535_AddHarvestWatchDeployments
     healthCheckPath: /health
-    disks:
-      - name: crop-qc-dashboard-data
-        mountPath: /var/data
-        sizeGB: 1
+    disk:
+      name: crop-qc-dashboard-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
+      - key: TruckReceiptReconciliation__Enabled
+        value: "false"
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: DATABASE_PROVIDER
         value: PostgreSql
       - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
-        value: true
+        value: "true"
       - key: ConnectionStrings__CropQc
         fromDatabase:
           name: crop-qc-dashboard-db
           property: connectionString
       - key: Database__EnsureCreatedOnStartup
-        value: false
+        value: "false"
       - key: Database__SeedMasterDataOnStartup
-        value: false
+        value: "false"
       - key: Authentication__AllowedGoogleDomains
         value: wp-packing.com,earlbrownandsons.com,fruitandland.com
       - key: Authentication__BootstrapAdminEmails
@@ -33,21 +37,21 @@ services:
       - key: Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command
         value: Warning
       - key: PerformanceDiagnostics__Enabled
-        value: true
+        value: "true"
       - key: PerformanceDiagnostics__RequestTimingEnabled
-        value: true
+        value: "true"
       - key: PerformanceDiagnostics__EfQueryCountingEnabled
-        value: true
+        value: "true"
       - key: PerformanceDiagnostics__ProcessAllocatedBytesWarningThreshold
         value: 12582912
       - key: PerformanceDiagnostics__RecentRequestLimit
         value: 0
       - key: PerformanceDiagnostics__IncludeUserIdentifier
-        value: false
+        value: "false"
       - key: PerformanceDiagnostics__LogEveryRequest
-        value: false
+        value: "false"
       - key: PerformanceDiagnostics__RuntimeMemoryTelemetryEnabled
-        value: true
+        value: "true"
       - key: PerformanceDiagnostics__RuntimeMemoryTelemetryIntervalSeconds
         value: 60
       - key: PerformanceDiagnostics__RuntimeMemoryWarningWorkingSetBytes
@@ -59,7 +63,7 @@ services:
       - key: Authentication__Google__ClientSecret
         sync: false
       - key: DataProtection__PersistKeysToFileSystem
-        value: true
+        value: "true"
       - key: DataProtection__KeysPath
         value: /var/data/dataprotection-keys
       - key: DataProtection__ApplicationName
@@ -71,7 +75,7 @@ services:
       - key: FileStorage__BasePath
         value: Crop QC Photos
       - key: GoogleDrive__UseSharedDrive
-        value: true
+        value: "true"
       - key: GoogleDrive__RootFolderId
         value: 0ADHRTHdG9u98Uk9PVA
       - key: GoogleDrive__SharedDriveId
@@ -87,7 +91,7 @@ services:
       - key: QcStation__ApiBaseUrl
         value: https://crop-qc-dashboard.onrender.com
       - key: Backups__Enabled
-        value: true
+        value: "true"
       - key: Backups__Provider
         value: GoogleDrive
       - key: Backups__GoogleDriveFolderId
@@ -106,11 +110,14 @@ services:
         value: wes@fruitandland.com
   - type: cron
     name: crop-qc-production-nightly-backup
+    autoDeployTrigger: "off"
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerCommand: dotnet CropQc.Web.dll --run-backup=scheduled
     schedule: "0 8,9 * * *"
     envVars:
+      - key: TruckReceiptReconciliation__Enabled
+        value: "false"
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: AppEnvironment__Kind
@@ -124,13 +131,13 @@ services:
           name: crop-qc-dashboard-db
           property: connectionString
       - key: Database__EnsureCreatedOnStartup
-        value: false
+        value: "false"
       - key: Database__SeedMasterDataOnStartup
-        value: false
+        value: "false"
       - key: FileStorage__Provider
         value: GoogleDrive
       - key: GoogleDrive__UseSharedDrive
-        value: true
+        value: "true"
       - key: GoogleDrive__SharedDriveId
         sync: false
       - key: GoogleDrive__RootFolderId
@@ -140,7 +147,7 @@ services:
       - key: GoogleDrive__ApplicationName
         value: Crop QC Dashboard Backup
       - key: Backups__Enabled
-        value: true
+        value: "true"
       - key: Backups__Provider
         value: GoogleDrive
       - key: Backups__GoogleDriveFolderId
@@ -163,10 +170,10 @@ services:
     dockerfilePath: ./Dockerfile
     preDeployCommand: dotnet CropQc.Web.dll --verify-schema=20260906025535_AddHarvestWatchDeployments
     healthCheckPath: /health
-    disks:
-      - name: crop-qc-dashboard-staging-data
-        mountPath: /var/data
-        sizeGB: 1
+    disk:
+      name: crop-qc-dashboard-staging-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
@@ -177,15 +184,15 @@ services:
       - key: DATABASE_PROVIDER
         value: PostgreSql
       - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
-        value: true
+        value: "true"
       - key: ConnectionStrings__CropQc
         fromDatabase:
           name: crop-qc-dashboard-staging-db
           property: connectionString
       - key: Database__EnsureCreatedOnStartup
-        value: false
+        value: "false"
       - key: Database__SeedMasterDataOnStartup
-        value: false
+        value: "false"
       - key: Authentication__AllowedGoogleDomains
         value: wp-packing.com,earlbrownandsons.com,fruitandland.com
       - key: Authentication__BootstrapAdminEmails
@@ -197,7 +204,7 @@ services:
       - key: Authentication__Google__ClientSecret
         sync: false
       - key: DataProtection__PersistKeysToFileSystem
-        value: true
+        value: "true"
       - key: DataProtection__KeysPath
         value: /var/data/dataprotection-keys
       - key: DataProtection__ApplicationName
@@ -209,7 +216,7 @@ services:
       - key: FileStorage__BasePath
         value: Crop QC Staging Files
       - key: GoogleDrive__UseSharedDrive
-        value: false
+        value: "false"
       - key: GoogleDrive__RootFolderId
         value: ""
       - key: GoogleDrive__SharedDriveId
@@ -225,11 +232,11 @@ services:
       - key: Email__QcDefaultRecipients
         value: ""
       - key: PerformanceDiagnostics__Enabled
-        value: true
+        value: "true"
       - key: PerformanceDiagnostics__RecentRequestLimit
         value: 250
       - key: PerformanceDiagnostics__IncludeUserIdentifier
-        value: false
+        value: "false"
       - key: QcStation__ApiBaseUrl
         value: https://crop-qc-dashboard-staging.onrender.com
 

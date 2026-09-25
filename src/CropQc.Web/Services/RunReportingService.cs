@@ -237,7 +237,14 @@ public sealed class RunReportingService(
         var receivedGroups = await ReceiptVarietyTotalsQuery(facility, cropYear).ToListAsync(cancellationToken);
         var selectedLookup = selectedGroups.ToDictionary(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase);
         var priorLookup = priorGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
-        var receivedLookup = receivedGroups.ToDictionary(x => x.VarietyKey, x => x.Bins, StringComparer.OrdinalIgnoreCase);
+        receivedGroups.AddRange(await dbContext.ReceiptVarietyLines.AsNoTracking()
+            .Where(x => x.Receipt.IsTransferReceipt && x.Receipt.TransferCompletedAt != null && !x.Receipt.IsDeleted && !x.Receipt.IsTestData
+                && x.Receipt.CropYear == cropYear && x.Receipt.Warehouse.Code == facility)
+            .GroupBy(x => new { x.FruitProfileId, x.FruitProfile.VarietyCode, x.FruitProfile.ProductionType, x.FruitProfile.IsOrganic })
+            .Select(x => new VarietyTotalRow(x.Key.FruitProfileId, x.Key.VarietyCode, x.Key.ProductionType, x.Key.IsOrganic, x.Sum(y => y.BinCount)))
+            .ToListAsync(cancellationToken));
+        var receivedLookup = receivedGroups.GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Sum(y => y.Bins), StringComparer.OrdinalIgnoreCase);
         var identities = selectedGroups.Concat(priorGroups).Concat(receivedGroups)
             .GroupBy(x => x.VarietyKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
@@ -401,7 +408,7 @@ public sealed class RunReportingService(
 
     private IQueryable<VarietyTotalRow> ReceiptVarietyTotalsQuery(string facility, int cropYear) =>
         dbContext.Receipts.AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.IsTestData && x.CropYear == cropYear)
+            .Where(x => !x.IsTransferReceipt && !x.IsDeleted && !x.IsTestData && x.CropYear == cropYear)
             .Where(x => x.Warehouse.Code == facility)
             .Where(x => x.GrowerNumber != null && x.GrowerNumber != ""
                 && x.LotCode != ""

@@ -21,6 +21,7 @@
     <form class="form-grid" method="post" action="/Receipts/@form.Id/Edit">
         @Html.AntiForgeryToken()
         <input type="hidden" name="Id" value="@form.Id" />
+        <input type="hidden" name="ReceiptVersion" value="@form.ReceiptVersion" />
         <div class="field"><label>Crop Year</label><input name="CropYear" value="@form.CropYear" required /></div>
         <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(form.ReceivedAt)" required /></div>
         <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" value="@form.CompuTechReceiptId" required /></div>

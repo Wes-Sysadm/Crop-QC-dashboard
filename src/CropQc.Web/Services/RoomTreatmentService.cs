@@ -2029,9 +2029,19 @@ public sealed class RoomTreatmentService(
             var moved = await dbContext.TreatmentLineageMovements.AsNoTracking()
                 .Where(x => x.InterCrewTransferId == interCrewTransferId && x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch && x.ReversesTreatmentLineageMovementId == null)
                 .SumAsync(x => x.BinCount, cancellationToken);
-            if (parent is null || parent.SourceWarehouseId != snapshot.WarehouseId || parent.SourceRoomId != snapshot.RoomId
-                || destinationWarehouseId is not null || destinationRoomId is not null || moved + bins > parent.BinsLoaded
-                || !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot))
+            if (parent?.RequiresTruckReceipt == true)
+            {
+                var returned = await dbContext.TreatmentLineageMovements.AsNoTracking()
+                    .Where(x => x.InterCrewTransferId == interCrewTransferId && x.ReversesTreatmentLineageMovementId != null
+                        && x.DestinationRoomId == parent.SourceRoomId && x.SourceRoomId == null)
+                    .SumAsync(x => x.BinCount, cancellationToken);
+                moved -= returned;
+            }
+            if (parent is null || parent.Status != InterCrewTransferStatuses.InTransit
+                || parent.SourceWarehouseId != snapshot.WarehouseId || parent.SourceRoomId != snapshot.RoomId
+                || destinationWarehouseId is not null || destinationRoomId is not null || bins <= 0 || moved + bins > parent.BinsLoaded
+                || (parent.RequiresTruckReceipt ? parent.CropYear != snapshot.CropYear
+                    : !SameIdentity(parent.CropYear, parent.GrowerLotId, parent.FruitProfileId, parent.LotNumberSnapshot, parent.VarietyCodeSnapshot, snapshot)))
                 return "The inter-crew transfer parent does not match the exact treatment lineage movement.";
             return null;
         }
@@ -2296,6 +2306,7 @@ public sealed class RoomTreatmentService(
             .Include(x => x.FruitProfile)
             .SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (receipt is null) return new(null, null, 0, "Receipt was not found.");
+        if (receipt.IsTransferReceipt) return new(receipt, null, 0, "This Truck Receipt is receiving evidence. Apply treatment to the received room inventory and its original lineage instead.");
         var appliedAtUtc = appliedAt.ToUniversalTime();
         if (appliedAtUtc > businessTime.UtcNow.AddMinutes(5))
             return new(receipt, null, 0, "Application date/time cannot be in the future.");

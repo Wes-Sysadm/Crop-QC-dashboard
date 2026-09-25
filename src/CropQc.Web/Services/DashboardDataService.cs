@@ -669,7 +669,7 @@ public sealed class DashboardDataService(
             .Include(x => x.CanonicalOrchardBlock)
                 .ThenInclude(x => x!.CanonicalOrchard)
             .SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, cancellationToken);
-        if (receipt is null || receipt.RoomId != form.RoomId)
+        if (receipt is null || receipt.IsTransferReceipt || receipt.RoomId != form.RoomId)
         {
             return "Room lot was not found.";
         }
@@ -1670,6 +1670,8 @@ public sealed class DashboardDataService(
 
     public async Task<CreateReceiptResult> CreateReceiptAsync(CreateReceiptForm form, CancellationToken cancellationToken)
     {
+        if (form.IsTransferReceipt && !configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled"))
+            return new(null, null, TruckReceiptOptions.DisabledMessage);
         var receiptType = NormalizeReceiptType(form.ReceiptType);
         if (string.IsNullOrWhiteSpace(form.CompuTechReceiptId) || (form.GrowerLotId is null && (string.IsNullOrWhiteSpace(form.GrowerName) || string.IsNullOrWhiteSpace(form.GrowerNumber))) || (IsInventoryReceiptType(receiptType) && form.BinCount <= 0))
         {
@@ -1741,6 +1743,7 @@ public sealed class DashboardDataService(
             ReceivedAt = form.ReceivedAt,
             CompuTechReceiptId = form.CompuTechReceiptId.Trim(),
             ReceiptType = receiptType,
+            IsTransferReceipt = form.IsTransferReceipt,
             WarehouseId = form.WarehouseId,
             RoomId = form.RoomId,
             FruitProfileId = form.FruitProfileId,
@@ -1753,11 +1756,20 @@ public sealed class DashboardDataService(
             CreatedAt = now,
             UpdatedAt = now
         };
+        if (form.IsTransferReceipt)
+        {
+            if (receiptType != "Truck receipt") return new(null, null, "Only Truck Receipts can await transfer reconciliation.");
+            receipt.VarietyLines.Add(new ReceiptVarietyLine { FruitProfileId = receipt.FruitProfileId, BinCount = receipt.BinCount });
+        }
         dbContext.Receipts.Add(receipt);
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        if (!IsInventoryReceiptType(receiptType))
+        if (!IsInventoryReceiptType(receiptType) || receipt.IsTransferReceipt)
         {
+            if (receipt.IsTransferReceipt)
+                await AddAuditAsync("CreateTransferReceipt", nameof(Receipt), receipt.Id.ToString(), (await GetCurrentUserAsync(cancellationToken))?.Email ?? "unknown", null, "Awaiting manual transfer match; no inventory created.", cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (inventoryTransaction is not null) await inventoryTransaction.CommitAsync(cancellationToken);
             return new(receipt.Id, receipt.CompuTechReceiptId, null);
         }
 
@@ -1907,7 +1919,7 @@ public sealed class DashboardDataService(
                 InventoryLosses = inventoryLosses,
                 CurrentPackableBins = currentPackableBins,
                 TreatmentApplications = treatmentApplications,
-                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanApplyReceivingTreatment = !receipt.IsTransferReceipt && await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
                 CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 AddPhotoForm = new AddPhotoMetadataForm
                 {
@@ -1938,6 +1950,8 @@ public sealed class DashboardDataService(
             var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
             model.Form = new UpdateReceiptForm
             {
+                ReceiptVersion = receipt.ConcurrencyVersion,
+                IsTransferReceipt = receipt.IsTransferReceipt,
                 Id = receipt.Id,
                 CropYear = receipt.CropYear,
                 ReceivedAt = receipt.ReceivedAt,
@@ -1980,6 +1994,26 @@ public sealed class DashboardDataService(
         if (form.GrowerLotId is not null)
         {
             growerLot = await GetReceivingGrowerLotAsync(form.GrowerLotId.Value, cancellationToken);
+        }
+
+        if (receipt.IsTransferReceipt)
+        {
+            if (!configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled")) return TruckReceiptOptions.DisabledMessage;
+            if (receipt.TransferCompletedAt is not null) return "Reopen the completed transfer receipt before editing it.";
+            if (receipt.ConcurrencyVersion != form.ReceiptVersion) return "The receipt changed. Reload before editing.";
+            if (receiptType != "Truck receipt" || form.BinCount != receipt.BinCount || form.FruitProfileId != receipt.FruitProfileId)
+                return "Use Match Transfer to edit the receiving varieties and quantities.";
+            var beforeMetadata = JsonSerializer.Serialize(new { receipt.CompuTechReceiptId, receipt.WarehouseId, receipt.RoomId, receipt.CropYear, receipt.ReceivedAt });
+            receipt.CompuTechReceiptId = form.CompuTechReceiptId.Trim();
+            receipt.WarehouseId = form.WarehouseId; receipt.RoomId = form.RoomId;
+            receipt.CropYear = form.CropYear; receipt.ReceivedAt = form.ReceivedAt;
+            receipt.UpdatedAt = BusinessTime.UtcNow; receipt.ConcurrencyVersion++;
+            var actor = await GetCurrentUserAsync(cancellationToken);
+            await AddAuditAsync("EditTransferReceiptMetadata", nameof(Receipt), receipt.Id.ToString(), actor?.Email ?? "unknown", beforeMetadata,
+                JsonSerializer.Serialize(new { receipt.CompuTechReceiptId, receipt.WarehouseId, receipt.RoomId, receipt.CropYear, receipt.ReceivedAt }), cancellationToken);
+            try { await dbContext.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateConcurrencyException) { return "The receipt changed. Reload before editing."; }
+            return null;
         }
 
         var oldReceiptBinCount = receipt.BinCount;
@@ -2117,6 +2151,12 @@ public sealed class DashboardDataService(
             return "Receipt not found.";
         }
 
+        if (receipt.IsTransferReceipt && !configuration.GetValue<bool>("TruckReceiptReconciliation:Enabled"))
+            return TruckReceiptOptions.DisabledMessage;
+        if (receipt.IsTransferReceipt && (receipt.TransferCompletedAt != null
+            || await dbContext.InterCrewTransfers.AnyAsync(x => x.ReceivingReceiptId == receipt.Id, cancellationToken)))
+            return "Reopen / unlink the transfer receipt before deleting it. Inventory history cannot be deleted.";
+
         var currentUser = await GetCurrentUserAsync(cancellationToken);
         var before = JsonSerializer.Serialize(new { receipt.Id, receipt.CompuTechReceiptId, receipt.ReceiptType, receipt.BinCount, receipt.IsDeleted });
         receipt.IsDeleted = true;
@@ -2253,7 +2293,7 @@ public sealed class DashboardDataService(
                 DeviceCapture = await GetDeviceCaptureSettingsAsync(cancellationToken),
                 CurrentPackableBins = currentPackableBins,
                 TreatmentApplications = await GetReceivingTreatmentHistoryAsync(sample.ReceiptId!.Value, cancellationToken),
-                CanApplyReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
+                CanApplyReceivingTreatment = !sample.Receipt.IsTransferReceipt && await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, cancellationToken),
                 CanReverseReceivingTreatment = await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken),
                 FruitReadingForm = new SaveFruitReadingsForm
                 {
@@ -6004,7 +6044,7 @@ public sealed class DashboardDataService(
             .Include(x => x.Room)
                 .ThenInclude(x => x.Warehouse)
             .Include(x => x.FruitProfile)
-            .Where(x => !x.IsDeleted
+            .Where(x => !x.IsDeleted && !x.IsTransferReceipt
                 && cropYears.Contains(x.CropYear)
                 && ((hasGrowerLotIds && x.GrowerLotId != null && growerLotIds.Contains(x.GrowerLotId.Value))
                     || (hasLegacyLotIdentity
@@ -6834,6 +6874,7 @@ public sealed class DashboardDataService(
         IReadOnlyDictionary<long, int> depletionByReceipt,
         IReadOnlyDictionary<long, RoomInventoryAdjustment> latestAdjustmentByReceipt)
     {
+        if (receipt.IsTransferReceipt) return 0;
         if (latestAdjustmentByReceipt.TryGetValue(receipt.Id, out var latestAdjustment))
         {
             return Math.Max(0, latestAdjustment.NewBinCount);
@@ -6844,6 +6885,7 @@ public sealed class DashboardDataService(
 
     private static string? ReceiptStorageExclusionReason(Receipt receipt, string sampleTypes, IReadOnlyDictionary<int, DateTimeOffset> correctionCutoffs)
     {
+        if (receipt.IsTransferReceipt) return "Transfer receiving evidence; inventory follows original source lineage.";
         if (receipt.IsDeleted)
         {
             return "Excluded: receipt is soft-deleted.";
@@ -6947,9 +6989,9 @@ public sealed class DashboardDataService(
     {
         var receipt = await dbContext.Receipts.AsNoTracking()
             .Where(x => x.Id == receiptId)
-            .Select(x => new { x.ReceiptType, x.CompuTechReceiptId, x.IsDeleted, x.BinCount })
+            .Select(x => new { x.ReceiptType, x.CompuTechReceiptId, x.IsDeleted, x.BinCount, x.IsTransferReceipt })
             .SingleAsync(cancellationToken);
-        if (receipt.IsDeleted
+        if (receipt.IsDeleted || receipt.IsTransferReceipt
             || HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "LS")
             || HasStorageExcludedIdentifierPrefix(receipt.CompuTechReceiptId, "DS")
             || !string.Equals(receipt.ReceiptType, "Truck receipt", StringComparison.OrdinalIgnoreCase))
@@ -8130,14 +8172,14 @@ public sealed class DashboardDataService(
         receipt.PoolStart ?? "",
         growerResolver?.DisplayName(receipt.GrowerName, receipt.GrowerNumber ?? receipt.LotCode) ?? receipt.GrowerName,
         receipt.LotCode,
-        receipt.FruitProfile.VarietyCode,
+        receipt.IsTransferReceipt ? "See transfer variety reconciliation" : receipt.FruitProfile.VarietyCode,
         receipt.BinCount,
         sampleSummary?.SampleCount ?? 0,
         BuildReceiptQcStatus(sampleSummary),
         sampleSummary?.LastUpdatedAt ?? receipt.UpdatedAt,
         receipt.FruitProfile.ProductionType,
         receipt.FruitProfile.IsOrganic,
-        [presentation]);
+        [presentation], receipt.IsTransferReceipt, receipt.TransferCompletedAt);
     }
 
     private static IReadOnlyList<ReceiptTypeCountViewModel> BuildReceiptTypeCounts(ReceiptSearchForm search, IReadOnlyList<Receipt> receipts)

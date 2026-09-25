@@ -402,7 +402,7 @@ public sealed class RunProjectionService(
                 .ToDictionary(x => x.ReceiptId!.Value, x => x.CurrentBins);
             var currentReceiptIds = remainingByReceiptId.Keys.ToList();
             var receiptQuery = dbContext.Receipts.AsNoTracking()
-                .Where(x => !x.IsDeleted
+                .Where(x => !x.IsTransferReceipt && !x.IsDeleted
                     && x.ReceiptType == "Truck receipt"
                     && x.BinCount > 0
                     && x.CropYear == activeCropYear
@@ -1961,7 +1961,7 @@ public sealed class RunProjectionService(
             .Include(x => x.Room)
             .Include(x => x.FruitProfile)
             .Include(x => x.CanonicalOrchardBlock).ThenInclude(x => x!.CanonicalOrchard)
-            .Where(x => !x.IsDeleted
+            .Where(x => !x.IsTransferReceipt && !x.IsDeleted
                 && x.ReceiptType == "Truck receipt"
                 && x.BinCount > 0
                 && x.CropYear == cropYear

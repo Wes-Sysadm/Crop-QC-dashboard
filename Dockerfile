@@ -30,8 +30,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends postgresql-client-18 poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
+COPY scripts/start-truck-receipt-web.sh /app/start-truck-receipt-web.sh
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "if [ \"$#\" -gt 0 ]; then exec \"$@\"; else exec dotnet CropQc.Web.dll --urls http://0.0.0.0:${PORT:-8080}; fi", "--"]
+ENTRYPOINT ["sh", "-c", "if [ \"$#\" -gt 0 ]; then exec \"$@\"; else exec sh /app/start-truck-receipt-web.sh; fi", "--"]
