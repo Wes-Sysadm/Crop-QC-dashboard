@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
 namespace CropQc.Api.Tests;
 
@@ -316,6 +318,13 @@ public sealed class LegacyGrowerLotReconciliationTests
         await using var fixture = await Fixture.CreateAsync();
         await fixture.ConfigureEvans7UntreatedGapAsync();
         await fixture.MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync();
+        var historyBefore = await fixture.ProtectedHistoryAsync();
+        var otherRoomBefore = await fixture.RowsAsync(fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp8RoomId));
+        var totalBefore = await fixture.TotalInventoryAsync();
+        var stale = await fixture.Db.TreatmentLineageSegments.AsNoTracking()
+            .SingleAsync(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474);
+        var snapshot = Assert.Single(await fixture.Ledger.GetSnapshotsAsync(null, [Fixture.Wp4RoomId], default), x => x.GrowerLotId == 474);
+        Assert.All(await fixture.Treatments.GetSelectionsAsync(snapshot, default), x => Assert.False(x.IsAvailable));
         var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(CancellationToken.None)).Positions,
             x => x.RoomId == Fixture.Wp4RoomId);
 
@@ -327,6 +336,180 @@ public sealed class LegacyGrowerLotReconciliationTests
         Assert.Equal(170, treatment.Sum(x => x.CurrentBins));
         Assert.Equal(0, Assert.Single(treatment, x => x.InventoryStatusSnapshot == "CONVENTIONAL").CurrentBins);
         Assert.Empty(await fixture.Db.RoomTreatmentApplications.ToListAsync());
+        var retired = Assert.Single(treatment, x => x.Id == stale.Id);
+        Assert.Equal(stale.IdentityKey, retired.IdentityKey);
+        Assert.Equal(stale.CreatedAt, retired.CreatedAt);
+        Assert.Equal(stale.ConcurrencyVersion + 1, retired.ConcurrencyVersion);
+        var current = Assert.Single(treatment, x => x.CurrentBins > 0);
+        Assert.Equal(170, current.CurrentBins); // 27 source + 68 stale target + 75 proven gap.
+        Assert.Equal(TreatmentLineageStates.Untreated, current.TreatmentState);
+        Assert.Equal("u", current.TreatmentSignature);
+        Assert.Equal(RoomTreatmentService.IdentityKey(snapshot), current.IdentityKey);
+        var movements = await fixture.Db.TreatmentLineageMovements.Where(x => x.InventoryIdentityCorrectionId == result.CorrectionId).ToListAsync();
+        Assert.Equal(3, movements.Count);
+        Assert.Equal(68, Assert.Single(movements, x => x.SourceSegmentId == stale.Id).BinCount);
+        Assert.Equal(75, Assert.Single(movements, x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationUntreatedBackfill).BinCount);
+        Assert.Equal(totalBefore, await fixture.TotalInventoryAsync());
+        Assert.Equal(historyBefore, await fixture.ProtectedHistoryAsync());
+        Assert.Equal(otherRoomBefore, await fixture.RowsAsync(fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp8RoomId)));
+        var balance = Assert.Single(await fixture.Ledger.GetSnapshotsAsync(null, [Fixture.Wp4RoomId], default), x => x.CurrentBins > 0);
+        Assert.Equal(474, balance.GrowerLotId);
+        Assert.Equal(170, balance.CurrentBins);
+        var selections = await fixture.Treatments.GetSelectionsAsync(balance, default);
+        Assert.Equal(170, selections.Sum(x => x.CurrentBins));
+        Assert.All(selections, x => Assert.True(x.IsAvailable));
+        Assert.Single(await fixture.Db.AuditLogs.ToListAsync());
+        var applied = await fixture.PersistedStateAsync();
+        var rerun = await fixture.Service.RunAsync(fixture.Request(candidate, "evans7-stale-status-v1"), default);
+        Assert.True(rerun.AlreadyApplied, rerun.Message);
+        Assert.Equal(applied, await fixture.PersistedStateAsync());
+    }
+
+    [Theory]
+    [InlineData("malformed-key")]
+    [InlineData("snapshot-mismatch")]
+    [InlineData("hold")]
+    [InlineData("wrong-lot")]
+    [InlineData("wrong-warehouse")]
+    [InlineData("treated")]
+    [InlineData("application")]
+    [InlineData("negative")]
+    public async Task Stale_status_does_not_bypass_identity_or_untreated_proof_guards(string condition)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        await fixture.MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync();
+        var stale = await fixture.Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474);
+        if (condition == "malformed-key") stale.IdentityKey += "|CONVENTIONAL";
+        if (condition == "snapshot-mismatch") stale.InventoryStatusSnapshot = "Organic";
+        if (condition == "hold")
+        {
+            stale.InventoryStatusSnapshot = "Hold";
+            stale.IdentityKey = stale.IdentityKey.Replace("|CONVENTIONAL", "|HOLD", StringComparison.Ordinal);
+        }
+        if (condition == "wrong-lot") stale.LotNumberSnapshot = "different-lot";
+        if (condition == "wrong-warehouse") stale.WarehouseId = 99;
+        if (condition == "treated")
+        {
+            stale.TreatmentState = TreatmentLineageStates.Confirmed;
+            stale.TreatmentSignature = "u|a:999";
+        }
+        if (condition == "negative") stale.CurrentBins = -68;
+        await fixture.Db.SaveChangesAsync();
+        if (condition == "application") await fixture.AddApplicableRoomTreatmentApplicationAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var before = await fixture.PersistedStateAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(default)).Positions, x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, $"stale-block-{condition}"), default);
+
+        Assert.False(result.Success);
+        Assert.Equal(before, await fixture.PersistedStateAsync());
+    }
+
+    [Fact]
+    public async Task Stale_status_reclassification_preserves_confirmed_treatment_and_application_history()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.SeedTreatmentSegmentsAsync();
+        await fixture.AddApplicableRoomTreatmentApplicationAsync();
+        await fixture.MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync();
+        var stale = await fixture.Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474);
+        stale.TreatmentState = TreatmentLineageStates.Confirmed;
+        stale.TreatmentSignature = "u|a:999";
+        stale.ReceiptId = 503;
+        fixture.Db.TreatmentLineageSegmentApplications.Add(new TreatmentLineageSegmentApplication
+        {
+            TreatmentLineageSegmentId = stale.Id,
+            RoomTreatmentApplicationId = 999,
+            Sequence = 1
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var history = await fixture.ProtectedHistoryAsync();
+        var link = await fixture.RowsAsync(fixture.Db.TreatmentLineageSegmentApplications.Where(x => x.TreatmentLineageSegmentId == stale.Id));
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(default)).Positions, x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "stale-confirmed"), default);
+
+        Assert.True(result.Applied, result.Message);
+        var current = await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp4RoomId && x.CurrentBins > 0).ToListAsync();
+        var confirmed = Assert.Single(current, x => x.TreatmentState == TreatmentLineageStates.Confirmed);
+        Assert.Equal(64, confirmed.CurrentBins);
+        Assert.Equal("u|a:999", confirmed.TreatmentSignature);
+        Assert.Equal(503, confirmed.ReceiptId);
+        var copied = Assert.Single(await fixture.Db.TreatmentLineageSegmentApplications.Where(x => x.TreatmentLineageSegmentId == confirmed.Id).ToListAsync());
+        Assert.Equal(999, copied.RoomTreatmentApplicationId);
+        Assert.Equal(1, copied.Sequence);
+        Assert.Equal(183, Assert.Single(current, x => x.TreatmentState == TreatmentLineageStates.Untreated).CurrentBins);
+        Assert.Equal(247, current.Sum(x => x.CurrentBins));
+        Assert.Equal(history, await fixture.ProtectedHistoryAsync());
+        Assert.Equal(link, await fixture.RowsAsync(fixture.Db.TreatmentLineageSegmentApplications.Where(x => x.TreatmentLineageSegmentId == stale.Id)));
+        Assert.Equal(0, (await fixture.Db.TreatmentLineageSegments.FindAsync(stale.Id))!.CurrentBins);
+        Assert.Empty(await fixture.Db.TreatmentLineageMovements.Where(x => x.MovementType == TreatmentLineageMovementTypes.IdentityReclassificationUntreatedBackfill).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Already_consolidated_canonical_segment_remains_unchanged_when_retiring_legacy_source()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ConfigureWp4BalancesAsync(15, 70);
+        await fixture.SeedTreatmentSegmentsAsync();
+        await fixture.ConfigureWp4TreatmentAsync(15, 85);
+        var canonical = fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp4RoomId && x.GrowerLotId == 474);
+        var before = await fixture.RowsAsync(canonical);
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(default)).Positions, x => x.RoomId == Fixture.Wp4RoomId);
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "correct-canonical"), default);
+
+        Assert.True(result.Applied, result.Message);
+        Assert.Equal(before, await fixture.RowsAsync(canonical));
+    }
+
+    [LegacyNormalizationPostgreSqlTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostgreSql_stale_status_reconciliation_commits_once_or_rolls_back_every_write(bool failAudit)
+    {
+        await using var fixture = await Fixture.CreateAsync(postgres: true);
+        await fixture.ConfigureEvans7UntreatedGapAsync();
+        await fixture.MakeCanonicalTreatmentSegmentInventoryStatusStaleAsync();
+        var before = await fixture.PersistedStateAsync();
+        var history = await fixture.ProtectedHistoryAsync();
+        var total = await fixture.TotalInventoryAsync();
+        var candidate = Assert.Single((await fixture.Service.AnalyzeAsync(default)).Positions, x => x.RoomId == Fixture.Wp4RoomId);
+        if (failAudit)
+        {
+            fixture.Db.SavingChanges += (_, _) =>
+            {
+                if (fixture.Db.ChangeTracker.Entries<AuditLog>().Any(x => x.State == EntityState.Added))
+                    throw new InvalidOperationException("Injected final audit failure");
+            };
+        }
+
+        var result = await fixture.Service.RunAsync(fixture.Request(candidate, "postgres-stale-status"), default);
+        fixture.Db.ChangeTracker.Clear();
+
+        if (failAudit)
+        {
+            Assert.False(result.Success);
+            Assert.Contains("Injected final audit failure", result.Message);
+            Assert.Equal(before, await fixture.PersistedStateAsync());
+            return;
+        }
+        Assert.True(result.Applied, result.Message);
+        Assert.Equal(history, await fixture.ProtectedHistoryAsync());
+        Assert.Equal(total, await fixture.TotalInventoryAsync());
+        var current = Assert.Single(await fixture.Db.TreatmentLineageSegments.Where(x => x.RoomId == Fixture.Wp4RoomId && x.CurrentBins > 0).ToListAsync());
+        Assert.Equal(474, current.GrowerLotId);
+        Assert.Equal(170, current.CurrentBins);
+        Assert.Equal(TreatmentLineageStates.Untreated, current.TreatmentState);
+        Assert.Equal(170, Assert.Single(await fixture.Ledger.GetSnapshotsAsync(null, [Fixture.Wp4RoomId], default), x => x.CurrentBins > 0).CurrentBins);
+        Assert.Single(await fixture.Db.AuditLogs.ToListAsync());
+        Assert.Equal(3, await fixture.Db.TreatmentLineageMovements.CountAsync(x => x.InventoryIdentityCorrectionId == result.CorrectionId));
+        var applied = await fixture.PersistedStateAsync();
+        Assert.True((await fixture.Service.RunAsync(fixture.Request(candidate, "postgres-stale-status"), default)).AlreadyApplied);
+        Assert.Equal(applied, await fixture.PersistedStateAsync());
     }
 
     [Theory]
@@ -373,6 +556,9 @@ public sealed class LegacyGrowerLotReconciliationTests
         public const int Wp4RoomId = 4;
         public const int Wp8RoomId = 8;
         public CropQcDbContext Db { get; }
+        public RoomTreatmentService Treatments { get; }
+        private string? AdminConnection { get; init; }
+        private string? DatabaseName { get; init; }
         public RoomInventoryLedgerQueryService Ledger { get; }
         public InventoryDeductionInvariantService Invariant { get; }
         public LegacyGrowerLotReconciliationService Service { get; }
@@ -393,15 +579,34 @@ public sealed class LegacyGrowerLotReconciliationTests
             var treatments = new RoomTreatmentService(db, Ledger, access,
                 new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
                 time, NullLogger<RoomTreatmentService>.Instance);
+            Treatments = treatments;
             var canonical = new CanonicalGrowerService(db);
             Service = new LegacyGrowerLotReconciliationService(db, Ledger, canonical, treatments, Invariant, time);
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(bool postgres = false)
         {
-            var options = new DbContextOptionsBuilder<CropQcDbContext>()
-                .UseInMemoryDatabase($"legacy-grower-lot-{Guid.NewGuid():N}").Options;
-            var db = new CropQcDbContext(options);
+            var options = new DbContextOptionsBuilder<CropQcDbContext>();
+            string? admin = null, databaseName = null;
+            if (postgres)
+            {
+                admin = Environment.GetEnvironmentVariable("CROPQC_LEGACY_NORMALIZATION_TEST_POSTGRES")!;
+                ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(admin);
+                databaseName = "cropqc_legacy_normalization_test_" + Guid.NewGuid().ToString("N");
+                await using var connection = new NpgsqlConnection(admin);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand($"CREATE DATABASE {databaseName}", connection);
+                await command.ExecuteNonQueryAsync();
+                options.UseNpgsql(new NpgsqlConnectionStringBuilder(admin) { Database = databaseName }.ConnectionString);
+            }
+            else options.UseInMemoryDatabase($"legacy-grower-lot-{Guid.NewGuid():N}");
+            var db = new CropQcDbContext(options.Options);
+            if (postgres)
+            {
+                await db.Database.EnsureCreatedAsync();
+                // Only the newly created, uniquely named disposable database.
+                await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Warehouses\", \"FruitProfiles\" CASCADE");
+            }
             var warehouse = new Warehouse { Id = 1, Code = "WP", Name = "WP", IsActive = true };
             var room4 = new Room { Id = Wp4RoomId, Warehouse = warehouse, Code = "WP-4", Name = "WP-4", IsActive = true };
             var room8 = new Room { Id = Wp8RoomId, Warehouse = warehouse, Code = "WP-8", Name = "WP-8", IsActive = true };
@@ -507,8 +712,33 @@ public sealed class LegacyGrowerLotReconciliationTests
                 Adjustment(201, room8, profile, null, "Baldwin Pears ORG CHILEAN", "1531", 404, "ReceiptAdd", receipt8),
                 Adjustment(202, room8, profile, null, "Baldwin Pears ORG CHILEAN", "1531", -280, "BinsRun"));
             await db.SaveChangesAsync();
+            if (postgres)
+            {
+                // Real FK parents for the historical additions used by the gap fixture.
+                db.Receipts.Add(Receipt(683, "TEST-683", room4, profile, target, target.Grower, 42));
+                foreach (var (id, bins) in new[] { (137, 6), (145, 27), (160, 44), (167, 24), (174, 27) })
+                    db.RoomTransfers.Add(new RoomTransfer
+                    {
+                        Id = id,
+                        OperationKey = $"fixture-transfer-{id}",
+                        SourceWarehouseId = 1,
+                        SourceRoomId = Wp8RoomId,
+                        DestinationWarehouseId = 1,
+                        DestinationRoomId = Wp4RoomId,
+                        CropYear = 2026,
+                        FruitProfileId = profile.Id,
+                        GrowerLotId = target.Id,
+                        GrowerName = target.Grower,
+                        LotNumber = "1531",
+                        BinCount = bins,
+                        Reason = "Historical normalization fixture",
+                        TransferredAt = Now.AddDays(-2),
+                        CreatedAt = Now.AddDays(-2)
+                    });
+                await db.SaveChangesAsync();
+            }
             db.ChangeTracker.Clear();
-            return new Fixture(db, room4, profile);
+            return new Fixture(db, room4, profile) { AdminConnection = admin, DatabaseName = databaseName };
         }
 
         public LegacyGrowerLotReconciliationRequest Request(
@@ -763,7 +993,10 @@ public sealed class LegacyGrowerLotReconciliationTests
         {
             var canonical = await Db.TreatmentLineageSegments.SingleAsync(x => x.RoomId == Wp4RoomId && x.GrowerLotId == 474);
             canonical.InventoryStatusSnapshot = "CONVENTIONAL";
-            canonical.IdentityKey = $"{canonical.IdentityKey}|CONVENTIONAL";
+            var parts = canonical.IdentityKey.Split('|');
+            Assert.Equal(9, parts.Length);
+            parts[8] = "CONVENTIONAL";
+            canonical.IdentityKey = string.Join('|', parts);
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
         }
@@ -806,6 +1039,24 @@ public sealed class LegacyGrowerLotReconciliationTests
                 .ToListAsync();
             return string.Join(';', rows);
         }
+
+        public async Task<string> RowsAsync<T>(IQueryable<T> query) where T : class =>
+            string.Join('\n', (await query.AsNoTracking().ToListAsync())
+                .Select(row => JsonSerializer.Serialize(Db.Entry(row).Properties.OrderBy(x => x.Metadata.Name)
+                    .ToDictionary(x => x.Metadata.Name, x => x.CurrentValue)))
+                .OrderBy(x => x, StringComparer.Ordinal));
+
+        public async Task<string> ProtectedHistoryAsync() => string.Join('\n',
+            await RowsAsync(Db.RoomInventoryAdjustments.Where(x => x.InventoryIdentityCorrectionId == null)),
+            await RowsAsync(Db.TreatmentLineageMovements.Where(x => x.InventoryIdentityCorrectionId == null)),
+            await RowsAsync(Db.RoomTreatmentApplications), await RowsAsync(Db.Receipts),
+            await RowsAsync(Db.RoomTransfers), await RowsAsync(Db.BinsRunEntries));
+
+        public async Task<string> PersistedStateAsync() => string.Join('\n',
+            await ProtectedHistoryAsync(), await RowsAsync(Db.RoomInventoryAdjustments),
+            await RowsAsync(Db.TreatmentLineageSegments), await RowsAsync(Db.TreatmentLineageMovements),
+            await RowsAsync(Db.TreatmentLineageSegmentApplications), await RowsAsync(Db.InventoryIdentityCorrections),
+            await RowsAsync(Db.AuditLogs));
 
         public async Task<string> RoomHistoryFingerprintAsync()
         {
@@ -874,11 +1125,29 @@ public sealed class LegacyGrowerLotReconciliationTests
                 UpdatedAt = Now.AddDays(-2)
             };
 
-        public async ValueTask DisposeAsync() => await Db.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            if (DatabaseName is null) return;
+            NpgsqlConnection.ClearAllPools();
+            await using var connection = new NpgsqlConnection(AdminConnection);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand($"DROP DATABASE {DatabaseName} WITH (FORCE)", connection);
+            await command.ExecuteNonQueryAsync();
+        }
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow => utcNow;
+    }
+
+    private sealed class LegacyNormalizationPostgreSqlTheoryAttribute : TheoryAttribute
+    {
+        public LegacyNormalizationPostgreSqlTheoryAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CROPQC_LEGACY_NORMALIZATION_TEST_POSTGRES")))
+                Skip = "Set CROPQC_LEGACY_NORMALIZATION_TEST_POSTGRES to a disposable PostgreSQL admin connection.";
+        }
     }
 }

@@ -1008,7 +1008,7 @@ public sealed class RoomTreatmentService(
             {
                 var bins = segment.CurrentBins;
                 var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState,
-                    segment.TreatmentSignature, now, cancellationToken, segment.ReceiptId);
+                    segment.TreatmentSignature, now, cancellationToken, segment.ReceiptId, staleTargetSegments);
                 await CopyApplicationLinksAsync(segment, destination, cancellationToken);
                 segment.CurrentBins = 0;
                 segment.UpdatedAt = now;
@@ -1359,7 +1359,7 @@ public sealed class RoomTreatmentService(
             if (segment.CurrentBins <= 0) continue;
             var bins = segment.CurrentBins;
             var destination = await GetOrCreateSegmentAsync(target, segment.TreatmentState, segment.TreatmentSignature,
-                occurredAt, cancellationToken, segment.ReceiptId);
+                occurredAt, cancellationToken, segment.ReceiptId, staleSegments);
             await CopyApplicationLinksAsync(segment, destination, cancellationToken);
             segment.CurrentBins = 0;
             segment.UpdatedAt = occurredAt;
@@ -1394,7 +1394,15 @@ public sealed class RoomTreatmentService(
     private static bool IsStaleInventoryStatusProjection(TreatmentLineageSegment segment,
         RoomInventoryLedgerSnapshot target)
     {
-        var canonicalized = ToSnapshot(segment) with { InventoryStatus = target.InventoryStatus };
+        // Only the legacy production-type display status can be superseded by
+        // reviewed identity reconciliation. Holds, unknown key formats, and
+        // keys inconsistent with their own snapshots remain review blockers.
+        var snapshot = ToSnapshot(segment);
+        if (segment.WarehouseId != target.WarehouseId || segment.RoomId != target.RoomId
+            || NormalizeKey(segment.InventoryStatusSnapshot) is not ("CONVENTIONAL" or "ORGANIC")
+            || InventoryStatusIdentity.NormalizeLineageKey(segment.IdentityKey) != IdentityKey(snapshot))
+            return false;
+        var canonicalized = snapshot with { InventoryStatus = target.InventoryStatus };
         return IdentityKey(canonicalized) == IdentityKey(target);
     }
 
@@ -2506,13 +2514,19 @@ public sealed class RoomTreatmentService(
         new(value.IdentityKey, value.TreatmentSignature, value.TreatmentState, value.Bins, SegmentLabel(value),
             value.ReceiptId, value.SegmentId, value.IsAvailable, value.UnavailableReason, value.ExplicitBins);
 
-    private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken, long? receiptId = null)
+    private async Task<TreatmentLineageSegment> GetOrCreateSegmentAsync(RoomInventoryLedgerSnapshot snapshot, string state, string signature, DateTimeOffset now, CancellationToken cancellationToken, long? receiptId = null,
+        IReadOnlyCollection<TreatmentLineageSegment>? reviewedStaleStatusSegments = null)
     {
         var key = IdentityKey(snapshot);
         var positionSegments = await LoadIdentitySegmentsAsync(snapshot, cancellationToken, includeConflicts: true);
         if (positionSegments.Any(x => x.CurrentBins < 0))
             throw new TreatmentLineageReviewException("Negative destination treatment lineage requires review.");
-        if (positionSegments.Any(x => x.CurrentBins > 0 && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != key))
+        // Reclassification has already proved quantity and treatment provenance.
+        // Permit only its exact pending stale rows while creating their replacement;
+        // they remain auditable zero-balance sources after the atomic correction.
+        // Ordinary movement callers supply no exception and retain the #251 guard.
+        if (positionSegments.Any(x => x.CurrentBins > 0 && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != key
+            && !(reviewedStaleStatusSegments?.Contains(x) == true && IsStaleInventoryStatusProjection(x, snapshot))))
             throw new TreatmentLineageReviewException("Destination treatment lineage status or identity requires review.");
         var matches = positionSegments.Where(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == key
             && x.TreatmentSignature == signature && x.ReceiptId == receiptId).ToList();
