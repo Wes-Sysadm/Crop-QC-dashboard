@@ -273,6 +273,20 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
         html.AppendLine("</table>");
 
+        html.AppendLine("<h2>Summary</h2>");
+        html.AppendLine("<table cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;\">");
+        AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
+        AddInfoRow(html, "Entered fruit count", summary.SampleSize.ToString());
+        AddInfoRow(html, "Average Pressure", Format(summary.AveragePressure));
+        AddInfoRow(html, "Pressure std dev lbs", Format(summary.PressureStandardDeviation));
+        AddInfoRow(html, "Average starch", StarchSummaryText(sample, summary.AverageStarch));
+        AddInfoRow(html, "Average weight grams", Format(summary.AverageWeight));
+        AddInfoRow(html, "Grade summary", summary.GradeSummary);
+        AddInfoRow(html, "Defect summary", summary.DefectSummary);
+        AddInfoRow(html, "Size/status summary", summary.SizeSummary);
+        if (!string.IsNullOrWhiteSpace(sample.Notes)) AddInfoRow(html, "Notes", sample.Notes);
+        html.AppendLine("</table>");
+
         if (!readiness.IsReady)
         {
             html.AppendLine("<p style=\"color:#92400e;\"><strong>Sample is incomplete;</strong> summary includes entered data only.</p>");
@@ -301,20 +315,6 @@ public sealed class QcSummaryEmailComposer(
         html.AppendLine("</tbody></table>");
 
         AppendPhotoSections(html, requirements, photos, imageReferences, linkedPhotoNotes);
-
-        html.AppendLine("<h2>Summary</h2>");
-        html.AppendLine("<table cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;\">");
-        AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
-        AddInfoRow(html, "Entered fruit count", summary.SampleSize.ToString());
-        AddInfoRow(html, "Average Pressure", Format(summary.AveragePressure));
-        AddInfoRow(html, "Pressure std dev lbs", Format(summary.PressureStandardDeviation));
-        AddInfoRow(html, "Average starch", StarchSummaryText(sample, summary.AverageStarch));
-        AddInfoRow(html, "Average weight grams", Format(summary.AverageWeight));
-        AddInfoRow(html, "Grade summary", summary.GradeSummary);
-        AddInfoRow(html, "Defect summary", summary.DefectSummary);
-        AddInfoRow(html, "Size/status summary", summary.SizeSummary);
-        if (!string.IsNullOrWhiteSpace(sample.Notes)) AddInfoRow(html, "Notes", sample.Notes);
-        html.AppendLine("</table>");
 
         html.AppendLine("</body></html>");
         return html.ToString();
@@ -379,6 +379,18 @@ public sealed class QcSummaryEmailComposer(
         text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
         text.AppendLine($"Inspector: {inspector}");
         text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
+        text.AppendLine();
+        text.AppendLine("Summary");
+        text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
+        text.AppendLine($"Entered fruit count: {summary.SampleSize}");
+        text.AppendLine($"Average Pressure: {Format(summary.AveragePressure)} lbs");
+        text.AppendLine($"Pressure std dev lbs: {Format(summary.PressureStandardDeviation)}");
+        text.AppendLine($"Average starch: {StarchSummaryText(sample, summary.AverageStarch)}");
+        text.AppendLine($"Average weight grams: {Format(summary.AverageWeight)}");
+        text.AppendLine($"Grade summary: {summary.GradeSummary}");
+        text.AppendLine($"Defect summary: {summary.DefectSummary}");
+        text.AppendLine($"Size/status summary: {summary.SizeSummary}");
+        if (!string.IsNullOrWhiteSpace(sample.Notes)) text.AppendLine($"Notes: {sample.Notes}");
         if (isOverride) text.AppendLine($"Override reason: {overrideReason}");
         if (!readiness.IsReady) text.AppendLine("Sample is incomplete; summary includes entered data only.");
         text.AppendLine();
@@ -404,18 +416,6 @@ public sealed class QcSummaryEmailComposer(
                 }
             }
         }
-        text.AppendLine();
-        text.AppendLine("Summary");
-        text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
-        text.AppendLine($"Entered fruit count: {summary.SampleSize}");
-        text.AppendLine($"Average Pressure: {Format(summary.AveragePressure)} lbs");
-        text.AppendLine($"Pressure std dev lbs: {Format(summary.PressureStandardDeviation)}");
-        text.AppendLine($"Average starch: {StarchSummaryText(sample, summary.AverageStarch)}");
-        text.AppendLine($"Average weight grams: {Format(summary.AverageWeight)}");
-        text.AppendLine($"Grade summary: {summary.GradeSummary}");
-        text.AppendLine($"Defect summary: {summary.DefectSummary}");
-        text.AppendLine($"Size/status summary: {summary.SizeSummary}");
-        if (!string.IsNullOrWhiteSpace(sample.Notes)) text.AppendLine($"Notes: {sample.Notes}");
         return text.ToString();
     }
 
