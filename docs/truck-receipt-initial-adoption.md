@@ -1,6 +1,6 @@
 # Reviewed initial Truck Receipt adoption — loads 1–15
 
-This plan supersedes the prior proposal to permanently grandfather these 15 loads. It does **not** authorize production execution. PR #252 is being prepared only; no merge, deployment, production configuration/migration/adoption/repair is performed here.
+This plan supersedes the prior proposal to permanently grandfather these 15 loads. It does **not** authorize production execution. PR #252 is being prepared only; no #252 merge, deployment, production configuration/migration/adoption/repair is performed here. The separately authorized #253 baseline merge is recorded in the release review.
 
 ## Mechanism and scope
 
@@ -56,7 +56,7 @@ Physical arrival has not been verified. The old dates merit operational review, 
 
 ## Release sequence
 
-1. Resolve the required baseline test gate and obtain human review and explicit merge/release/adoption authorization. Keep PR Draft until the required gate passes.
+1. The required baseline test gate is now cleared by merged #253 and integrated validation. Obtain human review and explicit #252 merge/release/adoption authorization; Ready for Review is not production release authorization.
 2. Run and independently verify a **fresh** production predeployment backup (durable upload/read-back, size, SHA-256, archive, manifest/dump, retention and lease release). Record both live commits. Do not use the rehearsal archive as the eventual release backup.
 3. Disable auto-deploy on the existing backup cron and verify web auto-deploy remains off **before merge**. Keep the backup command unchanged. Freeze the reviewed merge SHA and rehearse that exact candidate on the fresh backup. Quiesce all transfer/receiving and related inventory writers before the bounded execution window.
 4. Apply only the reviewed bounded feature schema SQL; run schema verification and protected-history fingerprints. The schema itself defaults every existing transfer to legacy and performs no adoption.
@@ -92,25 +92,30 @@ For a repeatable local rehearsal, restore a new disposable copy of the recent ve
 
 The adoption integration suite runs the **actual checked-in SQL** against a fresh production-shaped PostgreSQL restore. It tests all 15/630, unchanged inventory/receipts/history, 15 audited versioned updates, manual candidate/UI visibility, 68-vs-70 rejection, equal-total/wrong-variety rejection, exact completion, pause/resume, rollback-boundary detection, preserved non-adopted legacy loads, safe repeat refusal and thirteen adverse guard cases. The ordinary lifecycle and forged-user-match tests continue proving that application code cannot adopt arbitrary legacy loads.
 
-The known baseline failure was investigated without altering production logic. The proven-untreated historical backfill path calls GetOrCreateSegmentAsync while a positive stale destination identity still exists; the shared destination safety guard rejects it before normalization can complete. Changing this path affects historical identity consolidation and audit/movement construction, beyond a workflow-flag adoption. It should receive a separate, scoped correction with provenance tests; no guard was weakened or test suppressed here. Keep Draft while the required gate remains unmet. Final counts and before/after fingerprints are recorded in the delivery report.
+The historical lineage baseline failure is resolved separately by merged PR #253. Its narrow audited normalization fix, conservation/history invariants, full rollback and idempotence regressions all pass under this integrated branch; ordinary movement guards remain intact.
 
 ## Final validation evidence
 
-Final adoption validation: **247 affected-area tests passed**, including 14 adoption cases using the actual SQL and authenticated adopted-load pages. Full suite: **1,935 passed, one known baseline failure, two optional skips (1,938 total)**. Restore/build, default-provider model check, formatting/diff and schema checks passed. The final incremental solution build has zero errors/warnings; earlier compilation emitted existing nullable warnings. The two unrelated optional skips are FruitProfileIdentityGuardPostgreSqlTests and ReceiptDateBaselineTests; all Truck Receipt/adoption PostgreSQL tests ran.
+Updated onto main `c33d799c774498c8847ad3d99bd6bd649486c5e9` containing merged PR #253. Integration had no conflicts; approved Truck Receipt behavior and the frozen adoption predicates are unchanged. **397 affected-area tests passed**, including 91 Truck Receipt cases, 14 actual-SQL adoption cases and 32 stale-lineage normalization cases. Full suite: **1948 passed, zero failures, 2 documented optional skips (1950 total)**. The optional skips remain FruitProfileIdentityGuardPostgreSqlTests and ReceiptDateBaselineTests; all required Truck Receipt/adoption/PostgreSQL cases ran. All 81 previously validated #253 affected cases also passed in the integrated full suite. Solution restore, nonincremental build (63 warnings, zero errors), scoped formatting/diff, default-provider model, bounded schema and current Render Blueprint validation passed. The warning count is six higher than the prior 57: CS8602 at QcSampleService.cs lines 59/66/73/75 and QcFruitReadingService.cs lines 19/51. Both files are identical to pre-feature c014528 and current main; the other 57 warning signatures match the earlier build. No warning was suppressed or unrelated source changed. The full suite was explicitly requested. No failure was suppressed or reclassified.
 
-A fresh disposable restore of verified backup run 163 (captured September 23 at 18:18:05 UTC, c014528, 13,901,101 bytes, SHA-256 `082d27f2c746ade8bdc7b16e7e40067bd837c7273280886fd1c797dfad621b3c`) reverified package/component hashes and applied the unchanged feature schema. After rollback-scoped workflow tests, the actual manual psql entry point was committed on that local restore: exactly 15 flags false→true, versions 1→2 and 15 audits; all 630 bins stayed InTransit. No receipt/receipt number, ledger movement, lineage or destination inventory was created by adoption. A repeated entry-point invocation exited 3 safely with unchanged state/audits. Post-adoption schema CLI exits 0 and pre-feature rollback CLI exits 2. This is a newly restored recent verified archive, not a new production backup or production adoption.
+A fresh standard production predeployment backup, run **166**, was captured from `c014528ebab82de8c9ce0e5ef0f5f5e920b5a8ae` on September 24, 2026. Package `cropqc-production-predeployment-20260924-151420.zip` is 14,211,969 bytes, SHA-256 `04b47d37c76318666bdda15a8d73f38bdc3b2caef101a94df636e27eb47796d1`. Durable upload/read-back, size/SHA, ZIP, manifest/component hashes, nonempty PostgreSQL dump, retention and lease release passed before #253 merged. A brand-new disposable restore then applied the exact bounded feature SQL successfully. All eleven original-history fingerprints matched before/after migration and after rollback-scoped tests. This backup covers the current release-preparation stage; take another fresh verified backup for the eventual #252 production release.
 
-Ten protected before/after fingerprints matched. Transfer fingerprints exclude only the intended flag/version fields for IDs 1–15; existing audit fingerprints exclude only the new batch audit keys. Full audit before/after JSON was compared and only those two transfer fields changed. Timestamps are normalized to UTC, so do not compare these hash strings with earlier reports computed in a different session time zone.
+The exact manual adoption entry point was committed only on the fresh Backup #166 disposable restore: exactly 15 flags false→true, versions 1→2 and 15 full before/after audits. All 630 bins stayed InTransit, with no receiving link, destination placement, new receipt, fabricated receipt number or inventory movement. All 15 were manual Match Transfer candidates in authenticated local tests. Every audit changed only the intended flag/version fields. Eleven protected fingerprints matched. Repeating the entry point exited 3 safely with identical state/audits. Schema CLI exited 0 before/after; pre-feature rollback CLI exited 0 before adoption and 2 afterward. Migration Down also refused the adopted state without schema/data changes.
+
+Fresh READ-ONLY production checks at 2026-09-25T01:28:32.673844+00:00 passed the exact frozen guard loop for every load. Counts remain 64, 27, 45, 70, 70, 66, 29, 41, 59, 11, 40, 34, 25, 30 and 19 (630 total). All remain unadopted, unlinked InTransit, source EBS/Lamb Street 13, destination WP_DH without a room, Organic Honey Crisp/ORHC/FruitProfile 10, with balanced unchanged dispatch evidence and no downstream activity. No exclusion is needed. This establishes recorded inventory state, not physical arrival; the existing operator checks remain required.
 
 | Protected area | Rows before = after | MD5 before = after |
 |---|---:|---|
-| ledger | 3,482 | `92e89aa8ed8057682cf869803db06834` |
-| segments | 624 | `dfae924cb07555b35140494e07f74958` |
-| movements | 635 | `cb1ea919fb54f8e4d30b5bb5c9fc2224` |
 | applications | 55 | `0030d4af20300aa2b788bd649b8104ca` |
-| receipts | 2,049 | `d6b47af5429f1e7c6c147b226de4196f` |
-| receiptLines | 0 | `d41d8cd98f00b204e9800998ecf8427e` |
+| existingAudit | 147,753 | `de535edeed66bb3ce3d0b7afdd783f3f` |
+| ledger | 3,548 | `a25c916bb108165b53c50b1f1e7ab9a6` |
+| movements | 660 | `fbf0d5a703b0a69c70a2b04d9a2d3bab` |
 | protectedTransferFields | 22 | `460dffd8e16de9b782c0ebb51fbcb6fe` |
-| existingAudit | 144,789 | `9bcb29011540910fd6d07848268693ce` |
+| receiptLines | 0 | `d41d8cd98f00b204e9800998ecf8427e` |
+| receipts | 2,088 | `7e9a67d5619f44f54d0b7b4b6acd40dd` |
 | rooms | 70 | `24f38f7841c0e638ca876157e5f955b5` |
+| segments | 635 | `2cbcfdafe6793816bb1d1378e3913e57` |
+| treatmentApplications | 24 | `d9ae1d585226bd8a65360b5bebd7c21d` |
 | warehouses | 4 | `d2f74e2c82eb164355b7c58d323cf7b3` |
+
+The required baseline failure is resolved by #253 and passes under this integrated candidate. PR #252 is eligible for Ready for Review; it remains unmerged and undeployed. Human review, explicit release/adoption authorization, exact merged-candidate checks, actual Render/Linux startup and authenticated production smoke remain future release gates. No production schema/adoption/inventory correction was performed. The completed Bartlett repair was not revisited and the other 26 discrepancies remain untouched. No WinForms change or MSI rebuild is involved.
