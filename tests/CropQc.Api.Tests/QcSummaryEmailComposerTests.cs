@@ -153,9 +153,9 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("WP - Reese LOT-1 9450 BLUE06 Receiving Sample On 05/11/2025", content.Subject);
         Assert.Contains("<h2>Summary</h2>", content.HtmlBody);
         Assert.Contains("<h2>Fruit Overview</h2>", content.HtmlBody);
-        Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal));
         Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal));
-        Assert.True(content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal));
         Assert.DoesNotContain("Defects / Notes Detail", content.HtmlBody);
         Assert.Contains("cid:cropqc-photo-", content.HtmlBody);
         Assert.Contains("Truck photo", content.HtmlBody);
@@ -432,7 +432,7 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Size/status summary</th><td style=\"border:1px solid #cbd5e1;\">1 size 100, 1 size 120</td>", content.HtmlBody);
         Assert.Contains("Row 1:", content.TextBody);
         Assert.Contains("Row 5:", content.TextBody);
-        Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal));
+        Assert.True(content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal));
         Assert.DoesNotContain("Defects / Notes Detail", content.HtmlBody);
         Assert.Contains("Sample is incomplete; summary includes entered data only.", content.TextBody);
     }
@@ -519,6 +519,88 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("RemoveSamplePhotoAsync", controller);
         Assert.Contains("IsDeleted = true", service);
         Assert.Contains("remove-photo", service);
+    }
+
+    [Theory]
+    [InlineData("Receiving Sample", false, false, false, "WP", "first@example.com", true)]
+    [InlineData("Receiving Sample", true, false, false, "EBS", "second@example.com", true)]
+    [InlineData("Receiving Sample", true, true, false, "DH", "third@example.com", false)]
+    [InlineData("Receiving Sample", true, false, true, "WP", "fourth@example.com", true)]
+    [InlineData("Receiving Sample", true, true, true, "EBS", "fifth@example.com", false)]
+    [InlineData("Door Sample", false, false, false, "DH", "sixth@example.com", true)]
+    [InlineData("Lot Sample", false, false, false, "WP", "seventh@example.com", false)]
+    [InlineData("Transfer Sample", true, false, false, "EBS", "eighth@example.com", true)]
+    public async Task EmailComposer_PlacesUnchangedSummaryImmediatelyAfterHeaderForEveryRecipientAndReceiptShape(
+        string sampleType, bool truckReceipt, bool multipleLots, bool multipleVarieties, string warehouse, string email, bool ready)
+    {
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        // QC emails are composed per sample, including each lot in a multi-lot receiving workflow.
+        foreach (var lot in multipleLots ? new[] { "LOT-A", "LOT-B" } : new[] { "LOT-A" })
+        {
+            var sample = BuildSample(sampleType);
+            var receipt = sample.Receipt!;
+            receipt.IsTransferReceipt = truckReceipt;
+            receipt.ReceiptType = truckReceipt ? "Truck receipt" : "Receiving receipt";
+            receipt.CompuTechReceiptId = "RCPT-" + lot;
+            receipt.LotCode = receipt.GrowerNumber = lot;
+            receipt.Warehouse.Code = warehouse;
+            receipt.Room.Code = "ROOM-" + warehouse;
+            var sender = new User { Id = 42, Email = email, DisplayName = "Different sender", Domain = "example.com" };
+            sample.TakenByUser = sender;
+            sample.Notes = "Keep existing notes";
+            if (multipleVarieties)
+            {
+                receipt.VarietyLines.Add(new ReceiptVarietyLine { FruitProfileId = 1, FruitProfile = receipt.FruitProfile, BinCount = 30 });
+                receipt.VarietyLines.Add(new ReceiptVarietyLine
+                {
+                    FruitProfileId = 2,
+                    BinCount = 12,
+                    FruitProfile = new FruitProfile { Id = 2, Name = "Fuji", VarietyCode = "FUJI", FruitType = "Apple", ProductionType = "Conventional" }
+                });
+            }
+
+            var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = ready }, sender, !ready, "Existing override", CancellationToken.None);
+            var headerEnd = content.HtmlBody.IndexOf("</table>", StringComparison.Ordinal) + "</table>".Length;
+            var summaryStart = content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal);
+            var summaryEnd = content.HtmlBody.IndexOf("</table>", summaryStart, StringComparison.Ordinal) + "</table>".Length;
+            var summaryHtml = content.HtmlBody[summaryStart..summaryEnd];
+            Assert.True(content.HtmlBody.IndexOf("<h1>", StringComparison.Ordinal) < headerEnd);
+            Assert.StartsWith("<h2>Summary</h2>", content.HtmlBody[headerEnd..].TrimStart());
+            Assert.Contains(">Inspector</th>", content.HtmlBody[..headerEnd]);
+            Assert.Contains(email, content.HtmlBody[..headerEnd]);
+            Assert.Contains(lot, content.HtmlBody[..headerEnd]);
+            Assert.Equal(1, CountOccurrences(content.HtmlBody, "<h2>Summary</h2>"));
+            Assert.Equal(2, CountOccurrences(content.HtmlBody, ">Target sample size</th>")); // Existing header + summary, not an added copy.
+            Assert.Equal(1, CountOccurrences(summaryHtml, ">Target sample size</th>"));
+            Assert.True(summaryEnd < content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal));
+            Assert.True(content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal));
+
+            // Fixed pre-change fixture values: do not recompute expected summary statistics here.
+            var expected = new (string Label, string Value)[]
+            {
+                ("Target sample size", "10"), ("Entered fruit count", "1"), ("Average Pressure", "12.6"),
+                ("Pressure std dev lbs", "0.42"), ("Average starch", "4.5"), ("Average weight grams", "185.2"),
+                ("Grade summary", "XF: 1"), ("Defect summary", "1 of 1 inspected fruit affected; Bruise: 1"),
+                ("Size/status summary", "1 size 88"), ("Notes", "Keep existing notes")
+            };
+            foreach (var (label, value) in expected)
+            {
+                Assert.Contains($"{label}</th><td style=\"border:1px solid #cbd5e1;\">{value}</td>", summaryHtml);
+                Assert.Contains($"{label}: {value}" + (label == "Average Pressure" ? " lbs" : ""), content.TextBody);
+            }
+            var textSummary = Environment.NewLine + "Summary" + Environment.NewLine;
+            Assert.Equal(1, CountOccurrences(content.TextBody, textSummary));
+            Assert.Contains("Target sample size: 10" + Environment.NewLine + textSummary, content.TextBody);
+            Assert.Equal(2, CountOccurrences(content.TextBody, "Target sample size: "));
+            Assert.True(content.TextBody.IndexOf(textSummary, StringComparison.Ordinal) < content.TextBody.IndexOf("Fruit Overview", StringComparison.Ordinal));
+            Assert.True(content.TextBody.IndexOf("Fruit Overview", StringComparison.Ordinal) < content.TextBody.IndexOf("Photo sections:", StringComparison.Ordinal));
+            Assert.Contains("Row 1: P1 12.3 lbs, P2 12.9 lbs", content.TextBody);
+            Assert.Contains("cid:cropqc-photo-", content.HtmlBody);
+            Assert.NotEmpty(content.InlineImages);
+            Assert.Equal(42, receipt.BinCount);
+            Assert.Equal(lot, receipt.LotCode);
+            Assert.Equal(multipleVarieties ? 2 : 0, receipt.VarietyLines.Count);
+        }
     }
 
     private static QcSample BuildSample(string sampleType)
