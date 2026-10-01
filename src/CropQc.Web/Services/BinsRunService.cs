@@ -98,13 +98,19 @@ public sealed partial class BinsRunService(
         }
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
+        if (filter.EditActualRunId != null && filter.EditBinsRunEntryId != null)
+            throw new InvalidOperationException("Select one run to correct.");
+        var legacyEdit = dbContext.CanonicalInventoryEnabled && filter.EditBinsRunEntryId is long legacyId
+            ? await dbContext.BinsRunEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == legacyId
+                && x.ActualRunId == null && x.TransactionType == ActualRunTransactionTypes.Legacy
+                && !x.IsReversed && !x.IsReconciled, cancellationToken) : null;
         var editInventoryRows = filter.EditActualRunId is long requestedRunId
             ? await dbContext.BinsRunEntries.AsNoTracking()
                 .Where(x => x.ActualRunId == requestedRunId
                     && x.TransactionType == ActualRunTransactionTypes.Depletion
                     && !x.IsReversed)
                 .ToListAsync(cancellationToken)
-            : [];
+            : legacyEdit == null ? [] : new List<BinsRunEntry> { legacyEdit };
         if (editInventoryRows.Count > 0 && filter.RoomIds.Count == 0)
         {
             filter.RoomIds = editInventoryRows
@@ -177,7 +183,7 @@ public sealed partial class BinsRunService(
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
             : await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
-        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, editInventoryRows, cancellationToken);
+        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, editInventoryRows, cancellationToken, legacyEdit?.Id);
         var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
             ?? options.FirstOrDefault();
         var roomSummary = isActualSection || filter.RoomId is null
@@ -190,6 +196,7 @@ public sealed partial class BinsRunService(
             .Include(x => x.CreatedByUser)
             .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
             .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId);
+        if (legacyEdit != null) historyQuery = historyQuery.Where(x => x.Id == legacyEdit.Id);
         if (filter.FromDate is DateTime fromDate)
         {
             historyQuery = historyQuery.Where(x => x.RunAt >= new DateTimeOffset(fromDate.Date));
@@ -278,6 +285,8 @@ public sealed partial class BinsRunService(
             .Select(x => new BinsRunHistoryItemViewModel
             {
                 Id = x.Id,
+                CanCorrectLegacy = dbContext.CanonicalInventoryEnabled && x.ActualRunId == null
+                    && x.TransactionType == ActualRunTransactionTypes.Legacy && !x.IsReversed && !x.IsReconciled,
                 InventoryKey = x.ReceiptId != null ? "R:" + x.ReceiptId.Value : $"A:{x.InventoryAdjustmentId}",
                 WarehouseId = x.WarehouseId,
                 RoomId = x.RoomId,
@@ -309,10 +318,13 @@ public sealed partial class BinsRunService(
                 WarehouseId = filter.WarehouseId,
                 RoomId = filter.RoomId,
                 InventoryKey = selectedOption?.InventoryKey ?? "",
+                CanonicalFingerprint = selectedOption?.CanonicalFingerprint ?? "",
+                BinsRun = legacyEdit?.BinsRun ?? 0,
                 TreatmentSignature = selectedOption?.TreatmentSignature ?? "",
                 TreatmentSegmentId = selectedOption?.TreatmentSegmentId,
                 ExpectedAvailableBins = selectedOption?.CurrentBins ?? 0,
-                RunAt = DateTimeOffset.Now,
+                RunAt = legacyEdit?.RunAt ?? DateTimeOffset.Now,
+                Notes = legacyEdit?.Notes,
                 RunProjectionId = filter.ProjectionId,
                 RunProjectionSourceId = filter.ProjectionSourceId
             },
@@ -2336,10 +2348,10 @@ public sealed partial class BinsRunService(
         IReadOnlyList<InventorySnapshot> snapshots,
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
         IReadOnlyList<BinsRunEntry> activeActualRunEntries,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, long? correctingLegacyEntryId = null)
     {
         if (dbContext.CanonicalInventoryEnabled)
-            return await BuildCanonicalRunOptionsAsync(snapshots, sampleData, cancellationToken, activeActualRunEntries.FirstOrDefault()?.ActualRunId);
+            return await BuildCanonicalRunOptionsAsync(snapshots, sampleData, cancellationToken, activeActualRunEntries.FirstOrDefault()?.ActualRunId, correctingLegacyEntryId);
         var options = new List<BinsRunInventoryOptionViewModel>();
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()

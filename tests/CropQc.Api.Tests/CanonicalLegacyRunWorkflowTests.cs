@@ -42,10 +42,11 @@ public sealed class CanonicalLegacyRunWorkflowTests
         var old = await db.BinsRunEntries.AsNoTracking().SingleAsync();
         var saved = await f.Snapshot();
         Assert.Null(await service.CreateAsync(form, actorPrincipal, default)); Assert.Equal(saved, await f.Snapshot());
-        var current = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
-        var available = (await new InventoryRunCorrectionAvailability(db).ReadLegacyAsync(current, old.Id, default)).Values.Single();
-        Assert.Null(available.Blocker); Assert.Equal(19, available.AvailableAfterOwnReversal.Sum(x => x.Quantity));
-        form.OperationKey = Guid.NewGuid().ToString("N"); form.CanonicalFingerprint = current.Positions.Single().Watermark.Fingerprint; form.BinsRun = 17;
+        var edit = await service.GetPageAsync(new() { Section = "Actual", EditBinsRunEntryId = old.Id }, actorPrincipal, default);
+        var available = Assert.Single(edit.AvailableInventory);
+        Assert.True(available.IsAvailable); Assert.Equal(19, available.CurrentBins);
+        Assert.Equal(saved, await f.Snapshot());
+        form.OperationKey = Guid.NewGuid().ToString("N"); form.CanonicalFingerprint = available.CanonicalFingerprint; form.BinsRun = 17;
         Assert.Null(await service.UpdateAsync(old.Id, form, actorPrincipal, default));
         Assert.Equal(2, await f.Physical());
         var replacement = await db.BinsRunEntries.AsNoTracking().SingleAsync(x => !x.IsReversed && x.ReversesBinsRunEntryId == null);

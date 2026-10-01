@@ -25,13 +25,14 @@ public sealed partial class BinsRunService
         s.Lot, s.GrowerNumber, s.Variety, s.ProductionType, s.IsOrganic, s.InventoryStatus);
 
     private async Task<IReadOnlyList<BinsRunInventoryOptionViewModel>> BuildCanonicalRunOptionsAsync(
-        IReadOnlyList<InventorySnapshot> snapshots, IReadOnlyDictionary<string, LotSampleDistribution> samples, CancellationToken ct, long? correctingRunId = null)
+        IReadOnlyList<InventorySnapshot> snapshots, IReadOnlyDictionary<string, LotSampleDistribution> samples, CancellationToken ct, long? correctingRunId = null, long? correctingLegacyEntryId = null)
     {
         if (snapshots.Count == 0) return [];
         var rooms = snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray();
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms), new(), BusinessTime.UtcNow, ct);
         var positions = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
-        var corrections = correctingRunId is long runId ? await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, runId, ct) : null;
+        var corrections = correctingRunId is long runId ? await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, runId, ct)
+            : correctingLegacyEntryId is long entryId ? await new InventoryRunCorrectionAvailability(dbContext).ReadLegacyAsync(batch, entryId, ct) : null;
         var candidates = snapshots.ToList();
         if (corrections != null)
         {

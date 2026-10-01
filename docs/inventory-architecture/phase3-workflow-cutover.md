@@ -80,3 +80,11 @@ Unchanged Actual Run lines now retain the existing audited header-detail correct
 Active Truck Receipt allocation display, variety comparison, matching and partial-return selection now consume dispatch-allocation evidence exposed by the canonical resolver. The current identity/treatment is displayed separately from immutable original dispatch objects. Pending candidate loads are resolved in one batch rather than one proof load per candidate; completed/cancelled manifests remain historical display evidence and cannot authorize custody writes.
 
 A normal corrected-variety lifecycle passed: original Gala dispatch retained, receipt identity corrected, current Bartlett comparison displayed, five bins returned under the corrected identity, remaining 14 matched/completed/reopened, and all 19 conserved. The affected 47-test Truck selection initially passed 46 with the new fixture colliding with the seeded Bartlett variety code; after giving the fixture its own unique code, the lifecycle passed. No production data changed.
+
+## Selector coverage checkpoint
+
+Legacy Bins Run correction now has an authenticated edit page using the canonical own-entry restoration preview, including zero remaining stock. Its normal create/correct/reverse lifecycle passed without direct resolver calls in the test. Historical entries remain unchanged.
+
+Six normal source selectors (room move, inter-crew transfer, dump, processor, Outside Warehouse and loss) agree on 19 bins / untreated for each safely proven stale-history position. One-lot and 100-lot room reads had identical query counts: 78, 17, 24, 18, 14 and 15 respectively. Read-only table fingerprints were unchanged. The whole room detail's 78 queries include its noninventory page sections; this is bounded, but still a future latency optimization opportunity.
+
+The inter-crew queue now loads canonical custody and receipt comparison evidence in batches and shows current corrected identities while retaining historical load labels in history. A one-versus-ten normal-dispatch queue test proves no per-load proof-query growth. Six affected selector/Truck/inter-crew tests passed; the legacy/run selection passed two with the separately configured fresh-restore case not run in that development invocation. Static inventory and final restore/full-suite gates remain pending. No production changes.

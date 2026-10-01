@@ -880,6 +880,7 @@ public sealed class BinsRunFilterForm
     public string ProjectionVisibility { get; set; } = "Active";
     public string ProjectionSort { get; set; } = "Facility";
     public long? EditActualRunId { get; set; }
+    public long? EditBinsRunEntryId { get; set; }
     public string? ReportFacility { get; set; }
     public int? ReportCropYear { get; set; }
     public string? ReportVarietyKey { get; set; }
@@ -1131,6 +1132,7 @@ public sealed class BinsRunProjectionViewModel
 
 public sealed class BinsRunHistoryItemViewModel
 {
+    public bool CanCorrectLegacy { get; set; }
     public long Id { get; set; }
     public string InventoryKey { get; set; } = "";
     public int WarehouseId { get; set; }

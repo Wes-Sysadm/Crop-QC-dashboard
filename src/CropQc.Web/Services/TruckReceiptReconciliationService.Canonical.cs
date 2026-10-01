@@ -14,7 +14,11 @@ namespace CropQc.Web.Services;
 
 public sealed partial class TruckReceiptReconciliationService
 {
-    private async Task<Dictionary<long, IReadOnlyList<TransitAllocation>>> CanonicalTransitAllocationsAsync(long[] ids, CancellationToken ct)
+    private Task<Dictionary<long, IReadOnlyList<TransitAllocation>>> CanonicalTransitAllocationsAsync(long[] ids, CancellationToken ct) =>
+        ReadCanonicalTransitAllocationsAsync(db, time, ids, ct);
+
+    internal static async Task<Dictionary<long, IReadOnlyList<TransitAllocation>>> ReadCanonicalTransitAllocationsAsync(
+        CropQcDbContext db, CropQc.Shared.Time.IBusinessTimeService time, long[] ids, CancellationToken ct)
     {
         var parents = await db.InterCrewTransfers.AsNoTracking().Where(x => ids.Contains(x.Id) && x.Status == InterCrewTransferStatuses.InTransit).ToListAsync(ct);
         if (parents.Count == 0) return [];

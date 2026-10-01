@@ -1880,7 +1880,12 @@ else
                             <tr id="bins-run-@item.Id">
                                 <td>@BusinessTime.FormatPacific(item.RunAt)</td><td>@item.Room</td><td>@item.Inventory</td>
                                 <td>@item.PreviousAvailableBins</td><td>@item.BinsRun</td><td>@item.NewAvailableBins</td>
-                                <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")</td>
+                                <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")
+                                    @if (item.CanCorrectLegacy && Model.CanRecord)
+                                    {
+                                        <a href="/BinsRun/@item.Id/Edit">Correct with reversal</a>
+                                    }
+                                </td>
                             </tr>
                         }
                         </tbody>
