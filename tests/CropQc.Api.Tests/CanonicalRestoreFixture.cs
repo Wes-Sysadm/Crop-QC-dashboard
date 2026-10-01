@@ -32,8 +32,8 @@ internal static class CanonicalRestoreFixture
             var options = new DbContextOptionsBuilder<CropQcDbContext>();
             CropQcDatabase.Configure(options, DatabaseProviders.PostgreSql, fixture.Connection);
             await using var db = new CropQcDbContext(options.Options); // Same provider configuration as the host; flag OFF.
-            var filters = new Dictionary<string, string> { ["__EFMigrationsHistory"] = "false" };
-            var before = await fixture.Snapshot(filters);
+            var originalColumns = await Columns(fixture.Connection);
+            var before = await OriginalData(fixture.Connection, originalColumns);
             // Production's older provider history is intentionally released using
             // reviewed bounded scripts; replaying all old migrations is not safe.
             var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
@@ -46,20 +46,50 @@ internal static class CanonicalRestoreFixture
                 var script = db.GetService<IMigrator>().GenerateScript(applied.Contains(phase2) ? phase2 : truck, phase3);
                 await db.Database.ExecuteSqlRawAsync(script);
             }
-            using var oldTables = JsonDocument.Parse(before);
-            using var newTables = JsonDocument.Parse(await fixture.Snapshot(filters));
-            var oldRows = oldTables.RootElement.EnumerateArray().ToDictionary(x => x.GetProperty("table").GetString()!, x => x.GetProperty("rows").GetString());
-            foreach (var table in newTables.RootElement.EnumerateArray())
-            {
-                var tableName = table.GetProperty("table").GetString()!;
-                Assert.Equal(oldRows.GetValueOrDefault(tableName, ""), table.GetProperty("rows").GetString());
-                oldRows.Remove(tableName);
-            }
-            Assert.Empty(oldRows);
+            Assert.Equal(before, await OriginalData(fixture.Connection, originalColumns));
+            var newTables = (await Columns(fixture.Connection)).Where(x => !originalColumns.ContainsKey(x.Key)).ToDictionary();
+            // Newly added operational tables must be empty; migrations may not backfill.
+            foreach (var hash in (await OriginalData(fixture.Connection, newTables)).Values) Assert.Equal("", hash);
+            Assert.False(await db.TreatmentLineageSegments.AnyAsync(x => x.Disposition != "Current" || x.RetiredAt != null
+                || x.RetiredQuantity != null || x.RetiredByCommandKey != null));
             Assert.False(db.CanonicalInventoryEnabled);
             return fixture;
         }
         catch { await fixture.DisposeAsync(); throw; }
+    }
+
+    private static string Quote(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
+
+    private static async Task<Dictionary<string, string[]>> Columns(string connectionString)
+    {
+        var columns = new Dictionary<string, List<string>>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var read = new NpgsqlCommand("SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND table_name <> '__EFMigrationsHistory' ORDER BY table_name,ordinal_position", connection);
+        await using var reader = await read.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var name = reader.GetString(0);
+            if (!columns.TryGetValue(name, out var list)) columns[name] = list = [];
+            list.Add(reader.GetString(1));
+        }
+        return columns.ToDictionary(x => x.Key, x => x.Value.ToArray());
+    }
+
+    private static async Task<Dictionary<string, string>> OriginalData(string connectionString, Dictionary<string, string[]> columns)
+    {
+        var result = new Dictionary<string, string>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var table in columns)
+        {
+            // Exact original-column projection permits additive schema while detecting
+            // any changed, added or deleted historical row/value. Metadata names are quoted.
+            var sql = $"SELECT COALESCE(md5(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text)), '') FROM (SELECT {string.Join(',', table.Value.Select(Quote))} FROM {Quote(table.Key)}) t";
+            await using var command = new NpgsqlCommand(sql, connection);
+            result[table.Key] = (string)(await command.ExecuteScalarAsync())!;
+        }
+        return result;
     }
 
     internal static async Task<Dictionary<string, string>> ExistingRows(Fixture fixture)

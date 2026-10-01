@@ -20,14 +20,7 @@ public sealed class InventoryCommandRestoreTests
         ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(original);
         var template = new NpgsqlConnectionStringBuilder(original);
         Assert.True(template.Host is "localhost" or "127.0.0.1", "Restore rehearsal is local only.");
-        var name = $"command_restore_{Guid.NewGuid():N}_test";
-        await using (var admin = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(original) { Database = "postgres" }.ConnectionString))
-        {
-            await admin.OpenAsync();
-            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{name}\" TEMPLATE \"{template.Database!.Replace("\"", "\"\"")}\"", admin);
-            await create.ExecuteNonQueryAsync();
-        }
-        await using var f = new Fixture(new NpgsqlConnectionStringBuilder(original) { Database = name }.ConnectionString);
+        await using var f = await CanonicalRestoreFixture.Clone();
         await using var db = f.CreateDbContext();
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(null, [1, 4]), new(), DateTimeOffset.UtcNow);
         var wp4 = Assert.Single(batch.Positions.Where(x => x.Location.RoomId == 1 && x.Identity.Lot == "1372" && x.Identity.FruitProfileId == 17));
