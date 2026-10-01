@@ -17,6 +17,8 @@ using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 CropQc.Data.Inventory.InventoryReadServices.AddCanonicalInventoryReads(builder.Services);
+CropQc.Data.Inventory.CanonicalInventoryServices.AddCanonicalInventoryCommands(builder.Services,
+    builder.Configuration.GetValue<bool>("CanonicalInventoryCommandsEnabled"));
 builder.Services.AddScoped<InventoryShadowDiagnostic>();
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();

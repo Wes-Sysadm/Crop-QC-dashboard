@@ -43,6 +43,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             await using var db = await contexts.CreateDbContextAsync(cancellationToken);
             Require(db.Database.IsNpgsql(), "Canonical writes require PostgreSQL Serializable transactions.");
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            db.CanonicalCommandTransaction = true;
             try
             {
                 var prior = await db.InventoryCommands.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == key, cancellationToken);

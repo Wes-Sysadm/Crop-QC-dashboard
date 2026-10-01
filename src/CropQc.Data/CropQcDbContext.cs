@@ -3,8 +3,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Data;
 
-public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) : DbContext(options)
+public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, Inventory.CanonicalInventoryMode? canonicalMode = null) : DbContext(options)
 {
+    public bool CanonicalInventoryEnabled => canonicalMode?.Enabled == true;
+    internal bool CanonicalCommandTransaction { get; set; }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.AddInterceptors(new Inventory.CanonicalInventorySqlGuard());
+        base.OnConfiguring(optionsBuilder);
+    }
     public DbSet<InventoryCommandRecord> InventoryCommands => Set<InventoryCommandRecord>();
     private bool synchronizingDefectInspectionStatus;
     public DbSet<User> Users => Set<User>();
@@ -118,6 +125,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        Inventory.CanonicalInventoryWriteGuard.Check(this);
         if (synchronizingDefectInspectionStatus)
         {
             return base.SaveChanges(acceptAllChangesOnSuccess);
@@ -133,6 +141,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        Inventory.CanonicalInventoryWriteGuard.Check(this);
         if (synchronizingDefectInspectionStatus)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
