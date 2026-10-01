@@ -170,7 +170,10 @@ public sealed partial class InventoryEvidenceLoader
                     Watermark(new { parent, identity, le, projections, me, receiptEvidence, ae, correctionEvidence }, consistency,
                         [new(scope.Custody.ToString(), parent.Id.ToString(), parent.Version, parent.At)]),
                     pm.Any(x => x.CreatedAt > asOf) || pr.Any(x => x.CreatedAt > asOf) || projections.Any(x => x.UpdatedAt > asOf) || ae.Any(x => x.ReversedAt > asOf)
-                        || correctionEvidence.Any(x => x.CreatedAt > asOf), correctionIds.Select(x => new InventoryEvidenceReference("InventoryIdentityCorrection", x.ToString())).ToImmutableArray()));
+                        || correctionEvidence.Any(x => x.CreatedAt > asOf), correctionIds.Select(x => new InventoryEvidenceReference("InventoryIdentityCorrection", x.ToString())).ToImmutableArray(),
+                    group.Select(x => new InventoryCustodyAllocation(x.Movement.Id, x.Movement.SourceSegmentId!.Value, x.Quantity, identity,
+                        projections.First(p => p.Id == x.Movement.SourceSegmentId).Signature,
+                        projections.First(p => p.Id == x.Movement.SourceSegmentId).State, x.Movement.ReceiptId)).ToImmutableArray()));
             }
         }
         return new(result.ToImmutable(), parents.Count + rows.Count + movements.Count + segments.Count + receipts.Count + apps.Count);

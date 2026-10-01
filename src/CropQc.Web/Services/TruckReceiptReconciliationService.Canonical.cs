@@ -14,6 +14,24 @@ namespace CropQc.Web.Services;
 
 public sealed partial class TruckReceiptReconciliationService
 {
+    private async Task<Dictionary<long, IReadOnlyList<TransitAllocation>>> CanonicalTransitAllocationsAsync(long[] ids, CancellationToken ct)
+    {
+        var parents = await db.InterCrewTransfers.AsNoTracking().Where(x => ids.Contains(x.Id) && x.Status == InterCrewTransferStatuses.InTransit).ToListAsync(ct);
+        if (parents.Count == 0) return [];
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(null,
+            parents.Select(x => x.SourceRoomId).Distinct().ToImmutableArray(), InventoryCustody.InTransit),
+            new(AllowedCustody: InventoryCustody.InTransit), time.UtcNow, ct);
+        var positions = batch.Positions.Where(x => ids.Contains(x.Location.CustodyRecordId ?? 0)).ToArray();
+        var allocations = positions.Where(x => x.IsOperable).SelectMany(x => x.CustodyAllocations).ToArray();
+        var movementIds = allocations.Select(x => x.MovementId).Distinct().ToArray();
+        var movements = await db.TreatmentLineageMovements.AsNoTracking().Include(x => x.SourceSegment).Where(x => movementIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var growerIds = allocations.Select(x => x.Identity.GrowerLotId).Distinct().ToArray();
+        var growers = await db.GrowerLots.AsNoTracking().Where(x => growerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Grower, ct);
+        return parents.ToDictionary(p => p.Id, p => (IReadOnlyList<TransitAllocation>)(positions.Any(x => x.Location.CustodyRecordId == p.Id && !x.IsOperable)
+            ? [] : positions.Where(x => x.Location.CustodyRecordId == p.Id).SelectMany(x => x.CustodyAllocations)
+                .Select(a => new TransitAllocation(movements[a.MovementId], a.Quantity, a, growers.GetValueOrDefault(a.Identity.GrowerLotId ?? 0))).ToArray()));
+    }
+
     private Task<string?> EditTransferCanonicalAsync(TransitEditForm form, CancellationToken ct) => CanonicalTruckWriteAsync(async actor =>
     {
         await RequireAccessAsync(ApplicationAreas.Transfers, PageAccessLevel.Edit, ct);

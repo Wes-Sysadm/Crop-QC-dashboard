@@ -79,7 +79,8 @@ public sealed record InventoryAvailabilityResult(string PositionKey, InventoryId
     InventoryConfidence QuantityConfidence, InventoryConfidence TreatmentConfidence,
     ImmutableArray<InventoryTreatmentSlice> TreatmentSlices, InventoryReceiptProvenance ReceiptProvenance,
     ImmutableArray<HistoricalInventoryProjection> HistoricalProjections, InventoryAvailabilityProof Proof,
-    ImmutableArray<InventoryBlocker> Blockers, InventoryReadWatermark Watermark)
+    ImmutableArray<InventoryBlocker> Blockers, InventoryReadWatermark Watermark,
+    ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
 {
     public bool IsOperable => Blockers.IsEmpty && AuthoritativeQuantity >= 0;
     public int ProjectionExcess => Math.Max(0, RawProjectionQuantity - Math.Max(0, AuthoritativeQuantity));
@@ -106,12 +107,15 @@ public sealed record InventoryReceiptEvidence(long Id, int Quantity, bool ExactI
     bool IsTransferReceipt, DateTimeOffset UpdatedAt, long Version);
 public sealed record InventoryApplicationEvidence(long Id, DateTimeOffset AppliedAt, DateTimeOffset? ReversedAt,
     long? ReceiptId);
+public sealed record InventoryCustodyAllocation(long MovementId, long SourceProjectionId, int Quantity,
+    InventoryIdentity Identity, string TreatmentSignature, string TreatmentState, long? ReceiptId);
 public sealed record InventoryPositionEvidence(InventoryIdentity Identity, InventoryLocation Location,
     int AuthoritativeQuantity, int CommittedQuantity, bool IdentityVerified, bool CustodyVerified,
     ImmutableArray<InventoryLedgerEvidence> Ledger, ImmutableArray<InventoryProjectionEvidence> Projections,
     ImmutableArray<InventoryMovementEvidence> Movements, ImmutableArray<InventoryReceiptEvidence> Receipts,
     ImmutableArray<InventoryApplicationEvidence> Applications, InventoryReadWatermark Watermark,
-    bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default);
+    bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default,
+    ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default);
 public sealed record InventoryEvidenceBatch(ImmutableArray<InventoryPositionEvidence> Positions, int RowsLoaded);
 public interface IInventoryEvidenceLoader
 {

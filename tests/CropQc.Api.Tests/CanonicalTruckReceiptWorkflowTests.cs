@@ -13,6 +13,64 @@ namespace CropQc.Api.Tests;
 public sealed class CanonicalTruckReceiptWorkflowTests
 {
     [InventoryPostgresFact]
+    public async Task Corrected_transit_variety_is_used_by_comparison_partial_return_match_completion_and_reopen()
+    {
+        await using var f = await Fixture.Create();
+        var receiving = await f.ReceiveCommand();
+        var id = receiving.Lines[0].Source.Location.CustodyRecordId!.Value;
+        var receiptId = receiving.ReceivingEvidence!.ReceiptId;
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        db.FruitProfiles.Add(new() { Id = 9008, Name = "Local Bartlett", FruitType = "Pear", VarietyCode = "LOCALBART", ProductionType = "Conventional", IsOrganic = false });
+        await db.SaveChangesAsync();
+        var executor = new InventoryCommandExecutor(factory);
+        var correction = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
+        var identity = await CanonicalReceiptCorrectionWorkflowTests.Form(db, correction, 100000, 19); identity.FruitProfileId = 9008;
+        Assert.Null((await correction.ApplyEditAsync(identity, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
+        var service = Service(db, executor);
+        async Task<TruckReceiptActionForm> Form() => new()
+        {
+            TransferId = id,
+            ReceiptId = receiptId,
+            TransferVersion = await db.InterCrewTransfers.Where(x => x.Id == id).Select(x => x.ConcurrencyVersion).SingleAsync(),
+            ReceiptVersion = await db.Receipts.Where(x => x.Id == receiptId).Select(x => x.ConcurrencyVersion).SingleAsync(),
+            Reason = "Local corrected transit check"
+        };
+        var beforeRead = await f.Snapshot();
+        var page = await service.GetAsync(receiptId, id, default);
+        Assert.Equal(beforeRead, await f.Snapshot());
+        var allocation = Assert.Single(page.Allocations);
+        Assert.Equal(9008, allocation.FruitProfileId); Assert.Equal(9004, allocation.Movement.SourceSegment!.FruitProfileId);
+        Assert.Equal(19, page.Comparison.Single(x => x.FruitProfileId == 9008).Transfer);
+        Assert.Equal(0, page.Comparison.Single(x => x.FruitProfileId == 9004).Transfer);
+        Assert.Null(await service.EditTransferAsync(new()
+        {
+            TransferId = id,
+            TransferVersion = (await Form()).TransferVersion,
+            DispatchMovementId = allocation.Movement.Id,
+            Bins = 5,
+            Reason = "Local corrected partial return"
+        }, default));
+        Assert.Equal(5, await f.Physical());
+        var edit = await Form(); edit.Lines = [new() { FruitProfileId = 9008, BinCount = 14 }];
+        Assert.Null(await service.EditReceiptAsync(edit, default));
+        Assert.Null(await service.ReopenAsync(await Form(), default)); // unlink the pending match
+        var candidates = await service.GetAsync(receiptId, null, default);
+        Assert.Contains(candidates.Candidates, x => x.Id == id);
+        Assert.Null(await service.MatchAsync(await Form(), default));
+        page = await service.GetAsync(receiptId, id, default);
+        Assert.Equal(0, Assert.Single(page.Comparison).Difference);
+        Assert.Null(await service.CompleteAsync(await Form(), default));
+        var destination = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9006, [9007]), new(), DateTimeOffset.UtcNow);
+        var stock = Assert.Single(destination.Positions); Assert.True(stock.IsOperable); Assert.Equal(9008, stock.Identity.FruitProfileId); Assert.Equal(14, stock.AvailableQuantity);
+        Assert.Null(await service.ReopenAsync(await Form(), default));
+        var remaining = Assert.Single(await service.ActiveAllocationsAsync(id, default));
+        Assert.Equal(14, remaining.Bins); Assert.Equal(9008, remaining.FruitProfileId);
+        Assert.Equal(19, await f.Physical() + remaining.Bins);
+        Assert.Equal(9004, await db.TreatmentLineageMovements.Where(x => x.Id == allocation.Movement.Id).Select(x => x.SourceSegment!.FruitProfileId).SingleAsync());
+    }
+
+    [InventoryPostgresFact]
     public async Task Partial_return_add_and_cancel_preserve_dispatch_history_and_matched_receipt()
     {
         await using var f = await Fixture.Create();

@@ -34,7 +34,12 @@ public sealed record VarietyReconciliation(int FruitProfileId, string Variety, i
     public int Difference => Receipt - Transfer;
 }
 
-public sealed record TransitAllocation(TreatmentLineageMovement Movement, int Bins);
+public sealed record TransitAllocation(TreatmentLineageMovement Movement, int Bins,
+    CropQc.Shared.Inventory.InventoryCustodyAllocation? Canonical = null, string? CurrentGrowerName = null)
+{
+    public int? FruitProfileId => Canonical?.Identity.FruitProfileId ?? Movement.SourceSegment?.FruitProfileId;
+    public int? CropYear => Canonical?.Identity.CropYear ?? Movement.SourceSegment?.CropYear;
+}
 
 public sealed class TruckReceiptPage
 {

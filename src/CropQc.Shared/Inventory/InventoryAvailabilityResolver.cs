@@ -145,7 +145,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
                 receiptConfidence == InventoryConfidence.Proven ? "Exact receipt evidence is retained." : "Receipt evidence is retained without inventing a surviving per-receipt allocation."),
             history.ToImmutableArray(), new(Algorithm, "ledger-movement-application/v1", references, candidates.ToImmutableArray(),
                 "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten", BackdatedRows(e.Ledger)),
-            blockers.DistinctBy(x => x.Code).ToImmutableArray(), e.Watermark);
+            blockers.DistinctBy(x => x.Code).ToImmutableArray(), e.Watermark,
+            blockers.Count == 0 && !e.CustodyAllocations.IsDefault ? e.CustodyAllocations : []);
 
         void Block(InventoryBlockerCode code, string detail) => blockers.Add(new(code, detail));
     }
