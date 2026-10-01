@@ -16,6 +16,8 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
+CropQc.Data.Inventory.InventoryReadServices.AddCanonicalInventoryReads(builder.Services);
+builder.Services.AddScoped<InventoryShadowDiagnostic>();
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();

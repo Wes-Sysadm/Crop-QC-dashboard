@@ -1,8 +1,10 @@
 using CropQc.Api.Services;
 using CropQc.Data;
+using CropQc.Data.Inventory;
 using CropQc.Shared.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCanonicalInventoryReads();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CropQcDbContext>(options =>
