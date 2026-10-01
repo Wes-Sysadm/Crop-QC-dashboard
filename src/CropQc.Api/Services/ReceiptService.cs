@@ -14,7 +14,8 @@ public interface IReceiptService
     Task<bool> MarkNeedsReviewAsync(long receiptId, string reason, CancellationToken cancellationToken);
 }
 
-public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService auditService) : IReceiptService
+public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService auditService,
+    CropQc.Data.Inventory.CanonicalReceivingService? canonicalReceiving = null, IHttpContextAccessor? httpContext = null) : IReceiptService
 {
     public async Task<(ReceiptDto? Receipt, string? Error)> CreateAsync(CreateReceiptRequest request, CancellationToken cancellationToken)
     {
@@ -22,6 +23,22 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         if (validation is not null)
         {
             return (null, validation);
+        }
+
+        if (dbContext.CanonicalInventoryEnabled)
+        {
+            var principal = httpContext?.HttpContext?.User;
+            var email = principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (principal?.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(email))
+                return (null, "An authenticated receiving operator is required.");
+            var actor = await dbContext.Users.Where(x => x.IsActive && x.Email == email).Select(x => (int?)x.Id).SingleOrDefaultAsync(cancellationToken);
+            if (actor == null || canonicalReceiving == null || string.IsNullOrWhiteSpace(request.OperationKey))
+                return (null, "An active operator, canonical receiving service and operation key are required.");
+            var result = await canonicalReceiving.ReceiveAsync(request.OperationKey, actor.Value, request.CropYear, request.ReceivedAt,
+                request.WarehouseId, request.RoomId, request.FruitProfileId, request.GrowerLotId, request.LotCode,
+                request.CompuTechReceiptId, request.BinCount, System.Text.Json.JsonSerializer.Serialize(request), cancellationToken);
+            var error = CropQc.Shared.Inventory.CanonicalInventoryMessages.Result(result);
+            return error != null ? (null, error) : (await GetAsync(result.Effects[0].ParentId!.Value, cancellationToken), null);
         }
 
         var now = DateTimeOffset.UtcNow;

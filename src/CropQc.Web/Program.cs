@@ -334,6 +334,7 @@ builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeducti
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
 builder.Services.AddScoped<IReceiptInventoryOverrideService, ReceiptInventoryOverrideService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
+builder.Services.AddScoped<CropQc.Data.Inventory.ICanonicalRunExpectationWriter, CanonicalRunExpectationWriter>();
 builder.Services.AddScoped<IRunReportingService, RunReportingService>();
 builder.Services.AddScoped<IRunSheetReconciliationService, RunSheetReconciliationService>();
 builder.Services.AddScoped<IGrowerLotProgressService, GrowerLotProgressService>();

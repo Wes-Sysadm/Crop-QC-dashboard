@@ -25,7 +25,7 @@ public interface IOutsideWarehouseTransferService
     Task<RoomInventoryLedgerSnapshot?> ResolveInventoryAsync(OutsideWarehouseInventoryOptionViewModel option, CancellationToken cancellationToken);
 }
 
-public sealed class OutsideWarehouseTransferService(
+public sealed partial class OutsideWarehouseTransferService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
     IRoomTreatmentService roomTreatments,
@@ -33,7 +33,8 @@ public sealed class OutsideWarehouseTransferService(
     IInventoryDeductionInvariantService invariant,
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
-    IBusinessTimeService businessTime) : IOutsideWarehouseTransferService
+    IBusinessTimeService businessTime,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IOutsideWarehouseTransferService
 {
     private const string AuditSource = "CropQc.Web outside warehouse transfer workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -126,6 +127,7 @@ public sealed class OutsideWarehouseTransferService(
         if (Normalize(form.Notes)?.Length > 1000) return new(false, false, null, "Notes must be 1,000 characters or fewer.");
         var operationKey = Normalize(form.OperationKey);
         if (operationKey is null || operationKey.Length > 150) return new(false, false, null, "The transfer operation key is invalid. Refresh and retry.");
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalAsync(form, cancellationToken);
         var existing = await dbContext.OutsideWarehouseTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
         if (existing is not null) return new(true, true, existing.Id, null);
         var actor = await GetActorAsync(cancellationToken);
@@ -325,6 +327,8 @@ public sealed class OutsideWarehouseTransferService(
         var actor = await GetActorAsync(cancellationToken);
         if (actor is null) return "The current active user could not be resolved.";
 
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalAsync(form, actor.Id, cancellationToken);
+
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
@@ -430,9 +434,10 @@ public sealed class OutsideWarehouseTransferService(
             .Select(x => x.Id)
             .ToHashSetAsync(cancellationToken);
         var result = new List<OutsideWarehouseInventoryOptionViewModel>();
+        var canonical = dbContext.CanonicalInventoryEnabled ? await CanonicalTreatmentSelections.LoadAsync(dbContext, snapshots, cancellationToken) : null;
         foreach (var snapshot in snapshots)
         {
-            var selections = (await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var selections = (canonical != null ? canonical[RoomTreatmentService.SelectionLookupKey(snapshot)] : await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
             foreach (var selectionGroup in selections.GroupBy(x => x.TreatmentSignature, StringComparer.Ordinal))
             {
                 var grouped = selectionGroup.OrderBy(x => x.ReceiptId ?? long.MaxValue).ThenBy(x => x.SegmentId ?? long.MaxValue).ToList();
@@ -444,7 +449,7 @@ public sealed class OutsideWarehouseTransferService(
                 var receiptId = explicitReceipts.Count == 1 ? explicitReceipts[0] : null;
                 var segmentId = grouped.Count == 1 ? selection.SegmentId : null;
                 result.Add(new OutsideWarehouseInventoryOptionViewModel(
-                    SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature),
+                    SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature) + (canonical == null ? "" : ":" + selection.CanonicalFingerprint),
                     snapshot.WarehouseId,
                     snapshot.Facility,
                     snapshot.RoomId,

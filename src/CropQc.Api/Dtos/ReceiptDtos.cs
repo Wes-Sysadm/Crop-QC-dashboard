@@ -9,7 +9,7 @@ public sealed record CreateReceiptRequest(
     int FruitProfileId,
     string GrowerName,
     string LotCode,
-    int BinCount);
+    int BinCount, string? OperationKey = null, int? GrowerLotId = null);
 
 public sealed record UpdateReceiptRequest(
     int CropYear,

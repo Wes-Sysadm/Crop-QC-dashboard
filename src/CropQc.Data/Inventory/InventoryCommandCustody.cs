@@ -45,7 +45,8 @@ public sealed partial class InventoryCommandExecutor
                     CreatedAt = now,
                     Status = InterCrewTransferStatuses.InTransit,
                     RequiresTruckReceipt = true,
-                    Notes = c.Reason
+                    TruckLoadBolNumber = c.Dispatch?.Reference,
+                    Notes = c.Dispatch?.Notes ?? c.Reason
                 };
                 db.InterCrewTransfers.Add(transfer);
             }
@@ -63,6 +64,8 @@ public sealed partial class InventoryCommandExecutor
                 OutsideWarehouse = outside!,
                 OutsideWarehouseCodeSnapshot = outside!.Code,
                 OutsideWarehouseNameSnapshot = outside.Name,
+                OutsideWarehouseAddressSnapshot = outside.Address,
+                TruckLoadBolNumber = c.Dispatch?.Reference,
                 SourceWarehouseId = loc.WarehouseId,
                 SourceRoomId = loc.RoomId!.Value,
                 CropYear = i.CropYear,
@@ -82,7 +85,7 @@ public sealed partial class InventoryCommandExecutor
                 TransferredAt = c.EffectiveAt,
                 CreatedByUserId = c.ActorId,
                 CreatedAt = now,
-                Notes = c.Reason
+                Notes = c.Dispatch?.Notes ?? c.Reason
             };
             db.OutsideWarehouseTransfers.Add(transfer); debit.OutsideWarehouseTransfer = transfer; debit.AdjustmentType = OutsideWarehouseTransferAdjustmentTypes.Transfer;
             foreach (var a in allocations) { var m = Move(c, i, a, null, loc.RoomId, null, key, now, "OutsideWarehouseTransfer"); m.OutsideWarehouseTransfer = transfer; movements.Add(m); }
@@ -90,9 +93,9 @@ public sealed partial class InventoryCommandExecutor
         }
         var processor = await db.Processors.SingleOrDefaultAsync(x => x.Id == c.CounterpartyId && x.IsActive, ct);
         Require(processor != null, "Processor is unavailable.");
-        var shipment = new ProcessorShipment
+        var shipment = db.ProcessorShipments.Local.SingleOrDefault(x => x.OperationKey == c.OperationKey + ":shipment") ?? new ProcessorShipment
         {
-            OperationKey = key,
+            OperationKey = c.OperationKey + ":shipment",
             Processor = processor!,
             ProcessorNameSnapshot = processor!.Name,
             ShippedAt = c.EffectiveAt,
@@ -101,9 +104,10 @@ public sealed partial class InventoryCommandExecutor
             OriginalSaleRate = c.ProcessorTerms.Rate,
             SaleRate = c.ProcessorTerms.Rate,
             Currency = c.ProcessorTerms.Currency,
+            ReferenceNumber = c.Dispatch?.Reference,
             CreatedByUserId = c.ActorId,
             CreatedAt = now,
-            Notes = c.Reason
+            Notes = c.Dispatch?.Notes ?? c.Reason
         };
         var line = new ProcessorShipmentLine
         {
@@ -124,7 +128,8 @@ public sealed partial class InventoryCommandExecutor
             TreatmentSignatureSnapshot = row.TreatmentSignature,
             TreatmentSummarySnapshot = row.TreatmentState,
             BinsSent = quantity,
-            PoundsPerBinSnapshot = c.ProcessorTerms!.PoundsPerBin
+            PoundsPerBinSnapshot = c.Lines.Single(x => x.Source.Identity.Key == i.Key && x.Source.Location.RoomId == loc.RoomId
+                && x.TreatmentSignature == row.TreatmentSignature).PoundsPerBin ?? c.ProcessorTerms!.PoundsPerBin
         };
         db.ProcessorShipmentLines.Add(line); debit.ProcessorShipmentLine = line; debit.AdjustmentType = ProcessorShipmentAdjustmentTypes.Shipment;
         foreach (var a in allocations) { var m = Move(c, i, a, null, loc.RoomId, null, key, now, "ProcessorShipment"); m.ProcessorShipmentLine = line; movements.Add(m); }
@@ -148,6 +153,8 @@ public sealed partial class InventoryCommandExecutor
                 var first = completedParents.Add(crew.Id);
                 var parentQuantity = c.Lines.Where(x => x.Source.Location.CustodyRecordId == crew.Id).Sum(x => x.Quantity);
                 Require((!first || crew.Status == InterCrewTransferStatuses.InTransit) && crew.BinsLoaded == parentQuantity, "Transfer custody changed.", InventoryCommandStatus.Stale);
+                Require(!first || c.ExpectedTransferVersion == null || crew.ConcurrencyVersion == c.ExpectedTransferVersion,
+                    "Transfer version changed.", InventoryCommandStatus.Stale);
                 if (c.Kind == InventoryCommandKind.ReceiveTransfer)
                 {
                     if (first && crew.RequiresTruckReceipt)
@@ -175,7 +182,8 @@ public sealed partial class InventoryCommandExecutor
                 }
                 else
                 {
-                    Require(original?.Kind == InventoryCommandKind.InterCompanyDispatch && crew.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal), "Return must refer to this original dispatch.");
+                    Require(original == null ? c.PhysicalParentId == crew.Id : original.Kind == InventoryCommandKind.InterCompanyDispatch
+                        && crew.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal), "Return must refer to this original dispatch.");
                     if (first && crew.ReceivingReceiptId is long matchedId)
                     {
                         Require(c.ReceivingEvidence?.ReceiptId == matchedId, "A matched receipt must participate in dispatch return.");
@@ -194,8 +202,9 @@ public sealed partial class InventoryCommandExecutor
             else if (loc.Custody == InventoryCustody.OutsideWarehouse)
             {
                 outside = await db.OutsideWarehouseTransfers.SingleAsync(x => x.Id == id, ct);
-                Require(c.Kind == InventoryCommandKind.Return && original?.Kind == InventoryCommandKind.OutsideWarehouseTransfer
-                    && outside.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal) && !outside.IsReversed && outside.BinCount == quantity, "Outside return does not match original active custody.");
+                Require(c.Kind == InventoryCommandKind.Return && (original == null ? c.PhysicalParentId == outside.Id
+                    : original.Kind == InventoryCommandKind.OutsideWarehouseTransfer && outside.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))
+                    && !outside.IsReversed && outside.BinCount == quantity, "Outside return does not match original active custody.");
                 destination = new(outside.SourceWarehouseId, outside.SourceRoomId); outside.IsReversed = true; outside.ReversedAt = now;
                 outside.ReversedByUserId = c.ActorId; outside.ReversalOperationKey = c.OperationKey; outside.ReverseReason = c.Reason; outside.ConcurrencyVersion++;
             }
@@ -203,11 +212,15 @@ public sealed partial class InventoryCommandExecutor
             {
                 processor = await db.ProcessorShipmentLines.Include(x => x.ProcessorShipment).SingleAsync(x => x.Id == id, ct);
                 var shipment = processor.ProcessorShipment;
-                Require(c.Kind == InventoryCommandKind.Return && original?.Kind == InventoryCommandKind.ProcessorSale
-                    && shipment.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal) && shipment.ReversedAt == null && processor.BinsSent == quantity
-                    && await db.ProcessorShipmentLines.CountAsync(x => x.ProcessorShipmentId == shipment.Id, ct) == 1, "Processor return does not match exact whole shipment.");
+                var first = completedParents.Add(shipment.Id);
+                var shipmentLines = await db.ProcessorShipmentLines.Where(x => x.ProcessorShipmentId == shipment.Id).Select(x => x.Id).ToArrayAsync(ct);
+                Require(c.Kind == InventoryCommandKind.Return && (original == null ? c.PhysicalParentId == shipment.Id
+                    : original.Kind == InventoryCommandKind.ProcessorSale && shipment.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))
+                    && (!first || shipment.ReversedAt == null) && processor.BinsSent == quantity
+                    && shipmentLines.Length == c.Lines.Length && shipmentLines.All(lineId => c.Lines.Any(x => x.Source.Location.CustodyRecordId == lineId
+                        && x.Source.Location.Custody == InventoryCustody.Processor)), "Processor return does not match exact whole shipment.");
                 destination = new(processor.WarehouseId, processor.RoomId); shipment.ReversedAt = now; shipment.ReversedByUserId = c.ActorId;
-                shipment.ReversalReason = c.Reason; shipment.ConcurrencyVersion++;
+                shipment.ReversalReason = c.Reason; if (first) shipment.ConcurrencyVersion++;
             }
             var before = await PhysicalAsync(db, i, destination!.WarehouseId, destination.RoomId, ct);
             Require(await db.Rooms.AnyAsync(x => x.Id == destination.RoomId && x.WarehouseId == destination.WarehouseId
@@ -248,27 +261,39 @@ public sealed partial class InventoryCommandExecutor
             }
             return (id, destination, before);
         }
-        Require(original?.Kind == InventoryCommandKind.ReceiveTransfer, "Reopen/received return needs original receive command.");
-        var previous = original!.Lines.Single(x => x.Source.Identity.Key == i.Key && x.Destination?.RoomId == loc.RoomId);
-        Require(previous.Quantity == quantity && previous.Destination?.RoomId == loc.RoomId && previous.Source.Identity.Key == i.Key, "Original received identity/quantity mismatch.");
-        var transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == previous.Source.Location.CustodyRecordId, ct);
+        Require(original == null ? c.PhysicalParentId > 0 : original.Kind == InventoryCommandKind.ReceiveTransfer, "Reopen/received return needs original receive evidence.");
+        var previous = original?.Lines.Single(x => x.Source.Identity.Key == i.Key && x.Destination?.RoomId == loc.RoomId && x.TreatmentSignature == line.TreatmentSignature);
+        Require(previous == null || previous.Quantity == quantity && previous.Destination?.RoomId == loc.RoomId && previous.Source.Identity.Key == i.Key,
+            "Original received identity/quantity mismatch.");
+        var transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == (previous == null ? c.PhysicalParentId : previous.Source.Location.CustodyRecordId), ct);
         var firstReversal = completedParents.Add(transfer.Id);
-        var totalReceived = original.Lines.Sum(x => x.Quantity);
-        Require(!firstReversal || transfer.Status == InterCrewTransferStatuses.Received && transfer.BinsReceived == totalReceived, "Transfer is not a complete received allocation.");
+        var totalReceived = c.Lines.Sum(x => x.Quantity);
+        Require(!firstReversal || transfer.Status == InterCrewTransferStatuses.Received && transfer.BinsReceived == totalReceived
+            && (c.ExpectedTransferVersion == null || transfer.ConcurrencyVersion == c.ExpectedTransferVersion)
+            && c.Lines.All(x => x.Source.Location.Custody == InventoryCustody.Room && x.Source.Location.RoomId == transfer.DestinationRoomId
+                && x.Source.Location.WarehouseId == transfer.DestinationWarehouseId), "Transfer is not a complete unchanged received allocation.");
         var destinationRoom = c.Kind == InventoryCommandKind.Return ? new InventoryCommandDestination(transfer.SourceWarehouseId, transfer.SourceRoomId) : null;
         var destinationQuantity = destinationRoom == null ? 0 : await PhysicalAsync(db, i, destinationRoom.WarehouseId, destinationRoom.RoomId, ct);
         if (destinationRoom != null)
             Require(await db.Rooms.AnyAsync(x => x.Id == destinationRoom.RoomId && x.WarehouseId == destinationRoom.WarehouseId
                 && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Return destination is unavailable or sealed.");
         Require(destinationQuantity >= 0, "Return destination is negative.");
-        var receives = await db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == transfer.Id && x.MovementType == "InterCrewReceive"
-            && x.OperationKey.StartsWith(original.OperationKey + ":")).ToListAsync(ct);
+        var allReceives = await db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == transfer.Id && x.MovementType == "InterCrewReceive").ToListAsync(ct);
+        var allReceiveIds = allReceives.Select(x => x.Id).ToArray();
+        var reversedReceiveIds = await db.TreatmentLineageMovements.Where(x => allReceiveIds.Contains(x.ReversesTreatmentLineageMovementId ?? 0))
+            .Select(x => x.ReversesTreatmentLineageMovementId!.Value).ToArrayAsync(ct);
+        var receives = allReceives.Where(x => !reversedReceiveIds.Contains(x.Id)
+            && (original == null || x.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))).ToList();
         Require(receives.Sum(x => x.BinCount) == totalReceived && receives.All(x => x.DestinationSegmentId != null), "Original receive movement evidence is incomplete.");
         var receiveIds = receives.Select(x => x.Id).ToArray();
         var segmentIds = receives.Select(x => x.DestinationSegmentId!.Value).Distinct().ToArray();
+        var firstReceiveCreatedAt = receives.Min(x => x.CreatedAt);
+        var firstReceiveId = receiveIds.Min();
+        Require(!await db.RoomTreatmentApplicationSources.AnyAsync(x => x.IdentityKey == i.Key && x.RoomTreatmentApplication.RoomId == loc.RoomId
+            && x.RoomTreatmentApplication.CreatedAt >= firstReceiveCreatedAt, ct), "Subsequent treatment activity prevents exact receive reversal.");
         Require(allocations.All(x => segmentIds.Contains(x.Segment.Id))
             && !await db.TreatmentLineageMovements.AnyAsync(x => (segmentIds.Contains(x.SourceSegmentId ?? 0) || segmentIds.Contains(x.DestinationSegmentId ?? 0))
-                && x.Id > receiveIds.Min() && !receiveIds.Contains(x.Id) && !x.OperationKey.StartsWith(c.OperationKey + ":"), ct), "Subsequent movement prevents exact receive reversal.");
+                && x.Id > firstReceiveId && !receiveIds.Contains(x.Id) && !x.OperationKey.StartsWith(c.OperationKey + ":"), ct), "Subsequent movement prevents exact receive reversal.");
         if (firstReversal && transfer.RequiresTruckReceipt)
         {
             Require(c.ReceivingEvidence != null && transfer.ReceivingReceiptId == c.ReceivingEvidence.ReceiptId, "Matched receipt reversal evidence is required.");
@@ -315,12 +340,30 @@ public sealed partial class InventoryCommandExecutor
         InventoryIdentity identity, InventoryLocation loc, List<Allocation> allocations, int physical, int quantity,
         string key, DateTimeOffset now, HashSet<long> reversedApplications, CancellationToken ct)
     {
-        Require(quantity == physical, "Treatment requires the entire selected physical position.");
+        Require(c.Kind is InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ReceiptTreatmentAssignment
+            || c.Lines.Where(x => x.Source.Location.RoomId == loc.RoomId && x.Source.Identity.Key == identity.Key).Sum(x => x.Quantity) == physical,
+            "Treatment requires every slice of the selected physical position.");
         RoomTreatmentApplication app;
-        if (c.Kind == InventoryCommandKind.TreatmentAssignment)
+        if (c.Kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.ReceiptTreatmentAssignment)
         {
+            var receiving = c.Kind == InventoryCommandKind.ReceiptTreatmentAssignment;
+            var receiptId = receiving ? c.Lines[0].ReceiptId : null;
+            if (receiving)
+            {
+                Require(await db.Receipts.AnyAsync(x => x.Id == receiptId && !x.IsDeleted && !x.IsTransferReceipt && x.ReceivedAt <= c.EffectiveAt, ct),
+                    "Receiving treatment requires an active ordinary receipt received by the application time.");
+                Require(await db.TreatmentLineageSegments.Where(x => x.Disposition == "Current" && x.CurrentBins > 0 && x.ReceiptId == receiptId)
+                    .SumAsync(x => x.CurrentBins, ct) == c.Lines.Sum(x => x.Quantity), "Receipt treatment must include its exact complete current quantity.");
+            }
             var chemical = await db.TreatmentChemicals.SingleOrDefaultAsync(x => x.Id == c.TreatmentChemicalId && x.IsActive, ct);
             Require(chemical != null, "Treatment chemical is unavailable.");
+            var fruitType = await db.FruitProfiles.Where(x => x.Id == identity.FruitProfileId).Select(x => x.FruitType).SingleAsync(ct);
+            var crop = fruitType.Trim().ToLowerInvariant() switch { "apple" or "apples" => "Apples", "pear" or "pears" => "Pears", _ => "" };
+            Require(chemical!.ApplicationLevel == (receiving ? TreatmentApplicationLevels.Receiving : TreatmentApplicationLevels.Room) && crop.Length > 0
+                && string.Equals(chemical.Crop, crop, StringComparison.OrdinalIgnoreCase), "Treatment is not valid for this crop/application level.");
+            Require(!await db.RoomInventoryAdjustments.AnyAsync(x => x.RoomId == loc.RoomId && x.AdjustmentAt > c.EffectiveAt, ct)
+                && !await db.RoomTreatmentApplications.AnyAsync(x => x.RoomId == loc.RoomId && x.AppliedAt > c.EffectiveAt, ct),
+                "Current room contents cannot be treated at an earlier inventory state; review the application time.");
             var applicationKey = $"{c.OperationKey}:t:{loc.RoomId}";
             app = db.RoomTreatmentApplications.Local.SingleOrDefault(x => x.OperationKey == applicationKey)!;
             if (app == null)
@@ -329,6 +372,8 @@ public sealed partial class InventoryCommandExecutor
                 {
                     OperationKey = applicationKey,
                     TreatmentChemical = chemical!,
+                    ApplicationLevel = receiving ? TreatmentApplicationLevels.Receiving : TreatmentApplicationLevels.Room,
+                    ReceiptId = receiptId,
                     WarehouseId = loc.WarehouseId,
                     RoomId = loc.RoomId!.Value,
                     AppliedAt = c.EffectiveAt,
@@ -343,7 +388,8 @@ public sealed partial class InventoryCommandExecutor
                     UnitSnapshot = chemical.Unit,
                     UnitPriceSnapshot = chemical.UnitPrice,
                     CurrencySnapshot = chemical.Currency,
-                    Notes = c.Reason
+                    EstimatedCostSnapshot = decimal.Round(c.Lines.Sum(x => x.Quantity) * chemical.UnitPrice, 2),
+                    Notes = c.Dispatch?.Notes ?? c.Reason
                 };
                 db.RoomTreatmentApplications.Add(app); await db.SaveChangesAsync(ct);
             }
@@ -368,11 +414,11 @@ public sealed partial class InventoryCommandExecutor
         foreach (var a in allocations)
         {
             var ids = a.Segment.Applications.Select(x => x.RoomTreatmentApplicationId).ToHashSet();
-            if (c.Kind == InventoryCommandKind.TreatmentAssignment) ids.Add(app.Id); else ids.Remove(app.Id);
+            if (c.Kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.ReceiptTreatmentAssignment) ids.Add(app.Id); else ids.Remove(app.Id);
             var signature = ids.Count == 0 ? "u" : "u|a:" + string.Join(',', ids.Order());
             var target = await factory.CurrentAsync(identity, loc.WarehouseId, loc.RoomId!.Value, signature,
                 ids.Count == 0 ? "Untreated" : "Confirmed", a.Segment.ReceiptId, ids, now, ct);
-            if (c.Kind == InventoryCommandKind.TreatmentAssignment)
+            if (c.Kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.ReceiptTreatmentAssignment)
                 app.Sources.Add(new()
                 {
                     ReceiptId = a.Segment.ReceiptId,

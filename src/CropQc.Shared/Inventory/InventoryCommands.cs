@@ -6,7 +6,7 @@ public enum InventoryCommandKind
 {
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
-    TransferEdit, ReopenTransfer, BaselineAdjustment
+    TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -15,13 +15,19 @@ public sealed record InventoryCommandDestination(int WarehouseId, int RoomId);
 public enum InventoryAdjustmentDirection { Decrease, Increase }
 public sealed record InventoryCommandLine(InventoryCommandSource Source, int Quantity,
     string TreatmentSignature, InventoryCommandDestination? Destination = null, long? ReceiptId = null,
-    InventoryAdjustmentDirection AdjustmentDirection = InventoryAdjustmentDirection.Decrease);
+    InventoryAdjustmentDirection AdjustmentDirection = InventoryAdjustmentDirection.Decrease, decimal? PoundsPerBin = null);
 public sealed record InventoryCommand(string OperationKey, InventoryCommandKind Kind, int ActorId,
     DateTimeOffset EffectiveAt, string Reason, ImmutableArray<InventoryCommandLine> Lines,
     int? CounterpartyId = null, string? CustodyGroup = null, long? TreatmentApplicationId = null,
     int? TreatmentChemicalId = null, string? OriginalOperationKey = null,
     InventoryReceivingEvidence? ReceivingEvidence = null, InventoryProcessorTerms? ProcessorTerms = null,
-    long? ExpectedTransferVersion = null);
+    long? ExpectedTransferVersion = null, InventoryRunMetadata? Run = null, string? ApplicationIntent = null,
+    InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
+    long? DispatchMovementId = null);
+public sealed record InventoryReceiptIntent(int CropYear, int WarehouseId, int RoomId, int GrowerLotId,
+    int FruitProfileId, string ReceiptNumber, int Quantity, string ReceiptType = "Truck receipt");
+public sealed record InventoryDispatchMetadata(string? Reference, string? Notes);
+public sealed record InventoryRunMetadata(int FacilityWarehouseId, int? SalesDeskId, string AssignmentSource, string? Notes);
 public sealed record InventoryReceivingEvidence(long ReceiptId, long ExpectedVersion);
 public sealed record InventoryProcessorTerms(decimal Rate, string Basis, string Currency, decimal? PoundsPerBin = null);
 public sealed record InventoryCommandEffect(string PositionKey, int Before, int After, int Quantity,
@@ -37,12 +43,12 @@ public interface IInventoryCommandExecutor
 public static class InventoryCommandPolicy
 {
     public static InventoryOperationRequirements Requirements(InventoryCommandKind kind, InventoryCommandLine line) =>
-        new(RequireKnownTreatment: true, RequireExactReceipt: kind == InventoryCommandKind.ReceiptCorrection,
+        new(RequireKnownTreatment: true, RequireExactReceipt: kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment,
             ReceiptId: line.ReceiptId, TreatmentSignature: line.TreatmentSignature,
             AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint);
     public static bool IsRoomMove(InventoryCommandKind kind) => kind is InventoryCommandKind.RoomMove
-        or InventoryCommandKind.WarehouseTransfer;
-    public static bool IsTreatment(InventoryCommandKind kind) => kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.TreatmentReversal;
+        or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove;
+    public static bool IsTreatment(InventoryCommandKind kind) => kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ReceiptTreatmentAssignment;
 }
 
 public sealed record InventoryProjectionChange(long Id, int BeforeQuantity, int AfterQuantity,

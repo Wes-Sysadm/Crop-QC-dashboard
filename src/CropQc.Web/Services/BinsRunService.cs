@@ -32,7 +32,7 @@ public interface IBinsRunService
 
 public sealed record ActualRunDetailCorrectionResult(string? Error, bool AlreadyApplied = false);
 
-public sealed class BinsRunService(
+public sealed partial class BinsRunService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     ILogger<BinsRunService> logger,
@@ -42,7 +42,8 @@ public sealed class BinsRunService(
     IConfiguration? configuration = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
     IRoomTreatmentService? roomTreatmentService = null,
-    IBusinessTimeService? businessTime = null) : IBinsRunService
+    IBusinessTimeService? businessTime = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -784,6 +785,8 @@ public sealed class BinsRunService(
         {
             return "Reason is required to reverse bins run.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalRunAsync(form.Id, null, form.OperationKey, form.Reason, user,
+            CropQc.Shared.Inventory.InventoryCommandKind.ReverseRunEntry, JsonSerializer.Serialize(form), cancellationToken);
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         var entry = await dbContext.BinsRunEntries
@@ -876,6 +879,7 @@ public sealed class BinsRunService(
 
         form.Id = id;
         form.RunProjectionId = null;
+        if (dbContext.CanonicalInventoryEnabled) return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
         if (!string.IsNullOrWhiteSpace(form.OperationKey)
             && await dbContext.ActualRunRevisions.AsNoTracking()
                 .AnyAsync(x => x.OperationKey == form.OperationKey.Trim() && x.ActualRunId == id, cancellationToken))
@@ -1151,6 +1155,8 @@ public sealed class BinsRunService(
         {
             return "The cancellation request identifier is required.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalRunAsync(form.Id, form.ConcurrencyVersion, form.OperationKey, form.Reason, user,
+            CropQc.Shared.Inventory.InventoryCommandKind.CancelRun, JsonSerializer.Serialize(form), cancellationToken);
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         if (await dbContext.ActualRunRevisions.AsNoTracking().AnyAsync(x => x.OperationKey == form.OperationKey, cancellationToken))
@@ -1259,6 +1265,8 @@ public sealed class BinsRunService(
         string? approvalReason,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
         if (string.IsNullOrWhiteSpace(form.OperationKey))
         {
             return "The save request identifier is required.";
@@ -2323,6 +2331,8 @@ public sealed class BinsRunService(
         IReadOnlyList<BinsRunEntry> activeActualRunEntries,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return await BuildCanonicalRunOptionsAsync(snapshots, sampleData, cancellationToken, activeActualRunEntries.FirstOrDefault()?.ActualRunId);
         var options = new List<BinsRunInventoryOptionViewModel>();
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()

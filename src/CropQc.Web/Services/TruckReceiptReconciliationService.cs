@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CropQc.Web.Services;
 
 /// <summary>One receiving receipt confirms one existing load. Dispatch movements are its immutable manifest.</summary>
-public sealed class TruckReceiptReconciliationService(
+public sealed partial class TruckReceiptReconciliationService(
     CropQcDbContext db,
     IOutsideWarehouseTransferService inventory,
     IInterCrewTreatmentLineageService lineage,
@@ -19,7 +19,8 @@ public sealed class TruckReceiptReconciliationService(
     IUserAccessService access,
     IHttpContextAccessor context,
     IBusinessTimeService time,
-    TruckReceiptOptions? options = null)
+    TruckReceiptOptions? options = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null)
 {
     private bool Enabled => options?.Enabled == true;
     public const string LegacyTransferMessage = "This legacy transfer keeps its original receiving workflow and cannot use Truck Receipt reconciliation.";
@@ -132,7 +133,10 @@ public sealed class TruckReceiptReconciliationService(
         Audit(actor, "EditTransferReceiptVarieties", null, receipt, before, lines);
     }, ct);
 
-    public Task<string?> CompleteAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> CompleteAsync(TruckReceiptActionForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? CompleteCanonicalAsync(form, ct) : CompleteLegacyAsync(form, ct);
+
+    private Task<string?> CompleteLegacyAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         await RequireAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, ct);
         var receipt = await db.Receipts.Include(x => x.VarietyLines).Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, ct);
@@ -187,7 +191,10 @@ public sealed class TruckReceiptReconciliationService(
         await invariant.ValidateBeforeCommitAsync(ct);
     }, ct);
 
-    public Task<string?> EditTransferAsync(TransitEditForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> EditTransferAsync(TransitEditForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? EditTransferCanonicalAsync(form, ct) : EditTransferLegacyAsync(form, ct);
+
+    private Task<string?> EditTransferLegacyAsync(TransitEditForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         await RequireAccessAsync(ApplicationAreas.Transfers, PageAccessLevel.Edit, ct);
         var transfer = await TransferAsync(form.TransferId, form.TransferVersion, ct);
@@ -260,7 +267,10 @@ public sealed class TruckReceiptReconciliationService(
         await invariant.ValidateBeforeCommitAsync(ct);
     }, ct);
 
-    public Task<string?> ReopenAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> ReopenAsync(TruckReceiptActionForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? ReopenCanonicalAsync(form, ct) : ReopenLegacyAsync(form, ct);
+
+    private Task<string?> ReopenLegacyAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         Require(await IsAdminAsync(ct), "Only Admin users may reopen or unlink a transfer receipt.");
         Require(!string.IsNullOrWhiteSpace(form.Reason), "An audit reason is required.");

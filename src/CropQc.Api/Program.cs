@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCanonicalInventoryReads();
 builder.Services.AddCanonicalInventoryCommands(builder.Configuration.GetValue<bool>("CanonicalInventoryCommandsEnabled"));
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(

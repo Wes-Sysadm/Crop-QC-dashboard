@@ -23,7 +23,7 @@ public interface IInterCrewTransferService
     Task<InterCrewTransferDetailViewModel?> GetDetailsAsync(long id, CancellationToken cancellationToken);
 }
 
-public sealed class InterCrewTransferService(
+public sealed partial class InterCrewTransferService(
     CropQcDbContext dbContext,
     IOutsideWarehouseTransferService inventoryProvider,
     IRoomInventoryLedgerQueryService ledger,
@@ -34,7 +34,8 @@ public sealed class InterCrewTransferService(
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
     TruckReceiptReconciliationService? truckReceipts = null,
-    TruckReceiptOptions? truckReceiptOptions = null) : IInterCrewTransferService
+    TruckReceiptOptions? truckReceiptOptions = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IInterCrewTransferService
 {
     private const string AuditSource = "CropQc.Web inter-crew transfer workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -134,6 +135,7 @@ public sealed class InterCrewTransferService(
         if (form.LoadedAt == default) return Fail("Loaded date and time are required.");
         var key = Normalize(form.OperationKey);
         if (key is null || key.Length > 150) return Fail("The transfer operation key is invalid. Refresh and retry.");
+        if (dbContext.CanonicalInventoryEnabled) return await DispatchCanonicalAsync(form, cancellationToken);
         var existing = await dbContext.InterCrewTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == key, cancellationToken);
         if (existing is not null) return new(true, true, existing.Id, null);
         var actor = await GetActorAsync(cancellationToken);
@@ -223,6 +225,7 @@ public sealed class InterCrewTransferService(
         var actor = await GetActorAsync(cancellationToken);
         if (actor is null) return Fail("The current active user could not be resolved.");
         var canAdmin = await CanAdminAsync(principal, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) return await ReceiveCanonicalAsync(form, actor, canAdmin, cancellationToken);
 
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
@@ -311,6 +314,7 @@ public sealed class InterCrewTransferService(
         var actor = await GetActorAsync(cancellationToken);
         var key = Normalize(form.OperationKey);
         if (actor is null || key is null) return "The reversal request is invalid.";
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalAsync(form, actor.Id, cancellationToken);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {

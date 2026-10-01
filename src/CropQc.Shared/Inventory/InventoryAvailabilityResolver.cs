@@ -55,7 +55,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         // dispatch-minus-reversal slices and never credit the source room again.
         var balanced = raw == e.AuthoritativeQuantity && !projectionConflict
             && positive.All(x => ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
-        if (pool && !projectionConflict)
+        if (pool && !projectionConflict && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
         {
             treatmentConfidence = InventoryConfidence.Proven;
             receiptConfidence = receiptIds.Length == 1 && e.Receipts.Any(x => x.Id == receiptIds[0] && x.ExactIdentity && !x.IsDeleted)
@@ -217,8 +217,20 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         if (p.State == "Untreated")
         {
             var earliestArrival = e.Ledger.Where(x => x.Quantity > 0).Select(x => x.At).DefaultIfEmpty(p.CreatedAt).Min();
+            // An exact incoming allocation proves when THIS stock entered the room.
+            // Later receipts do not inherit a room treatment applied before arrival.
+            var arrivals = e.Movements.Where(x => x.Incoming && x.DestinationProjectionId == p.Id).ToArray();
+            var exactArrival = p.ReceiptId is long receipt && e.Receipts.Any(x => x.Id == receipt && x.ExactIdentity && !x.IsDeleted)
+                && arrivals.Length > 0 && arrivals.All(x => x.ExactIdentity && x.ReceiptId == receipt && x.Signature == "u" && x.State == "Untreated")
+                && arrivals.Sum(x => x.Quantity) - e.Movements.Where(x => x.Outgoing && x.SourceProjectionId == p.Id).Sum(x => x.Quantity) == p.Quantity;
+            if (exactArrival) earliestArrival = arrivals.Min(x => x.At);
+            var receiptLedger = e.Ledger.Where(x => x.ReceiptId == p.ReceiptId).ToArray();
+            var exactReceiptAllocation = exactArrival || p.ReceiptId is long receiptId
+                && e.Receipts.Any(x => x.Id == receiptId && x.ExactIdentity && !x.IsDeleted)
+                && receiptLedger.Length > 0 && receiptLedger.All(x => x.ExactIdentity) && receiptLedger.Sum(x => x.Quantity) == p.Quantity;
             return p.Signature == "u" && p.ApplicationIds.IsEmpty
-                && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId != null || x.AppliedAt >= earliestArrival));
+                && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId is long id
+                    ? !exactReceiptAllocation || id == p.ReceiptId : x.AppliedAt >= earliestArrival));
         }
         if (p.State != "Confirmed" || p.ApplicationIds.IsEmpty || !p.Signature.StartsWith("u|a:", StringComparison.Ordinal)) return false;
         var suffix = p.Signature[4..].Split(',');

@@ -18,7 +18,7 @@ public interface IInventoryCommandObserver
 
 /// <summary>Dormant engine: no Web/API operational caller is registered or migrated in Phase 2.</summary>
 public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbContext> contexts,
-    IInventoryCommandObserver? observer = null) : IInventoryCommandExecutor
+    IInventoryCommandObserver? observer = null, ICanonicalRunExpectationWriter? runExpectations = null) : IInventoryCommandExecutor
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private sealed class Rejection(InventoryCommandStatus status, string message) : Exception(message)
@@ -28,9 +28,11 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
 
     public async Task<InventoryCommandResult> ExecuteAsync(InventoryCommand command, CancellationToken cancellationToken = default)
     {
+        command = command with { EffectiveAt = command.EffectiveAt.ToUniversalTime() };
         var key = command.OperationKey;
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
-            || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefaultOrEmpty || command.Lines.Length > 100
+            || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
+            || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
                 || string.IsNullOrWhiteSpace(x.TreatmentSignature)))
@@ -57,7 +59,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 var loader = new InventoryEvidenceLoader(db);
                 var resolved = new List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)>();
                 var readAt = DateTimeOffset.UtcNow;
-                foreach (var line in command.Lines)
+                foreach (var line in command.Kind == InventoryCommandKind.ReviseRun ? [] : command.Lines)
                 {
                     var location = line.Source.Location;
                     if (location.Custody == InventoryCustody.Room)
@@ -74,7 +76,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                         "Expected entity version changed.", InventoryCommandStatus.Stale);
                     Require(r.IsOperable && (line.AdjustmentDirection == InventoryAdjustmentDirection.Increase ? r.AvailableQuantity > 0 : r.AvailableQuantity >= line.Quantity),
                         $"Canonical evidence or available quantity blocks {command.Kind}: {string.Join(',', r.Blockers.Select(x => x.Code))}.");
-                    Require(!resolved.Any(x => x.Result.PositionKey == r.PositionKey), "Duplicate source position in a command.", InventoryCommandStatus.InvalidIntent);
+                    Require(!resolved.Any(x => x.Result.PositionKey == r.PositionKey && x.Line.TreatmentSignature == line.TreatmentSignature),
+                        "Duplicate treatment slice in a command.", InventoryCommandStatus.InvalidIntent);
                     resolved.Add((line, e!, r));
                 }
                 var destinations = new List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)>();
@@ -99,38 +102,20 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     }
                 await Stage("Resolved", db, attempt, cancellationToken);
                 var factory = new CanonicalProjectionFactory(db);
-                foreach (var item in resolved.Concat(destinations).Where(x => x.Evidence.Location.Custody == InventoryCustody.Room))
+                foreach (var item in resolved.Concat(destinations).Where(x => x.Evidence.Location.Custody == InventoryCustody.Room).DistinctBy(x => x.Result.PositionKey))
                 {
-                    var plan = InventoryNormalizationPlanner.Plan(item.Evidence, item.Result);
-                    if (plan == null) continue;
-                    var ids = plan.Changes.Select(x => x.Id).ToArray();
-                    var segments = await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
-                    Require(segments.Count == plan.Changes.Length, "Normalization row disappeared.", InventoryCommandStatus.Stale);
-                    foreach (var change in plan.Changes)
-                    {
-                        var row = segments.Single(x => x.Id == change.Id);
-                        Require(row.CurrentBins == change.BeforeQuantity && row.ConcurrencyVersion == change.BeforeVersion
-                            && row.Disposition == change.BeforeDisposition && row.TreatmentSignature == change.Signature
-                            && row.IdentityKey == change.RawIdentityKey && row.TreatmentState == change.TreatmentState && row.UpdatedAt == change.BeforeUpdatedAt
-                            && row.ReceiptId == change.ReceiptId && row.Applications.Select(x => x.RoomTreatmentApplicationId).Order().SequenceEqual(change.ApplicationIds.Order()),
-                            "Normalization plan no longer matches exact rows.", InventoryCommandStatus.Stale);
-                        CanonicalProjectionFactory.Retire(row, key, readAt);
-                    }
-                    await db.SaveChangesAsync(cancellationToken); // release current-only uniqueness, still inside outer transaction
-                    var replacement = await factory.CurrentAsync(item.Result.Identity, item.Result.Location.WarehouseId,
-                        item.Result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
-                    Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
-                    replacement.CurrentBins = plan.ReplacementQuantity;
-                    await db.SaveChangesAsync(cancellationToken);
-                    plan = plan with { ReplacementProjectionId = replacement.Id };
-                    AddAudit(db, command, "CanonicalInventoryNormalization", item.Result.PositionKey, plan.Changes, plan, readAt);
-                    await Stage("NormalizationAudit", db, attempt, cancellationToken);
-                    await db.SaveChangesAsync(cancellationToken);
-                    var balance = await PhysicalAsync(db, item.Result.Identity, item.Result.Location.WarehouseId, item.Result.Location.RoomId.Value, cancellationToken);
-                    Require(balance == item.Result.AuthoritativeQuantity, "Normalization changed physical inventory.");
+                    await NormalizePositionAsync(db, factory, command, item.Evidence, item.Result, readAt, attempt, cancellationToken);
                 }
                 await Stage("Normalized", db, attempt, cancellationToken);
-                var effects = await ApplyAsync(db, factory, command, resolved, readAt, attempt, cancellationToken);
+                var effects = command.Kind switch
+                {
+                    InventoryCommandKind.ReceiveStock => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ReverseLoss => await ReverseLossAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ReviseRun => await ReviseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ReturnTransitAllocation => await ReturnTransitAllocationAsync(db, factory, command, resolved.Single().Result, readAt, attempt, cancellationToken),
+                    _ => await ApplyAsync(db, factory, command, resolved, readAt, attempt, cancellationToken)
+                };
                 AddAudit(db, command, "CanonicalInventoryCommand", key, new { intent, hash }, effects, readAt);
                 await Stage("OperationAudit", db, attempt, cancellationToken);
                 var result = new InventoryCommandResult(InventoryCommandStatus.Committed, key, "Command committed atomically.", effects, attempt);
@@ -168,6 +153,38 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             }
         }
         throw new InvalidOperationException("Unreachable retry state.");
+    }
+
+    private async Task NormalizePositionAsync(CropQcDbContext db, CanonicalProjectionFactory factory, InventoryCommand command,
+        InventoryPositionEvidence evidence, InventoryAvailabilityResult result, DateTimeOffset readAt, int attempt, CancellationToken cancellationToken)
+    {
+        var plan = InventoryNormalizationPlanner.Plan(evidence, result);
+        if (plan == null) return;
+        var ids = plan.Changes.Select(x => x.Id).ToArray();
+        var segments = await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
+        Require(segments.Count == plan.Changes.Length, "Normalization row disappeared.", InventoryCommandStatus.Stale);
+        foreach (var change in plan.Changes)
+        {
+            var row = segments.Single(x => x.Id == change.Id);
+            Require(row.CurrentBins == change.BeforeQuantity && row.ConcurrencyVersion == change.BeforeVersion
+                && row.Disposition == change.BeforeDisposition && row.TreatmentSignature == change.Signature
+                && row.IdentityKey == change.RawIdentityKey && row.TreatmentState == change.TreatmentState && row.UpdatedAt == change.BeforeUpdatedAt
+                && row.ReceiptId == change.ReceiptId && row.Applications.Select(x => x.RoomTreatmentApplicationId).Order().SequenceEqual(change.ApplicationIds.Order()),
+                "Normalization plan no longer matches exact rows.", InventoryCommandStatus.Stale);
+            CanonicalProjectionFactory.Retire(row, command.OperationKey, readAt);
+        }
+        await db.SaveChangesAsync(cancellationToken); // release current-only uniqueness, still inside outer transaction
+        var replacement = await factory.CurrentAsync(result.Identity, result.Location.WarehouseId,
+            result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
+        Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
+        replacement.CurrentBins = plan.ReplacementQuantity;
+        await db.SaveChangesAsync(cancellationToken);
+        plan = plan with { ReplacementProjectionId = replacement.Id };
+        AddAudit(db, command, "CanonicalInventoryNormalization", result.PositionKey, plan.Changes, plan, readAt);
+        await Stage("NormalizationAudit", db, attempt, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        var balance = await PhysicalAsync(db, result.Identity, result.Location.WarehouseId, result.Location.RoomId.Value, cancellationToken);
+        Require(balance == result.AuthoritativeQuantity, "Normalization changed physical inventory.");
     }
 
     private Task Stage(string name, CropQcDbContext db, int attempt, CancellationToken ct) => observer?.AtAsync(name, attempt, ct) ?? Task.CompletedTask;

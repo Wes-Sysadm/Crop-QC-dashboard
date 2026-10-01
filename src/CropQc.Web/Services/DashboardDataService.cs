@@ -80,7 +80,7 @@ public static class FruitRowEntryStatusExtensions
     };
 }
 
-public sealed class DashboardDataService(
+public sealed partial class DashboardDataService(
     CropQcDbContext dbContext,
     IFileStorageService fileStorageService,
     FileStorageOptions fileStorageOptions,
@@ -105,7 +105,8 @@ public sealed class DashboardDataService(
     IRoomInventoryLossService? roomInventoryLossService = null,
     IRoomTreatmentService? roomTreatmentService = null,
     IReviewedGrowerLotPolicy? reviewedGrowerLotPolicy = null,
-    IHarvestWatchService? harvestWatchService = null) : IDashboardDataService
+    IHarvestWatchService? harvestWatchService = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IDashboardDataService
 {
     private const string SharedDriveQuotaGuidance = "The configured Google Drive folder is not being treated as a Shared Drive upload target. Confirm GoogleDrive__UseSharedDrive=true, GoogleDrive__RootFolderId is a folder inside the Shared Drive, GoogleDrive__SharedDriveId is set, and the service account has Content Manager access.";
     private const int MaximumLotEvidenceLinks = 8;
@@ -974,6 +975,7 @@ public sealed class DashboardDataService(
 
     public async Task<string?> CreateRoomTransferAsync(RoomTransferForm form, CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalRoomTransferAsync(form, cancellationToken);
         if (!form.TransferAllEligible && form.OperationKey?.StartsWith("bulk:", StringComparison.Ordinal) == true)
             return "This operation key is reserved for bulk room transfers.";
         try
@@ -1347,6 +1349,7 @@ public sealed class DashboardDataService(
         {
             return "Reason is required to reverse a room transfer.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalRoomTransferAsync(form, cancellationToken);
 
         var operationKey = string.IsNullOrWhiteSpace(form.OperationKey)
             ? Guid.NewGuid().ToString("N")
@@ -1680,6 +1683,23 @@ public sealed class DashboardDataService(
         if (reviewedGrowerLotPolicy is not null && form.GrowerLotId is null)
         {
             return new(null, null, "Select a current Grower Number from the reviewed Grower list.");
+        }
+
+        if (dbContext.CanonicalInventoryEnabled && IsInventoryReceiptType(receiptType) && !form.IsTransferReceipt)
+        {
+            if (form.GrowerLotId is int receivingGrower && await GetReceivingGrowerLotAsync(receivingGrower, cancellationToken) is null)
+                return new(null, null, "Select a current Grower Number from the reviewed Grower list.");
+            if (!await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Create, cancellationToken))
+                return new(null, null, "Receipts Create access is required.");
+            if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
+                return new(null, null, "Confirm Crop Year before saving.");
+            if (canonicalCommands == null) return new(null, null, "Canonical inventory command execution is not configured.");
+            var actor = await GetCurrentUserAsync(cancellationToken);
+            if (actor == null) return new(null, null, "The current active user could not be resolved.");
+            var result = await new CropQc.Data.Inventory.CanonicalReceivingService(dbContext, canonicalCommands).ReceiveAsync(
+                form.OperationKey, actor.Id, form.CropYear, form.ReceivedAt, form.WarehouseId, form.RoomId, form.FruitProfileId,
+                form.GrowerLotId, form.GrowerNumber, form.CompuTechReceiptId, form.BinCount, JsonSerializer.Serialize(form), cancellationToken);
+            return new(result.Effects.FirstOrDefault()?.ParentId, form.CompuTechReceiptId, CropQc.Shared.Inventory.CanonicalInventoryMessages.Result(result));
         }
 
         await using var inventoryTransaction = IsInventoryReceiptType(receiptType)
@@ -6655,6 +6675,7 @@ public sealed class DashboardDataService(
         int roomId,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await BuildCanonicalTransferProjectionAsync(roomId, cancellationToken);
         var snapshots = (await RoomInventoryLedger.GetSnapshotsAsync(null, [roomId], cancellationToken))
             .Where(x => x.CurrentBins > 0)
             .ToList();

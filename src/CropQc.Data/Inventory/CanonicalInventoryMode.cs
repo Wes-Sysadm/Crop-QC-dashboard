@@ -23,7 +23,7 @@ internal static class CanonicalInventoryWriteGuard
     private static readonly HashSet<string> ReceiptInventoryFields =
     [nameof(Receipt.BinCount), nameof(Receipt.CropYear), nameof(Receipt.WarehouseId), nameof(Receipt.RoomId),
      nameof(Receipt.GrowerLotId), nameof(Receipt.FruitProfileId), nameof(Receipt.LotCode), nameof(Receipt.GrowerNumber),
-     nameof(Receipt.IsTransferReceipt), nameof(Receipt.TransferCompletedAt), nameof(Receipt.ReceivedAt), nameof(Receipt.IsDeleted)];
+     nameof(Receipt.IsTransferReceipt), nameof(Receipt.TransferCompletedAt), nameof(Receipt.ReceivedAt), nameof(Receipt.IsDeleted), nameof(Receipt.ReceiptType)];
 
     internal static void Check(CropQcDbContext db)
     {
@@ -31,7 +31,11 @@ internal static class CanonicalInventoryWriteGuard
         foreach (var entry in db.ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
             if (PhysicalEntities.Contains(entry.Metadata.ClrType)
-                || entry.Entity is Receipt receipt && (!receipt.IsTransferReceipt || entry.Property(nameof(Receipt.IsTransferReceipt)).IsModified)
+                || entry.Entity is Receipt receipt
+                    && (receipt.ReceiptType == "Truck receipt" || entry.Property(nameof(Receipt.ReceiptType)).OriginalValue as string == "Truck receipt")
+                    && (!receipt.IsTransferReceipt || receipt.TransferCompletedAt != null
+                        || entry.Property(nameof(Receipt.TransferCompletedAt)).OriginalValue != null
+                        || entry.Property(nameof(Receipt.IsTransferReceipt)).IsModified)
                     && (entry.State != EntityState.Modified || entry.Properties.Any(p => p.IsModified && ReceiptInventoryFields.Contains(p.Metadata.Name))))
                 throw new InventoryWriterNotMigratedException(entry.Metadata.ClrType.Name);
         }
@@ -45,6 +49,7 @@ public static class CanonicalInventoryServices
         services.AddSingleton(new CanonicalInventoryMode(enabled));
         services.AddScoped<IDbContextFactory<CropQcDbContext>, CommandContextFactory>();
         services.AddScoped<IInventoryCommandExecutor, InventoryCommandExecutor>();
+        services.AddScoped<CanonicalReceivingService>();
         return services;
     }
 
