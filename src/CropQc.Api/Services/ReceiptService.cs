@@ -15,7 +15,8 @@ public interface IReceiptService
 }
 
 public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService auditService,
-    CropQc.Data.Inventory.CanonicalReceivingService? canonicalReceiving = null, IHttpContextAccessor? httpContext = null) : IReceiptService
+    CropQc.Data.Inventory.CanonicalReceivingService? canonicalReceiving = null, IHttpContextAccessor? httpContext = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IReceiptService
 {
     public async Task<(ReceiptDto? Receipt, string? Error)> CreateAsync(CreateReceiptRequest request, CancellationToken cancellationToken)
     {
@@ -133,6 +134,26 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
 
         if (receipt.IsTransferReceipt) return (null, "Use the Truck Receipt reconciliation workflow to edit this receipt.");
 
+        if (dbContext.CanonicalInventoryEnabled)
+        {
+            var principal = httpContext?.HttpContext?.User;
+            if (principal == null || !await CropQc.Data.Authentication.OperatorSession.CanReceiveAsync(dbContext, principal, cancellationToken))
+                return (null, "An active authenticated receiving operator is required.");
+            if (canonicalCommands == null || string.IsNullOrWhiteSpace(request.OperationKey) || request.ExpectedVersion == null)
+                return (null, "An operation key and reviewed receipt version are required.");
+            if (!string.Equals(request.LotCode.Trim(), receipt.LotCode, StringComparison.OrdinalIgnoreCase))
+                return (null, "Identity changes require an administrator inventory correction.");
+            var email = principal.FindFirst(System.Security.Claims.ClaimTypes.Email)!.Value;
+            var actor = await dbContext.Users.Where(x => x.IsActive && x.Email == email).Select(x => x.Id).SingleAsync(cancellationToken);
+            var metadata = new CropQc.Shared.Inventory.InventoryReceiptMetadata(id, request.ExpectedVersion.Value, request.ReceivedAt,
+                receipt.CompuTechReceiptId, await ResolveAuthoritativeNameAsync(request.GrowerName, request.LotCode, cancellationToken),
+                new(request.CropYear, request.WarehouseId, request.RoomId, receipt.GrowerLotId ?? 0, request.FruitProfileId, receipt.CompuTechReceiptId, request.BinCount, receipt.ReceiptType), SameDayOnly: true);
+            var result = await new CropQc.Data.Inventory.CanonicalReceiptMetadataService(dbContext, canonicalCommands).UpdateAsync(request.OperationKey,
+                actor, metadata, request.Reason, System.Text.Json.JsonSerializer.Serialize(request), cancellationToken);
+            var error = CropQc.Shared.Inventory.CanonicalInventoryMessages.Result(result);
+            return error == null ? (await GetAsync(id, cancellationToken), null) : (null, error);
+        }
+
         if (receipt.ReceivedAt.Date != DateTimeOffset.UtcNow.Date)
         {
             return (null, "Only same-day receipt fields can be updated.");
@@ -232,5 +253,5 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         receipt.LotCode,
         receipt.BinCount,
         receipt.CreatedAt,
-        receipt.UpdatedAt);
+        receipt.UpdatedAt, receipt.ConcurrencyVersion);
 }

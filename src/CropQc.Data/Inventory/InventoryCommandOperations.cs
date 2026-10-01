@@ -45,7 +45,12 @@ public sealed partial class InventoryCommandExecutor
             && c.Lines.Select(x => x.Destination).Distinct().Count() == 1, "Receive requires one complete parent and destination, including every identity.");
     }
 
-    private sealed record Allocation(TreatmentLineageSegment Segment, int Quantity);
+    private sealed record Allocation(TreatmentLineageSegment Segment, int Quantity, InventoryEffectiveTreatment? Treatment = null)
+    {
+        public string Signature => Treatment?.Signature ?? Segment.TreatmentSignature;
+        public string State => Treatment?.State ?? Segment.TreatmentState;
+        public IEnumerable<long> ApplicationIds => Treatment?.ApplicationIds ?? Segment.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray();
+    }
     private async Task<ImmutableArray<InventoryCommandEffect>> ApplyAsync(CropQcDbContext db, CanonicalProjectionFactory factory,
         InventoryCommand c, List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)> inputs,
         DateTimeOffset now, int attempt, CancellationToken ct, ActualRun? existingRun = null, ActualRunRevision? existingRevision = null)
@@ -168,8 +173,10 @@ public sealed partial class InventoryCommandExecutor
                     if (amount == 0) continue;
                     Require(amount > 0 && allocation.All(x => x.Signature == line.TreatmentSignature), "Custody allocation is not exact.");
                     var row = await db.TreatmentLineageSegments.Include(x => x.Applications).SingleAsync(x => x.Id == allocation.Key, ct);
-                    Require(allocation.All(x => row.TreatmentSignature == x.Signature && row.ReceiptId == x.ReceiptId), "Dispatch treatment/provenance changed.");
-                    allocations.Add(new(row, amount));
+                    var effective = InventoryEffectiveTreatment.Read(row.TreatmentSignature, row.TreatmentState,
+                        row.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), evidence.Applications);
+                    Require(allocation.All(x => effective.Signature == x.Signature && effective.State == x.State && row.ReceiptId == x.ReceiptId), "Dispatch treatment/provenance changed.");
+                    allocations.Add(new(row, amount, effective));
                 }
                 Require(allocations.Sum(x => x.Quantity) == qty && qty == r.AvailableQuantity, "Only exact complete custody treatment allocations may complete/return.");
             }
@@ -374,6 +381,7 @@ public sealed partial class InventoryCommandExecutor
                     LossType = RoomInventoryLossTypes.Dropped,
                     BinCount = qty,
                     Reason = c.Reason,
+                    Notes = c.Dispatch?.Notes,
                     CreatedAt = now,
                     OccurredAt = c.EffectiveAt,
                     CreatedByUserId = c.ActorId
@@ -531,8 +539,8 @@ public sealed partial class InventoryCommandExecutor
             SourceRoomId = sourceRoom,
             DestinationRoomId = targetRoom,
             IdentityKey = i.Key,
-            TreatmentStateSnapshot = a.Segment.TreatmentState,
-            TreatmentSignatureSnapshot = a.Segment.TreatmentSignature,
+            TreatmentStateSnapshot = a.State,
+            TreatmentSignatureSnapshot = a.Signature,
             ReceiptId = a.Segment.ReceiptId,
             BinCount = a.Quantity,
             OccurredAt = c.EffectiveAt,

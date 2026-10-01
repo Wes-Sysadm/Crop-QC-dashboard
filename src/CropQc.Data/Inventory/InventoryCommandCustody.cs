@@ -44,7 +44,7 @@ public sealed partial class InventoryCommandExecutor
                     LoadedByUserId = c.ActorId,
                     CreatedAt = now,
                     Status = InterCrewTransferStatuses.InTransit,
-                    RequiresTruckReceipt = true,
+                    RequiresTruckReceipt = c.Dispatch?.RequiresTruckReceipt ?? true,
                     TruckLoadBolNumber = c.Dispatch?.Reference,
                     Notes = c.Dispatch?.Notes ?? c.Reason
                 };
@@ -233,8 +233,8 @@ public sealed partial class InventoryCommandExecutor
             ledger.Add(credit);
             foreach (var a in allocations)
             {
-                var target = await factory.CurrentAsync(i, destination.WarehouseId, destination.RoomId, a.Segment.TreatmentSignature,
-                    a.Segment.TreatmentState, a.Segment.ReceiptId, a.Segment.Applications.Select(x => x.RoomTreatmentApplicationId), now, ct);
+                var target = await factory.CurrentAsync(i, destination.WarehouseId, destination.RoomId, a.Signature,
+                    a.State, a.Segment.ReceiptId, a.ApplicationIds, now, ct);
                 Credit(target, a.Quantity, now);
                 if (c.Kind == InventoryCommandKind.Return)
                 {
@@ -247,7 +247,7 @@ public sealed partial class InventoryCommandExecutor
                     Require(originalMoves.Sum(x => x.Quantity) == a.Quantity, "Original dispatch allocation no longer balances.");
                     foreach (var originalMove in originalMoves)
                     {
-                        var reversal = Move(c, i, new(a.Segment, originalMove.Quantity), target, null, destination.RoomId, key + ":r" + originalMove.Movement.Id, now,
+                        var reversal = Move(c, i, new(a.Segment, originalMove.Quantity, a.Treatment), target, null, destination.RoomId, key + ":r" + originalMove.Movement.Id, now,
                             crew != null ? "InterCrewReversal" : outside != null ? "OutsideWarehouseTransferReversal" : "ProcessorShipmentReversal");
                         reversal.InterCrewTransfer = crew; reversal.OutsideWarehouseTransfer = outside; reversal.ProcessorShipmentLine = processor;
                         reversal.ReversesTreatmentLineageMovementId = originalMove.Movement.Id; movements.Add(reversal);
@@ -290,6 +290,11 @@ public sealed partial class InventoryCommandExecutor
         var segmentIds = receives.Select(x => x.DestinationSegmentId!.Value).Distinct().ToArray();
         var firstReceiveCreatedAt = receives.Min(x => x.CreatedAt);
         var firstReceiveId = receiveIds.Min();
+        var firstReceiveLedgerId = await db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id
+            && x.RoomId == loc.RoomId && x.ChangeAmount > 0 && x.CreatedAt >= firstReceiveCreatedAt).Select(x => (long?)x.Id).MinAsync(ct);
+        Require(firstReceiveLedgerId != null && !await db.RoomInventoryAdjustments.AnyAsync(x => x.RoomId == loc.RoomId
+            && x.FruitProfileId == i.FruitProfileId && x.GrowerLotId == i.GrowerLotId && x.CropYear == i.CropYear
+            && x.Id > firstReceiveLedgerId && x.InterCrewTransferId != transfer.Id, ct), "Subsequent inventory activity prevents exact receive reversal.");
         Require(!await db.RoomTreatmentApplicationSources.AnyAsync(x => x.IdentityKey == i.Key && x.RoomTreatmentApplication.RoomId == loc.RoomId
             && x.RoomTreatmentApplication.CreatedAt >= firstReceiveCreatedAt, ct), "Subsequent treatment activity prevents exact receive reversal.");
         Require(allocations.All(x => segmentIds.Contains(x.Segment.Id))

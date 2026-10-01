@@ -38,7 +38,9 @@ public sealed partial class TruckReceiptReconciliationService
                 new(transfer.SourceWarehouseId, [], InventoryCustody.InTransit, transfer.Id), new(AllowedCustody: InventoryCustody.InTransit), time.UtcNow, ct);
             var p = batch.Positions.SingleOrDefault(x => x.Identity.Key == InventoryStatusIdentity.NormalizeLineageKey(movement!.IdentityKey));
             Require(p != null && p.IsOperable, "Transit allocation cannot be proven.");
-            line = new(new(p!.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), form.Bins, movement!.TreatmentSignatureSnapshot);
+            var treatment = p!.TreatmentSlices.SingleOrDefault(x => x.ProjectionIds.Contains(movement!.SourceSegmentId ?? 0));
+            Require(treatment != null, "Current treatment for the exact dispatch allocation cannot be proven.");
+            line = new(new(p.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), form.Bins, treatment!.Signature);
             if (transfer.ReceivingReceiptId is long matched)
                 receiptEvidence = new(matched, await db.Receipts.Where(x => x.Id == matched).Select(x => x.ConcurrencyVersion).SingleAsync(ct));
         }

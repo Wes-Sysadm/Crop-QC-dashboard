@@ -62,13 +62,18 @@ public sealed partial class InventoryCommandExecutor
         var ledger = Ledger(c, identity, original.WarehouseId, original.RoomId, quantity, resolved.AuthoritativeQuantity, c.OperationKey + ":restore:" + original.Id, now);
         ledger.ReceiptId = original.ReceiptId;
         var reversals = new List<TreatmentLineageMovement>();
+        var appIds = moves.SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
+        var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
+            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
         foreach (var move in moves)
         {
             var source = move.SourceSegment!;
-            var target = await factory.CurrentAsync(identity, original.WarehouseId, original.RoomId, source.TreatmentSignature,
-                source.TreatmentState, source.ReceiptId, source.Applications.Select(x => x.RoomTreatmentApplicationId), now, ct);
+            var treatment = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState,
+                source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), applications);
+            var target = await factory.CurrentAsync(identity, original.WarehouseId, original.RoomId, treatment.Signature,
+                treatment.State, source.ReceiptId, treatment.ApplicationIds, now, ct);
             Credit(target, move.BinCount, now);
-            var reversal = Move(c, identity, new(source, move.BinCount), target, null, original.RoomId,
+            var reversal = Move(c, identity, new(source, move.BinCount, treatment), target, null, original.RoomId,
                 c.OperationKey + ":restore:" + move.Id, now, "ConsumptionReversal");
             reversal.ReversesTreatmentLineageMovementId = move.Id;
             reversals.Add(reversal);

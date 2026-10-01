@@ -2046,6 +2046,9 @@ public sealed partial class DashboardDataService(
             return null;
         }
 
+        if (dbContext.CanonicalInventoryEnabled && (IsInventoryReceiptType(receipt.ReceiptType) || IsInventoryReceiptType(receiptType)))
+            return await UpdateCanonicalReceiptMetadataAsync(form, receipt, growerLot, receiptType, cancellationToken);
+
         var oldReceiptBinCount = receipt.BinCount;
         var before = JsonSerializer.Serialize(new
         {

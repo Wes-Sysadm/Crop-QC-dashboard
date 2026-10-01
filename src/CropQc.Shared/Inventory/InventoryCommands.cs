@@ -7,7 +7,7 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -24,14 +24,17 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     InventoryReceivingEvidence? ReceivingEvidence = null, InventoryProcessorTerms? ProcessorTerms = null,
     long? ExpectedTransferVersion = null, InventoryRunMetadata? Run = null, string? ApplicationIntent = null,
     InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
-    long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null);
+    long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
+    InventoryReceiptMetadata? ReceiptMetadata = null);
+public sealed record InventoryReceiptMetadata(long ReceiptId, long ExpectedVersion, DateTimeOffset ReceivedAt, string ReceiptNumber,
+    string GrowerName, InventoryReceiptIntent ExpectedReceipt, bool SameDayOnly = false);
 public sealed record InventoryReceiptChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint, int NewQuantity,
     ImmutableArray<InventoryReceiptQuantityAllocation> Allocations, string? VoidConfirmation = null);
 public sealed record InventoryReceiptQuantityAllocation(string Key, int Quantity);
 public sealed record InventoryLegacyRunMetadata(int? FacilityWarehouseId, string? FacilityCode, string AssignmentSource);
 public sealed record InventoryReceiptIntent(int CropYear, int WarehouseId, int RoomId, int GrowerLotId,
     int FruitProfileId, string ReceiptNumber, int Quantity, string ReceiptType = "Truck receipt");
-public sealed record InventoryDispatchMetadata(string? Reference, string? Notes);
+public sealed record InventoryDispatchMetadata(string? Reference, string? Notes, bool? RequiresTruckReceipt = null);
 public sealed record InventoryRunMetadata(int FacilityWarehouseId, int? SalesDeskId, string AssignmentSource, string? Notes);
 public sealed record InventoryReceivingEvidence(long ReceiptId, long ExpectedVersion);
 public sealed record InventoryProcessorTerms(decimal Rate, string Basis, string Currency, decimal? PoundsPerBin = null);

@@ -31,7 +31,7 @@ public sealed partial class InterCrewTransferService
             businessTime.PacificLocalToUtc(form.LoadedAt), "Inter-crew dispatch", [new(new(identity,
                 new(InventoryCustody.Room, option.WarehouseId, option.RoomId, option.Facility, option.Room), form.SourceKey[(form.SourceKey.LastIndexOf(':') + 1)..], []),
                 form.BinsLoaded, option.TreatmentSignature)], CustodyGroup: form.DestinationCustodyGroup, ApplicationIntent: submission,
-            Dispatch: new(Normalize(form.TruckLoadBolNumber), Normalize(form.Notes))), ct));
+            Dispatch: new(Normalize(form.TruckLoadBolNumber), Normalize(form.Notes), truckReceiptOptions?.Enabled == true)), ct));
     }
 
     private async Task<ImmutableArray<InventoryCommandLine>> TransitLinesAsync(InterCrewTransfer transfer, InventoryCommandDestination? destination, CancellationToken ct)

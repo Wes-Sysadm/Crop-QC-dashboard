@@ -116,10 +116,16 @@ public sealed partial class InventoryEvidenceLoader
                     State = x.Movement.TreatmentStateSnapshot,
                     ReceiptId = x.Movement.ReceiptId
                 }).ToImmutableArray();
+                var originalAppIds = projections.SelectMany(x => x.ApplicationIds).ToHashSet();
+                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToImmutableArray();
+                projections = projections.Select(p =>
+                {
+                    var effective = InventoryEffectiveTreatment.Read(p.Signature, p.State, p.ApplicationIds, allApplications);
+                    return p with { Signature = effective.Signature, State = effective.State, ApplicationIds = effective.ApplicationIds };
+                }).ToImmutableArray();
                 var me = group.Select(x => Movement(x.Movement, identity, parent.Room)).ToImmutableArray();
                 var receiptEvidence = receipts.Where(x => group.Any(y => y.Movement.ReceiptId == x.Id)).Select(x => Receipt(x, identity)).ToImmutableArray();
-                var applicationIds = projections.SelectMany(x => x.ApplicationIds).ToHashSet();
-                var ae = apps.Where(x => applicationIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToImmutableArray();
+                var ae = allApplications;
                 var quantity = group.Sum(x => x.Quantity);
                 var identityLedger = pr.Where(x => x.CropYear == identity.CropYear && x.GrowerLotId == identity.GrowerLotId
                     && x.FruitProfileId == identity.FruitProfileId && N(x.LotNumber) == N(identity.Lot)).ToArray();
@@ -129,7 +135,7 @@ public sealed partial class InventoryEvidenceLoader
                         && me.All(x => x.ExactIdentity), le, projections, me, receiptEvidence, ae,
                     Watermark(new { parent, le, projections, me, receiptEvidence, ae }, consistency,
                         [new(scope.Custody.ToString(), parent.Id.ToString(), parent.Version, parent.At)]),
-                    pm.Any(x => x.CreatedAt > asOf) || pr.Any(x => x.CreatedAt > asOf) || projections.Any(x => x.UpdatedAt > asOf)));
+                    pm.Any(x => x.CreatedAt > asOf) || pr.Any(x => x.CreatedAt > asOf) || projections.Any(x => x.UpdatedAt > asOf) || ae.Any(x => x.ReversedAt > asOf)));
             }
         }
         return new(result.ToImmutable(), parents.Count + rows.Count + movements.Count + segments.Count + receipts.Count + apps.Count);

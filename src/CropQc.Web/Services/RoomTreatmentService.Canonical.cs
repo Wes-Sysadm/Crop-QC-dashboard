@@ -73,7 +73,10 @@ public sealed partial class RoomTreatmentService
         if (replay != null) return CanonicalInventoryMessages.Result(replay);
         var app = await dbContext.RoomTreatmentApplications.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.Id, ct);
         if (app == null || app.ApplicationLevel != level || app.ReversedAt != null) return "The active treatment application was not found.";
-        var batch = await CanonicalRoomAsync(app.RoomId, ct);
+        var rooms = await dbContext.TreatmentLineageSegments.Where(x => x.Disposition == "Current" && x.CurrentBins > 0
+            && x.Applications.Any(a => a.RoomTreatmentApplicationId == app.Id)).Select(x => x.RoomId).Distinct().ToArrayAsync(ct);
+        var batch = rooms.Length == 0 ? new InventoryAvailabilityBatch(businessTime.UtcNow, InventoryAvailabilityResolver.Algorithm, 0, [])
+            : await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms.ToImmutableArray()), new(), businessTime.UtcNow, ct);
         return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.TreatmentReversal,
             actor, businessTime.UtcNow, form.Reason, TreatmentLines(batch, app.Id), TreatmentApplicationId: app.Id, ApplicationIntent: submission), ct));
     }
