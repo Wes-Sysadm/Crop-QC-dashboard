@@ -7,7 +7,7 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -25,7 +25,11 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     long? ExpectedTransferVersion = null, InventoryRunMetadata? Run = null, string? ApplicationIntent = null,
     InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
     long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
-    InventoryReceiptMetadata? ReceiptMetadata = null);
+    InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null);
+public sealed record InventoryBaselineImport(ImmutableArray<InventoryBaselineRow> Rows, string ExpectedFingerprint, bool ConfirmReplacement);
+public sealed record InventoryBaselineRow(int CropYear, int WarehouseId, int RoomId, int GrowerLotId, int FruitProfileId,
+    string Lot, string Variety, string Status, int Quantity, DateTimeOffset EffectiveAt, string Source, string Notes,
+    string SourceRoomCode, string SourceSubLocation, string RoomDisplayName, int RoomSortOrder);
 public sealed record InventoryReceiptMetadata(long ReceiptId, long ExpectedVersion, DateTimeOffset ReceivedAt, string ReceiptNumber,
     string GrowerName, InventoryReceiptIntent ExpectedReceipt, bool SameDayOnly = false);
 public sealed record InventoryReceiptChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint, int NewQuantity,

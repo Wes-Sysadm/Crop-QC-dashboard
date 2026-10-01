@@ -29,6 +29,23 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
 {
     public const int MaximumRoomLotRows = 2000;
 
+    // A SELECT-only hypothetical source, composed through the SAME baseline cutoffs,
+    // identity grouping and metadata query as ordinary reads. No temporary writes.
+    internal Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> PreviewBaselinesAsync(
+        IReadOnlyList<RoomInventoryAdjustment> proposed, int[] rooms, DateTimeOffset asOf, CancellationToken ct)
+    {
+        if (!dbContext.Database.IsNpgsql()) throw new InvalidOperationException("Canonical baseline preview requires PostgreSQL.");
+        var properties = dbContext.Model.FindEntityType(typeof(RoomInventoryAdjustment))!.GetProperties().ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(proposed.Select(row => properties.ToDictionary(
+            p => p.GetColumnName(), p => p.PropertyInfo!.GetValue(row))));
+        var source = dbContext.RoomInventoryAdjustments.FromSqlInterpolated($"""
+            SELECT * FROM "RoomInventoryAdjustments" WHERE "RoomId" = ANY({rooms})
+            UNION ALL
+            SELECT * FROM jsonb_populate_recordset(NULL::"RoomInventoryAdjustments", {json}::jsonb)
+            """).AsNoTracking();
+        return GetSnapshotsCoreAsync(null, rooms, null, asOf, ct, source);
+    }
+
     public async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsAsync(
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
@@ -54,9 +71,11 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
         IReadOnlyCollection<int>? roomIds,
         int? fruitProfileId,
         DateTimeOffset? asOf,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IQueryable<RoomInventoryAdjustment>? overlay = null)
     {
-        var query = dbContext.RoomInventoryAdjustments.AsNoTracking();
+        var ledger = overlay ?? dbContext.RoomInventoryAdjustments.AsNoTracking();
+        var query = ledger;
         if (warehouseId is not null)
         {
             query = query.Where(x => x.WarehouseId == warehouseId.Value);
@@ -73,7 +92,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
         }
 
         query = query
-            .Where(x => !dbContext.RoomInventoryAdjustments.Any(baseline =>
+            .Where(x => !ledger.Any(baseline =>
                 baseline.RoomId == x.RoomId
                 && (asOf == null || baseline.AdjustmentAt <= asOf.Value)
                 && baseline.ReceiptId == null
@@ -84,7 +103,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
             .Where(x =>
                 x.ReceiptId != null
                 || x.AdjustmentType != InventoryLedgerKinds.StartingInventoryImport
-                || !dbContext.RoomInventoryAdjustments.Any(newerBaselineRow =>
+                || !ledger.Any(newerBaselineRow =>
                     newerBaselineRow.RoomId == x.RoomId
                     && (asOf == null || newerBaselineRow.AdjustmentAt <= asOf.Value)
                     && newerBaselineRow.ReceiptId == null
@@ -302,7 +321,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
             .ToList();
 
         var latestIds = grouped.Select(x => x.LatestAdjustmentId).ToList();
-        var metadata = await dbContext.RoomInventoryAdjustments.AsNoTracking()
+        var metadata = await ledger
             .Where(x => latestIds.Contains(x.Id))
             .Select(x => new
             {

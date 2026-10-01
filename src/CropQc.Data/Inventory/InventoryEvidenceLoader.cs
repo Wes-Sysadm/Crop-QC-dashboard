@@ -159,7 +159,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + applications.Count + profiles.Count + runParents.Count);
     }
 
-    private static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
+    internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Lot, x.GrowerNumber, x.Variety, x.ProductionType, x.IsOrganic, x.InventoryStatus);
     private static InventoryIdentity Identity(TreatmentLineageSegment x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.LotNumberSnapshot, x.GrowerNumberSnapshot, x.VarietyCodeSnapshot, x.ProductionTypeSnapshot, x.IsOrganicSnapshot, x.InventoryStatusSnapshot ?? "");

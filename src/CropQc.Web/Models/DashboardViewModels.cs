@@ -705,6 +705,8 @@ public sealed class RoomInventoryImportPageViewModel
 
 public sealed class RoomInventoryImportForm
 {
+    public string OperationKey { get; set; } = "";
+    public string ExpectedFingerprint { get; set; } = "";
     public IFormFile? CsvFile { get; set; }
     public string? CsvText { get; set; }
     public bool UseBuiltInSeed { get; set; }
@@ -720,6 +722,10 @@ public sealed class RoomInventoryImportForm
 
 public sealed class RoomInventoryImportPreviewViewModel
 {
+    public string OperationKey { get; set; } = "";
+    public string ExpectedFingerprint { get; set; } = "";
+    public string? CanonicalError { get; set; }
+    public CropQc.Data.Inventory.CanonicalBaselineReview? CanonicalReview { get; set; }
     public int AddCount { get; set; }
     public int UpdateCount { get; set; }
     public int ReplaceBatchCount { get; set; }
@@ -731,8 +737,9 @@ public sealed class RoomInventoryImportPreviewViewModel
     public bool IsBuiltInSeed { get; set; }
     public IReadOnlyList<RoomInventoryImportPreviewRow> Rows { get; set; } = [];
     public IReadOnlyList<RoomInventoryImportRoomTotalPreview> RoomTotals { get; set; } = [];
-    public bool RequiresReplaceConfirmation => ReplaceBatchCount > 0;
-    public bool CanApply => DuplicateCount == 0 && InvalidCount == 0 && Rows.Any(x => x.Action is "Add" or "Update" or "Replace");
+    public bool RequiresReplaceConfirmation => CanonicalReview?.RequiresReplacement ?? ReplaceBatchCount > 0;
+    public bool CanApply => CanonicalError == null && DuplicateCount == 0 && InvalidCount == 0
+        && (CanonicalReview != null || Rows.Any(x => x.Action is "Add" or "Update" or "Replace"));
 }
 
 public sealed class RoomInventoryImportPreviewRow
