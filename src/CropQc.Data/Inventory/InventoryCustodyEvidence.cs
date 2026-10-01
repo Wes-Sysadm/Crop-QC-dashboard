@@ -67,10 +67,11 @@ public sealed partial class InventoryEvidenceLoader
         }
         var rows = await Bounded(ledgerQuery, ct);
         var movements = await Bounded(movementQuery, ct);
-        var segmentIds = movements.Where(x => x.SourceSegmentId != null).Select(x => x.SourceSegmentId!.Value).Distinct().ToArray();
+        var segmentIds = movements.SelectMany(x => new[] { x.SourceSegmentId, x.DestinationSegmentId }).Where(x => x != null).Select(x => x!.Value).Distinct().ToArray();
         var segments = await Bounded(db.TreatmentLineageSegments.AsNoTracking().Include(x => x.Applications).AsSingleQuery().Where(x => segmentIds.Contains(x.Id)), ct);
         var receiptIds = movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToArray();
         var receipts = await Bounded(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct);
+        var identities = await CanonicalIdentityMap.LoadAsync(db, receiptIds, ct);
         var appIds = segments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
         var apps = await Bounded(db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id)), ct);
         var segmentIndex = segments.ToDictionary(x => x.Id);
@@ -90,12 +91,33 @@ public sealed partial class InventoryEvidenceLoader
                 && allocations.Sum(x => x.Quantity) == parent.Quantity && pr.Sum(x => x.ChangeAmount) == -parent.Quantity
                 && pr.Where(x => x.WarehouseId == parent.Warehouse && x.RoomId == parent.Room).Sum(x => x.ChangeAmount) == -parent.Quantity
                 && pr.Where(x => x.WarehouseId != parent.Warehouse || x.RoomId != parent.Room)
-                    .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumber })
+                    .GroupBy(x => new { x.WarehouseId, x.RoomId })
                     .All(x => x.Sum(y => y.ChangeAmount) == 0)
                 && !pm.Any(x => x.MovementType == "InterCrewReceive" && x.BinCount != reversals[x.Id].Sum(y => y.BinCount));
-            // A mixed load is resolved by its immutable dispatch slices, not its display identity.
+            valid &= InventoryPhysicalFlow.Matches(pr, pm, segmentIndex);
+            foreach (var reversed in pm.Where(x => x.ReversesTreatmentLineageMovementId != null))
+            {
+                var original = pm.SingleOrDefault(x => x.Id == reversed.ReversesTreatmentLineageMovementId);
+                var originalSide = original?.SourceRoomId != null ? original.SourceSegmentId : original?.DestinationSegmentId;
+                var reversedSide = reversed.SourceRoomId != null ? reversed.SourceSegmentId : reversed.DestinationSegmentId;
+                valid &= original != null && original.ReceiptId == reversed.ReceiptId && originalSide != null && reversedSide != null
+                    && segmentIndex.ContainsKey(originalSide.Value) && segmentIndex.ContainsKey(reversedSide.Value)
+                    && identities.Resolve(Identity(segmentIndex[originalSide.Value]), original.ReceiptId).Current.Key
+                        == identities.Resolve(Identity(segmentIndex[reversedSide.Value]), reversed.ReceiptId).Current.Key
+                    && reversals[original.Id].Sum(x => x.BinCount) <= original.BinCount;
+            }
+            // Parent ledger conservation is proven against immutable physical flows.
+            // Receipt-scoped audited corrections can then split its current identities
+            // without repartitioning or rewriting the original dispatch records.
             var groups = allocations.Where(x => x.Quantity > 0 && segmentIndex.ContainsKey(x.Movement.SourceSegmentId ?? -1))
-                .GroupBy(x => Identity(segmentIndex[x.Movement.SourceSegmentId!.Value])).ToArray();
+                .Select(x => new
+                {
+                    x.Movement,
+                    x.Quantity,
+                    Original = Identity(segmentIndex[x.Movement.SourceSegmentId!.Value]),
+                    Resolution = identities.Resolve(Identity(segmentIndex[x.Movement.SourceSegmentId!.Value]), x.Movement.ReceiptId)
+                })
+                .GroupBy(x => x.Resolution.Current).ToArray();
             if (groups.Length == 0)
             {
                 result.Add(new(parent.Identity, new(scope.Custody, parent.Warehouse, null, "", parent.Name, parent.Id),
@@ -106,7 +128,7 @@ public sealed partial class InventoryEvidenceLoader
             foreach (var group in groups)
             {
                 var identity = group.Key;
-                var projections = group.Select(x => Projection(segmentIndex[x.Movement.SourceSegmentId!.Value], identity, parent.Warehouse) with
+                var projections = group.Select(x => Projection(segmentIndex[x.Movement.SourceSegmentId!.Value], x.Original, parent.Warehouse) with
                 {
                     Quantity = x.Quantity,
                     // This is an immutable custody allocation, even when its source-room projection is retired.
@@ -123,19 +145,32 @@ public sealed partial class InventoryEvidenceLoader
                     var effective = InventoryEffectiveTreatment.Read(p.Signature, p.State, p.ApplicationIds, allApplications);
                     return p with { Signature = effective.Signature, State = effective.State, ApplicationIds = effective.ApplicationIds };
                 }).ToImmutableArray();
-                var me = group.Select(x => Movement(x.Movement, identity, parent.Room)).ToImmutableArray();
+                var me = group.Select(x => Movement(x.Movement, x.Original, parent.Room)).ToImmutableArray();
                 var receiptEvidence = receipts.Where(x => group.Any(y => y.Movement.ReceiptId == x.Id)).Select(x => Receipt(x, identity)).ToImmutableArray();
                 var ae = allApplications;
                 var quantity = group.Sum(x => x.Quantity);
-                var identityLedger = pr.Where(x => x.CropYear == identity.CropYear && x.GrowerLotId == identity.GrowerLotId
-                    && x.FruitProfileId == identity.FruitProfileId && N(x.LotNumber) == N(identity.Lot)).ToArray();
-                var le = identityLedger.Select(x => new InventoryLedgerEvidence(x.Id, x.ChangeAmount, x.AdjustmentType, x.AdjustmentAt, x.ReceiptId, Parent(x), true)).ToImmutableArray();
+                var correctionIds = group.SelectMany(x => x.Resolution.Corrections).Distinct().Order().ToArray();
+                var correctionEvidence = identities.Corrections.Where(x => correctionIds.Contains(x.Id))
+                    .Select(x => new
+                    {
+                        x.Id,
+                        x.SourceCropYear,
+                        x.SourceGrowerLotId,
+                        x.SourceFruitProfileId,
+                        x.TargetCropYear,
+                        x.TargetGrowerLotId,
+                        x.TargetFruitProfileId,
+                        x.CorrectedReceiptId,
+                        x.CreatedAt
+                    }).ToArray();
+                var le = pr.Select(x => new InventoryLedgerEvidence(x.Id, x.ChangeAmount, x.AdjustmentType, x.AdjustmentAt, x.ReceiptId, Parent(x), valid)).ToImmutableArray();
                 result.Add(new(identity, new(scope.Custody, parent.Warehouse, null, "", parent.Name, parent.Id), quantity, 0,
-                    identity.IsComplete && projections.All(x => x.ExactIdentity), valid && identityLedger.Sum(x => x.ChangeAmount) == -quantity
+                    identity.IsComplete && projections.All(x => x.ExactIdentity), valid
                         && me.All(x => x.ExactIdentity), le, projections, me, receiptEvidence, ae,
-                    Watermark(new { parent, le, projections, me, receiptEvidence, ae }, consistency,
+                    Watermark(new { parent, identity, le, projections, me, receiptEvidence, ae, correctionEvidence }, consistency,
                         [new(scope.Custody.ToString(), parent.Id.ToString(), parent.Version, parent.At)]),
-                    pm.Any(x => x.CreatedAt > asOf) || pr.Any(x => x.CreatedAt > asOf) || projections.Any(x => x.UpdatedAt > asOf) || ae.Any(x => x.ReversedAt > asOf)));
+                    pm.Any(x => x.CreatedAt > asOf) || pr.Any(x => x.CreatedAt > asOf) || projections.Any(x => x.UpdatedAt > asOf) || ae.Any(x => x.ReversedAt > asOf)
+                        || correctionEvidence.Any(x => x.CreatedAt > asOf), correctionIds.Select(x => new InventoryEvidenceReference("InventoryIdentityCorrection", x.ToString())).ToImmutableArray()));
             }
         }
         return new(result.ToImmutable(), parents.Count + rows.Count + movements.Count + segments.Count + receipts.Count + apps.Count);

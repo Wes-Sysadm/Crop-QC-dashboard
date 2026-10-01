@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Security.Cryptography;
+using System.Text.Json;
 using CropQc.Data.Entities;
 using CropQc.Shared.Inventory;
 using Microsoft.EntityFrameworkCore;
@@ -39,30 +41,60 @@ public sealed class InventoryRunCorrectionAvailability(CropQcDbContext db)
         var alreadyRestored = await db.TreatmentLineageMovements.AsNoTracking().AnyAsync(x => movementIds.Contains(x.ReversesTreatmentLineageMovementId ?? 0), ct)
             || await db.BinsRunEntries.AsNoTracking().AnyAsync(x => ids.Contains(x.ReversesBinsRunEntryId ?? 0), ct);
         invalid |= alreadyRestored;
-        var result = new Dictionary<string, InventoryRunCorrectionPosition>();
-        foreach (var p in current.Positions)
+        var identities = await CanonicalIdentityMap.LoadAsync(db, movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToArray(), ct);
+        var appIds = movements.Where(x => x.SourceSegment != null).SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
+        var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
+            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
+        foreach (var entry in entries)
         {
-            var own = entries.Where(x => x.RoomId == p.Location.RoomId && x.WarehouseId == p.Location.WarehouseId
-                && x.CropYear == p.Identity.CropYear && x.GrowerLotId == p.Identity.GrowerLotId && x.FruitProfileId == p.Identity.FruitProfileId
-                && x.LotNumber == p.Identity.Lot).ToArray();
+            var moves = movements.Where(x => x.BinsRunEntryId == entry.Id).ToArray();
+            invalid |= entry.BinsRun <= 0 || entry.InventoryAdjustment.ChangeAmount != -entry.BinsRun
+                || moves.Length == 0 || moves.Sum(x => x.BinCount) != entry.BinsRun
+                || moves.Any(x => x.SourceSegment == null || x.SourceRoomId != entry.RoomId || x.DestinationRoomId != null || x.BinCount <= 0
+                    || x.ReversesTreatmentLineageMovementId != null || x.ReceiptId != x.SourceSegment.ReceiptId
+                    || InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != CanonicalIdentityMap.Historical(x.SourceSegment).Key
+                    || x.SourceSegment.CropYear != entry.InventoryAdjustment.CropYear || x.SourceSegment.GrowerLotId != entry.InventoryAdjustment.GrowerLotId
+                    || x.SourceSegment.FruitProfileId != entry.InventoryAdjustment.FruitProfileId || x.SourceSegment.LotNumberSnapshot != entry.InventoryAdjustment.LotNumber
+                    || x.TreatmentSignatureSnapshot != x.SourceSegment.TreatmentSignature || x.TreatmentStateSnapshot != x.SourceSegment.TreatmentState);
+        }
+        var result = new Dictionary<string, InventoryRunCorrectionPosition>();
+        var positions = current.Positions.ToList();
+        // A fully consumed receipt can be corrected to a lot with no ledger rows.
+        // Expose zero physical stock plus only this run's proved restoration credit.
+        // This preview is not available to unrelated inventory consumers.
+        foreach (var group in movements.Where(x => x.SourceSegment != null && x.SourceRoomId != null).GroupBy(x => new
+        {
+            x.SourceSegment!.WarehouseId,
+            RoomId = x.SourceRoomId!.Value,
+            Identity = identities.Resolve(CanonicalIdentityMap.Historical(x.SourceSegment), x.ReceiptId).Current
+        }))
+        {
+            var key = group.Key;
+            var location = current.Positions.FirstOrDefault(x => x.Location.WarehouseId == key.WarehouseId && x.Location.RoomId == key.RoomId)?.Location;
+            if (location == null || positions.Any(x => x.Location == location && x.Identity.Key == key.Identity.Key)) continue;
+            var watermark = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                key.Identity,
+                Room = current.Positions.Where(x => x.Location == location).OrderBy(x => x.PositionKey).Select(x => x.Watermark.Fingerprint).ToArray(),
+                Movements = group.OrderBy(x => x.Id).Select(x => new { x.Id, x.BinCount, x.ReceiptId }).ToArray(),
+                Corrections = identities.Corrections.Select(x => new { x.Id, x.IsComplete, x.IsActive, x.CreatedAt }).ToArray()
+            })));
+            positions.Add(InventoryAvailabilityResolver.Resolve(new(key.Identity, location, 0, 0, key.Identity.IsComplete, true,
+                [], [], [], [], [], new(watermark, "ExactRunRestorationPreview", [])), new()));
+        }
+        foreach (var p in positions)
+        {
             var slices = p.TreatmentSlices.ToBuilder();
             var blocked = invalid || !p.IsOperable;
-            foreach (var entry in own)
+            foreach (var move in movements.Where(x => x.SourceSegment != null && x.SourceRoomId == p.Location.RoomId
+                && x.SourceSegment.WarehouseId == p.Location.WarehouseId
+                && identities.Resolve(CanonicalIdentityMap.Historical(x.SourceSegment), x.ReceiptId).Current.Key == p.Identity.Key))
             {
-                var moves = movements.Where(x => x.BinsRunEntryId == entry.Id).ToArray();
-                if (entry.BinsRun <= 0 || entry.InventoryAdjustment.ChangeAmount != -entry.BinsRun
-                    || moves.Length == 0 || moves.Sum(x => x.BinCount) != entry.BinsRun
-                    || moves.Any(x => x.SourceSegment == null || x.SourceRoomId != entry.RoomId || x.DestinationRoomId != null || x.BinCount <= 0
-                        || x.ReversesTreatmentLineageMovementId != null || InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) != p.Identity.Key
-                        || InventoryStatusIdentity.NormalizeLineageKey(x.SourceSegment!.IdentityKey) != p.Identity.Key
-                        || x.TreatmentSignatureSnapshot != x.SourceSegment.TreatmentSignature || x.TreatmentStateSnapshot != x.SourceSegment.TreatmentState))
-                { blocked = true; continue; }
-                foreach (var move in moves)
-                {
-                    var source = move.SourceSegment!;
-                    slices.Add(new(source.TreatmentSignature, source.TreatmentState, move.BinCount, InventoryConfidence.Proven,
-                        [], source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), source.ReceiptId is long receipt ? [receipt] : []));
-                }
+                var source = move.SourceSegment!;
+                var effective = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState,
+                    source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), applications);
+                slices.Add(new(effective.Signature, effective.State, move.BinCount, InventoryConfidence.Proven,
+                    [], effective.ApplicationIds, source.ReceiptId is long receipt ? [receipt] : []));
             }
             result[p.PositionKey] = new(p, blocked ? [] : slices.GroupBy(x => new { x.Signature, x.State }).Select(g => new InventoryTreatmentSlice(
                 g.Key.Signature, g.Key.State, g.Sum(x => x.Quantity), InventoryConfidence.Proven, g.SelectMany(x => x.ProjectionIds).Distinct().ToImmutableArray(),

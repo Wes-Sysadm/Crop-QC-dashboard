@@ -13,9 +13,10 @@ public sealed partial class InventoryCommandExecutor
         Require(c.PhysicalParentId > 0 && c.Lines.Length == 1, "Legacy run correction needs one original entry and replacement allocation.");
         var line = c.Lines.Single();
         var loader = new InventoryEvidenceLoader(db);
-        var before = (await loader.LoadAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), now, ct)).Positions
-            .SingleOrDefault(x => x.Identity.Key == line.Source.Identity.Key);
-        Require(before != null && before.Watermark.Fingerprint == line.Source.ExpectedFingerprint && InventoryAvailabilityResolver.Resolve(before, new()).IsOperable,
+        var batch = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), new(), now, ct);
+        var preview = await new InventoryRunCorrectionAvailability(db).ReadLegacyAsync(batch, c.PhysicalParentId!.Value, ct);
+        var before = preview.Values.SingleOrDefault(x => x.Current.Identity.Key == line.Source.Identity.Key);
+        Require(before != null && before.Current.Watermark.Fingerprint == line.Source.ExpectedFingerprint && before.Blocker == null,
             "Inventory changed; reload before correcting this run.", InventoryCommandStatus.Stale);
         var original = await db.BinsRunEntries.Include(x => x.InventoryAdjustment).SingleAsync(x => x.Id == c.PhysicalParentId, ct);
         Require(original.InventoryAdjustment.RoomDepletionId == null, "Use receipt depletion reversal before recording a replacement depletion.");
@@ -38,13 +39,15 @@ public sealed partial class InventoryCommandExecutor
         var loader = new InventoryEvidenceLoader(db);
         // Validate the user's pre-restoration view before changing anything. Restoration
         // credit is proved from this run's immutable consumption, never from the caller.
+        var current = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(null, c.Lines.Select(x => x.Source.Location.RoomId!.Value).Distinct().ToImmutableArray()), new(), now, ct);
+        var preview = await new InventoryRunCorrectionAvailability(db).ReadAsync(current, c.PhysicalParentId!.Value, ct);
         foreach (var line in c.Lines)
         {
-            var batch = await loader.LoadAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), now, ct);
-            var before = batch.Positions.SingleOrDefault(x => x.Identity.Key == line.Source.Identity.Key);
-            Require(before != null && before.Watermark.Fingerprint == line.Source.ExpectedFingerprint,
+            var before = preview.Values.SingleOrDefault(x => x.Current.Identity.Key == line.Source.Identity.Key
+                && x.Current.Location.RoomId == line.Source.Location.RoomId && x.Current.Location.WarehouseId == line.Source.Location.WarehouseId);
+            Require(before != null && before.Current.Watermark.Fingerprint == line.Source.ExpectedFingerprint,
                 "Inventory changed; reload the run correction.", InventoryCommandStatus.Stale);
-            Require(InventoryAvailabilityResolver.Resolve(before!, new()).IsOperable, "Current inventory is not proven for this run correction.");
+            Require(before!.Blocker == null, "Current inventory is not proven for this run correction.");
         }
         var restored = await ReverseRunAsync(db, factory, c with { Lines = [] }, now, attempt, ct);
         var inputs = new List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)>();
@@ -113,65 +116,69 @@ public sealed partial class InventoryCommandExecutor
             Require(!await db.BinsRunEntries.AnyAsync(x => x.ReversesBinsRunEntryId == entry.Id, ct), "Run entry was already restored.");
             var moves = await db.TreatmentLineageMovements.Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
                 .Where(x => x.BinsRunEntryId == entry.Id).ToListAsync(ct);
-            var restored = await RestoreConsumptionAsync(db, factory, c, entry.InventoryAdjustment, moves, entry.BinsRun, now, attempt, ct);
-            restored.Ledger.AdjustmentType = "BinsRunReversal"; restored.Ledger.ActualRun = run; restored.Ledger.ActualRunRevision = revision;
+            var restorations = await RestoreConsumptionAsync(db, factory, c, entry.InventoryAdjustment, moves, entry.BinsRun, now, attempt, ct);
+            RoomDepletion? depletion = null;
             if (entry.InventoryAdjustment.RoomDepletionId is long depletionId)
             {
-                var depletion = await db.RoomDepletions.SingleAsync(x => x.Id == depletionId, ct);
+                depletion = await db.RoomDepletions.SingleAsync(x => x.Id == depletionId, ct);
                 Require(!depletion.IsVoided && depletion.BinCountDepleted == entry.BinsRun, "Depletion is voided or differs from its original consumption.");
                 depletion.IsVoided = true; depletion.VoidedAt = now; depletion.VoidedByUserId = c.ActorId; depletion.VoidReason = c.Reason;
-                restored.Ledger.RoomDepletion = depletion; restored.Ledger.AdjustmentType = "DepletionVoid";
             }
-            var reversal = new BinsRunEntry
+            foreach (var restored in restorations)
             {
-                ReceiptId = entry.ReceiptId,
-                SourceInventoryAdjustmentId = entry.SourceInventoryAdjustmentId,
-                InventoryAdjustment = restored.Ledger,
-                WarehouseId = entry.WarehouseId,
-                RoomId = entry.RoomId,
-                CropYear = entry.CropYear,
-                GrowerLotId = entry.GrowerLotId,
-                FruitProfileId = entry.FruitProfileId,
-                GrowerName = entry.GrowerName,
-                LotNumber = entry.LotNumber,
-                PoolStart = entry.PoolStart,
-                VarietyCode = entry.VarietyCode,
-                InventoryStatus = entry.InventoryStatus,
-                PreviousAvailableBins = restored.Effect.Before,
-                BinsRun = entry.BinsRun,
-                NewAvailableBins = restored.Effect.After,
-                Notes = c.Reason,
-                RunAt = now,
-                CreatedAt = now,
-                CreatedByUserId = c.ActorId,
-                ActualRun = run,
-                ActualRunRevision = revision,
-                TransactionType = ActualRunTransactionTypes.Reversal,
-                ReversesBinsRunEntry = entry,
-                ReportingFacilityWarehouseId = entry.ReportingFacilityWarehouseId,
-                ReportingFacilityCodeSnapshot = entry.ReportingFacilityCodeSnapshot,
-                ReportingFacilityAssignmentSource = entry.ReportingFacilityAssignmentSource,
-                ReportingFacilityAssignedByUserId = entry.ReportingFacilityAssignedByUserId,
-                ReportingFacilityAssignedAt = entry.ReportingFacilityAssignedAt,
-                ProductionTypeSnapshot = entry.ProductionTypeSnapshot,
-                IsOrganicSnapshot = entry.IsOrganicSnapshot,
-                GrowerNumberSnapshot = entry.GrowerNumberSnapshot,
-                ReportingCropYearSnapshot = entry.ReportingCropYearSnapshot,
-                ReportingFruitProfileIdSnapshot = entry.ReportingFruitProfileIdSnapshot,
-                ReportingVarietyCodeSnapshot = entry.ReportingVarietyCodeSnapshot,
-                TreatmentStateSnapshot = entry.TreatmentStateSnapshot,
-                TreatmentSignatureSnapshot = entry.TreatmentSignatureSnapshot,
-                TreatmentSummarySnapshot = entry.TreatmentSummarySnapshot
-            };
-            db.BinsRunEntries.Add(reversal);
-            foreach (var move in restored.Movements) { move.BinsRunEntry = reversal; move.MovementType = "BinsRunReversal"; }
-            entry.IsReversed = true; entry.ReversedAt = now; entry.ReversedByUserId = c.ActorId; entry.ReverseReason = c.Reason; entry.UpdatedAt = now;
-            await db.SaveChangesAsync(ct);
-            var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(entry.WarehouseId, [entry.RoomId]), new(), now, ct))
-                .Positions.Single(x => x.PositionKey == restored.Effect.PositionKey);
-            Require(after.IsOperable && after.AuthoritativeQuantity == restored.Effect.After && after.RawProjectionQuantity == after.AuthoritativeQuantity,
-                "Run restoration does not reconcile authoritative quantity and current treatment.");
-            effects.Add(restored.Effect with { ParentId = run?.Id ?? entry.Id, LedgerIds = [restored.Ledger.Id], MovementIds = restored.Movements.Select(x => x.Id).ToImmutableArray() });
+                restored.Ledger.AdjustmentType = depletion == null ? "BinsRunReversal" : "DepletionVoid";
+                restored.Ledger.RoomDepletion = depletion; restored.Ledger.ActualRun = run; restored.Ledger.ActualRunRevision = revision;
+                var reversal = new BinsRunEntry
+                {
+                    ReceiptId = entry.ReceiptId,
+                    SourceInventoryAdjustmentId = entry.SourceInventoryAdjustmentId,
+                    InventoryAdjustment = restored.Ledger,
+                    WarehouseId = entry.WarehouseId,
+                    RoomId = entry.RoomId,
+                    CropYear = restored.Identity.CropYear!.Value,
+                    GrowerLotId = restored.Identity.GrowerLotId!.Value,
+                    FruitProfileId = restored.Identity.FruitProfileId!.Value,
+                    GrowerName = await db.GrowerLots.Where(x => x.Id == restored.Identity.GrowerLotId).Select(x => x.Grower).SingleAsync(ct),
+                    LotNumber = restored.Identity.Lot,
+                    PoolStart = entry.PoolStart,
+                    VarietyCode = restored.Identity.Variety,
+                    InventoryStatus = restored.Identity.Status,
+                    PreviousAvailableBins = restored.Effect.Before,
+                    BinsRun = restored.Effect.Quantity,
+                    NewAvailableBins = restored.Effect.After,
+                    Notes = c.Reason,
+                    RunAt = now,
+                    CreatedAt = now,
+                    CreatedByUserId = c.ActorId,
+                    ActualRun = run,
+                    ActualRunRevision = revision,
+                    TransactionType = ActualRunTransactionTypes.Reversal,
+                    ReversesBinsRunEntry = entry,
+                    ReportingFacilityWarehouseId = entry.ReportingFacilityWarehouseId,
+                    ReportingFacilityCodeSnapshot = entry.ReportingFacilityCodeSnapshot,
+                    ReportingFacilityAssignmentSource = entry.ReportingFacilityAssignmentSource,
+                    ReportingFacilityAssignedByUserId = entry.ReportingFacilityAssignedByUserId,
+                    ReportingFacilityAssignedAt = entry.ReportingFacilityAssignedAt,
+                    ProductionTypeSnapshot = entry.ProductionTypeSnapshot,
+                    IsOrganicSnapshot = entry.IsOrganicSnapshot,
+                    GrowerNumberSnapshot = entry.GrowerNumberSnapshot,
+                    ReportingCropYearSnapshot = entry.ReportingCropYearSnapshot,
+                    ReportingFruitProfileIdSnapshot = entry.ReportingFruitProfileIdSnapshot,
+                    ReportingVarietyCodeSnapshot = entry.ReportingVarietyCodeSnapshot,
+                    TreatmentStateSnapshot = entry.TreatmentStateSnapshot,
+                    TreatmentSignatureSnapshot = entry.TreatmentSignatureSnapshot,
+                    TreatmentSummarySnapshot = entry.TreatmentSummarySnapshot
+                };
+                db.BinsRunEntries.Add(reversal);
+                foreach (var move in restored.Movements) { move.BinsRunEntry = reversal; move.MovementType = "BinsRunReversal"; }
+                entry.IsReversed = true; entry.ReversedAt = now; entry.ReversedByUserId = c.ActorId; entry.ReverseReason = c.Reason; entry.UpdatedAt = now;
+                await db.SaveChangesAsync(ct);
+                var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(entry.WarehouseId, [entry.RoomId]), new(), now, ct))
+                    .Positions.Single(x => x.PositionKey == restored.Effect.PositionKey);
+                Require(after.IsOperable && after.AuthoritativeQuantity == restored.Effect.After && after.RawProjectionQuantity == after.AuthoritativeQuantity,
+                    "Run restoration does not reconcile authoritative quantity and current treatment.");
+                effects.Add(restored.Effect with { ParentId = run?.Id ?? entry.Id, LedgerIds = [restored.Ledger.Id], MovementIds = restored.Movements.Select(x => x.Id).ToImmutableArray() });
+            }
         }
         return effects.ToImmutable();
     }

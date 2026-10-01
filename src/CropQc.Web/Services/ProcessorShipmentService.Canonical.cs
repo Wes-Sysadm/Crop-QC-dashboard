@@ -63,8 +63,9 @@ public sealed partial class ProcessorShipmentService
             var batch = await resolver.ResolveAsync(new(row.WarehouseId, [], InventoryCustody.Processor, row.Id), new(AllowedCustody: InventoryCustody.Processor), businessTime.UtcNow, ct);
             foreach (var p in batch.Positions)
             {
-                if (!p.IsOperable || p.TreatmentSlices.Select(x => x.Signature).Distinct().Count() != 1) return "Processor custody cannot be proven.";
-                lines.Add(new(new(p.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), p.AuthoritativeQuantity, p.TreatmentSlices[0].Signature));
+                if (!p.IsOperable) return "Processor custody cannot be proven.";
+                foreach (var slice in CanonicalTreatmentSelections.MovementSlices(p))
+                    lines.Add(new(new(p.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), slice.Quantity, slice.Signature));
             }
         }
         return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.Return, actor,

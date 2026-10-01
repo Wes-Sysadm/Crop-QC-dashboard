@@ -47,8 +47,9 @@ public sealed partial class OutsideWarehouseTransferService
         if (!await dbContext.InventoryCommands.AnyAsync(x => x.OperationKey == originalKey, ct)) originalKey = null;
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
             new(parent.SourceWarehouseId, [], InventoryCustody.OutsideWarehouse, parent.Id), new(AllowedCustody: InventoryCustody.OutsideWarehouse), businessTime.UtcNow, ct);
-        var lines = batch.Positions.Select(r => new InventoryCommandLine(new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions),
-            r.AuthoritativeQuantity, r.TreatmentSlices.Select(x => x.Signature).Distinct().Single())).ToImmutableArray();
+        if (batch.Positions.Length == 0 || batch.Positions.Any(x => !x.IsOperable)) return "Outside custody cannot be proven.";
+        var lines = batch.Positions.SelectMany(r => CanonicalTreatmentSelections.MovementSlices(r).Select(s =>
+            new InventoryCommandLine(new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions), s.Quantity, s.Signature))).ToImmutableArray();
         var command = new InventoryCommand(form.OperationKey, InventoryCommandKind.Return, actor, businessTime.UtcNow, form.Reason!, lines,
             OriginalOperationKey: originalKey, ApplicationIntent: submission, PhysicalParentId: parent.Id);
         return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(command, ct));

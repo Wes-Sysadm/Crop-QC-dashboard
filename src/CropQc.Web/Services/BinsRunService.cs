@@ -157,7 +157,9 @@ public sealed partial class BinsRunService(
             {
                 Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
             }).ToList();
-        var currentSnapshots = isActualSection
+        var currentSnapshots = dbContext.CanonicalInventoryEnabled && isActualSection && editInventoryRows.Count > 0
+            ? snapshots.ToList()
+            : isActualSection
             ? snapshots.Where(x =>
                 (editInventoryRows.Count == 0 || editInventoryRows.Any(y =>
                     y.WarehouseId == x.WarehouseId

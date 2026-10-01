@@ -29,7 +29,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             .Concat(e.Movements.Select(x => Ref("TreatmentLineageMovement", x.Id)))
             .Concat(e.Projections.Select(x => Ref("TreatmentLineageSegment", x.Id)))
             .Concat(e.Applications.Select(x => Ref("RoomTreatmentApplication", x.Id)))
-            .Concat(e.Receipts.Select(x => Ref("Receipt", x.Id))).Distinct().ToImmutableArray();
+            .Concat(e.Receipts.Select(x => Ref("Receipt", x.Id)))
+            .Concat(e.IdentityCorrections.IsDefault ? [] : e.IdentityCorrections).Distinct().ToImmutableArray();
         if (e.AuthoritativeQuantity < 0) Block(InventoryBlockerCode.NegativeAuthoritativeBalance, "Legacy authoritative ledger is negative; it has not been clamped or repaired.");
         if (!e.IdentityVerified || !e.Identity.IsComplete) Block(InventoryBlockerCode.ConflictingIdentity, "Immutable inventory identity is incomplete or conflicting.");
         if (!e.CustodyVerified || e.Location.Custody != requirements.AllowedCustody

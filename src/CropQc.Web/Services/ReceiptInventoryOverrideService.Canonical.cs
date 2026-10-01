@@ -57,11 +57,27 @@ public sealed partial class ReceiptInventoryOverrideService
         if (actor == null || canonicalCommands == null) return Failed("Canonical administrator correction is unavailable.");
         var submission = JsonSerializer.Serialize(form, JsonOptions);
         var replay = await CanonicalApplicationReplay.TryAnyAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id,
-            [InventoryCommandKind.CorrectReceiptQuantity, InventoryCommandKind.CorrectReceiptLocation], submission, ct);
+            [InventoryCommandKind.CorrectReceiptQuantity, InventoryCommandKind.CorrectReceiptLocation, InventoryCommandKind.CorrectReceiptIdentity], submission, ct);
         if (replay != null) return await CanonicalResultAsync(replay, ct);
         var state = await new InventoryReceiptAvailability(dbContext).ReadAsync(form.Id, ct);
         if (state == null || state.Blocker != null) return Failed(state?.Blocker ?? "Receipt not found.");
         var r = state.Receipt;
+        if (form.CropYear != r.CropYear || form.GrowerLotId != r.GrowerLotId || form.FruitProfileId != r.FruitProfileId)
+        {
+            if (!form.ConfirmCropYear || form.BinCount != r.BinCount || form.WarehouseId != r.WarehouseId || form.RoomId != r.RoomId
+                || form.ReceivedAt != r.ReceivedAt || form.CompuTechReceiptId.Trim() != r.CompuTechReceiptId || form.ReceiptType != r.ReceiptType
+                || form.TrueUpAllocations.Any(x => x.Bins != 0))
+                return Failed("Submit identity, quantity, location and metadata changes as separate administrator operations.");
+            var grower = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, ct);
+            var profile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.FruitProfileId && x.IsActive, ct);
+            if (grower == null || profile == null) return Failed("Select active reviewed Master Data for the corrected identity.");
+            var identityCommand = new InventoryCommand(form.OperationKey, InventoryCommandKind.CorrectReceiptIdentity, actor.Id, DateTimeOffset.UtcNow,
+                form.Reason.Trim(), [], ApplicationIntent: submission,
+                ReceiptIdentity: new(form.Id, form.ExpectedConcurrencyVersion, form.ExpectedInventoryStateToken,
+                    new(r.CropYear, r.WarehouseId, r.RoomId, r.GrowerLotId ?? 0, r.FruitProfileId, r.CompuTechReceiptId, r.BinCount, r.ReceiptType),
+                    new(form.CropYear, grower.Id, profile.Id, grower.LotNumber, grower.LotNumber, profile.VarietyCode, profile.ProductionType, profile.IsOrganic, "")));
+            return await CanonicalResultAsync(await canonicalCommands.ExecuteAsync(identityCommand, ct), ct);
+        }
         if (!form.ConfirmCropYear || form.BinCount < 0 || form.CropYear != r.CropYear || form.GrowerLotId != r.GrowerLotId
             || form.FruitProfileId != r.FruitProfileId
             || form.ReceivedAt != r.ReceivedAt || form.CompuTechReceiptId.Trim() != r.CompuTechReceiptId || form.ReceiptType != r.ReceiptType

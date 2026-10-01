@@ -111,7 +111,7 @@ public sealed record InventoryPositionEvidence(InventoryIdentity Identity, Inven
     ImmutableArray<InventoryLedgerEvidence> Ledger, ImmutableArray<InventoryProjectionEvidence> Projections,
     ImmutableArray<InventoryMovementEvidence> Movements, ImmutableArray<InventoryReceiptEvidence> Receipts,
     ImmutableArray<InventoryApplicationEvidence> Applications, InventoryReadWatermark Watermark,
-    bool HistoricalSnapshotUnavailable = false);
+    bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default);
 public sealed record InventoryEvidenceBatch(ImmutableArray<InventoryPositionEvidence> Positions, int RowsLoaded);
 public interface IInventoryEvidenceLoader
 {

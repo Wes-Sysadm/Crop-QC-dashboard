@@ -100,8 +100,14 @@ public sealed partial class InventoryCommandExecutor
             var record = await db.InventoryCommands.SingleOrDefaultAsync(x => x.OperationKey == c.OriginalOperationKey, ct);
             Require(record != null && !await db.InventoryCommands.AnyAsync(x => x.ReversesOperationKey == c.OriginalOperationKey, ct), "Original command missing or already reversed.", InventoryCommandStatus.Conflict);
             original = JsonSerializer.Deserialize<InventoryCommand>(record!.IntentJson, Json)!;
-            Require(c.Kind is not (InventoryCommandKind.Return or InventoryCommandKind.ReopenTransfer) || c.Lines.Length == original.Lines.Length,
-                "Reversal must include every original command allocation.");
+            if (c.Kind == InventoryCommandKind.Return && c.Lines.All(x => x.Source.Location.Custody != InventoryCustody.Room))
+            {
+                var originalResult = JsonSerializer.Deserialize<InventoryCommandResult>(record.ResultJson, Json)!;
+                Require(originalResult.Effects.Select(x => x.ParentId).ToHashSet().SetEquals(c.Lines.Select(x => x.Source.Location.CustodyRecordId)),
+                    "Return must include every original custody parent. Each parent revalidates its complete current quantity.");
+            }
+            else Require(c.Kind is not (InventoryCommandKind.Return or InventoryCommandKind.ReopenTransfer) || c.Lines.Length == original.Lines.Length,
+                    "Reversal must include every original command allocation.");
         }
         await Stage("Parent", db, attempt, ct);
         await db.SaveChangesAsync(ct);
@@ -358,7 +364,7 @@ public sealed partial class InventoryCommandExecutor
                 parentId = await DispatchAsync(db, c, i, loc, allocations, debit!, movements, partKey, now, ct);
             else if (c.Kind is InventoryCommandKind.ReceiveTransfer or InventoryCommandKind.Return or InventoryCommandKind.ReopenTransfer)
             {
-                var receipt = await CompleteCustodyAsync(db, factory, c, line, r, allocations, original, debit, entries, movements, partKey, now, completedParents, ct);
+                var receipt = await CompleteCustodyAsync(db, factory, c, line, r, allocations, original, debit, entries, movements, partKey, now, completedParents, attempt, ct);
                 parentId = receipt.ParentId; destination = receipt.Destination; destinationBefore = receipt.DestinationBefore;
             }
             else if (InventoryCommandPolicy.IsTreatment(c.Kind))

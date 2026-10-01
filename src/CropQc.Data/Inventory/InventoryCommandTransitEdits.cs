@@ -20,14 +20,16 @@ public sealed partial class InventoryCommandExecutor
         var dispatch = all.SingleOrDefault(x => x.Id == c.DispatchMovementId && x.MovementType == "InterCrewDispatch" && x.ReversesTreatmentLineageMovementId == null);
         Require(dispatch?.SourceSegment != null, "Exact original dispatch allocation is missing.");
         var source = dispatch!.SourceSegment!;
+        var identities = await CanonicalIdentityMap.LoadAsync(db, dispatch.ReceiptId is long receiptId ? [receiptId] : [], ct);
+        var currentIdentity = identities.Resolve(CanonicalIdentityMap.Historical(source), dispatch.ReceiptId).Current;
         var appIds = source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
             .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
         var treatment = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState, appIds, applications);
         var remaining = dispatch.BinCount - all.Where(x => x.ReversesTreatmentLineageMovementId == dispatch.Id).Sum(x => x.BinCount);
         Require(line.Quantity <= remaining && line.Quantity <= transfer.BinsLoaded
-            && InventoryStatusIdentity.NormalizeLineageKey(dispatch.IdentityKey) == transit.Identity.Key
-            && InventoryStatusIdentity.NormalizeLineageKey(source.IdentityKey) == transit.Identity.Key
+            && InventoryStatusIdentity.NormalizeLineageKey(dispatch.IdentityKey) == InventoryStatusIdentity.NormalizeLineageKey(source.IdentityKey)
+            && currentIdentity.Key == transit.Identity.Key
             && treatment.Signature == line.TreatmentSignature && source.TreatmentSignature == dispatch.TreatmentSignatureSnapshot
             && source.TreatmentState == dispatch.TreatmentStateSnapshot && source.RoomId == transfer.SourceRoomId && source.WarehouseId == transfer.SourceWarehouseId,
             "Dispatch identity, treatment or remaining allocation cannot support this return.");
@@ -39,14 +41,14 @@ public sealed partial class InventoryCommandExecutor
         Require(completeTransit.Positions.All(x => x.IsOperable) && completeTransit.Positions.Sum(x => x.AuthoritativeQuantity) == transfer.BinsLoaded,
             "Whole-load custody is inconsistent.");
         var evidence = (await loader.LoadAsync(new(source.WarehouseId, [source.RoomId]), now, ct)).Positions.SingleOrDefault(x => x.Identity.Key == transit.Identity.Key);
-        Require(evidence != null, "Source room identity is unavailable.");
-        var destination = InventoryAvailabilityResolver.Resolve(evidence!, new());
-        Require(destination.IsOperable, "Current source inventory cannot be proven for return.");
-        await NormalizePositionAsync(db, factory, c, evidence!, destination, now, attempt, ct);
+        var destination = evidence == null ? null : InventoryAvailabilityResolver.Resolve(evidence, new());
+        Require(destination == null || destination.IsOperable, "Current source inventory cannot be proven for return.");
+        if (destination != null) await NormalizePositionAsync(db, factory, c, evidence!, destination, now, attempt, ct);
+        var destinationBefore = destination?.AuthoritativeQuantity ?? 0;
         var target = await factory.CurrentAsync(transit.Identity, source.WarehouseId, source.RoomId, treatment.Signature, treatment.State,
             source.ReceiptId, treatment.ApplicationIds, now, ct);
         Credit(target, line.Quantity, now);
-        var credit = Ledger(c, transit.Identity, source.WarehouseId, source.RoomId, line.Quantity, destination.AuthoritativeQuantity, c.OperationKey + ":return", now);
+        var credit = Ledger(c, transit.Identity, source.WarehouseId, source.RoomId, line.Quantity, destinationBefore, c.OperationKey + ":return", now);
         credit.InterCrewTransfer = transfer; credit.AdjustmentType = "TransitAllocationReturn";
         var reversal = Move(c, transit.Identity, new(source, line.Quantity, treatment), target, null, source.RoomId, c.OperationKey + ":return", now, "InterCrewReversal");
         reversal.InterCrewTransfer = transfer; reversal.ReversesTreatmentLineageMovementId = dispatch.Id;
@@ -74,7 +76,7 @@ public sealed partial class InventoryCommandExecutor
         await db.SaveChangesAsync(ct);
         var roomAfter = (await new InventoryAvailabilityResolver(loader).ResolveAsync(new(source.WarehouseId, [source.RoomId]), new(), now, ct)).Positions
             .Single(x => x.Identity.Key == transit.Identity.Key);
-        Require(roomAfter.IsOperable && roomAfter.AuthoritativeQuantity == destination.AuthoritativeQuantity + line.Quantity
+        Require(roomAfter.IsOperable && roomAfter.AuthoritativeQuantity == destinationBefore + line.Quantity
             && roomAfter.RawProjectionQuantity == roomAfter.AuthoritativeQuantity, "Returned inventory does not reconcile.");
         var transitAfter = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(source.WarehouseId, [], InventoryCustody.InTransit, transfer.Id),
             new(AllowedCustody: InventoryCustody.InTransit), now, ct);

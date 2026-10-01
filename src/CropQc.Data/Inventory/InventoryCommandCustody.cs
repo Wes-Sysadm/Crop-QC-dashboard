@@ -139,7 +139,7 @@ public sealed partial class InventoryCommandExecutor
     private async Task<(long ParentId, InventoryCommandDestination? Destination, int DestinationBefore)> CompleteCustodyAsync(
         CropQcDbContext db, CanonicalProjectionFactory factory, InventoryCommand c, InventoryCommandLine line, InventoryAvailabilityResult r,
         List<Allocation> allocations, InventoryCommand? original, RoomInventoryAdjustment? debit, List<RoomInventoryAdjustment> ledger,
-        List<TreatmentLineageMovement> movements, string key, DateTimeOffset now, HashSet<long> completedParents, CancellationToken ct)
+        List<TreatmentLineageMovement> movements, string key, DateTimeOffset now, HashSet<long> completedParents, int attempt, CancellationToken ct)
     {
         var loc = r.Location; var i = r.Identity; var quantity = line.Quantity;
         if (loc.Custody != InventoryCustody.Room)
@@ -202,11 +202,13 @@ public sealed partial class InventoryCommandExecutor
             else if (loc.Custody == InventoryCustody.OutsideWarehouse)
             {
                 outside = await db.OutsideWarehouseTransfers.SingleAsync(x => x.Id == id, ct);
+                var first = completedParents.Add(outside.Id);
                 Require(c.Kind == InventoryCommandKind.Return && (original == null ? c.PhysicalParentId == outside.Id
                     : original.Kind == InventoryCommandKind.OutsideWarehouseTransfer && outside.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))
-                    && !outside.IsReversed && outside.BinCount == quantity, "Outside return does not match original active custody.");
+                    && (!first || !outside.IsReversed) && outside.BinCount == c.Lines.Where(x => x.Source.Location.CustodyRecordId == outside.Id).Sum(x => x.Quantity),
+                    "Outside return does not match original active custody.");
                 destination = new(outside.SourceWarehouseId, outside.SourceRoomId); outside.IsReversed = true; outside.ReversedAt = now;
-                outside.ReversedByUserId = c.ActorId; outside.ReversalOperationKey = c.OperationKey; outside.ReverseReason = c.Reason; outside.ConcurrencyVersion++;
+                outside.ReversedByUserId = c.ActorId; outside.ReversalOperationKey = c.OperationKey; outside.ReverseReason = c.Reason; if (first) outside.ConcurrencyVersion++;
             }
             else
             {
@@ -216,8 +218,8 @@ public sealed partial class InventoryCommandExecutor
                 var shipmentLines = await db.ProcessorShipmentLines.Where(x => x.ProcessorShipmentId == shipment.Id).Select(x => x.Id).ToArrayAsync(ct);
                 Require(c.Kind == InventoryCommandKind.Return && (original == null ? c.PhysicalParentId == shipment.Id
                     : original.Kind == InventoryCommandKind.ProcessorSale && shipment.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))
-                    && (!first || shipment.ReversedAt == null) && processor.BinsSent == quantity
-                    && shipmentLines.Length == c.Lines.Length && shipmentLines.All(lineId => c.Lines.Any(x => x.Source.Location.CustodyRecordId == lineId
+                    && (!first || shipment.ReversedAt == null) && processor.BinsSent == c.Lines.Where(x => x.Source.Location.CustodyRecordId == processor.Id).Sum(x => x.Quantity)
+                    && shipmentLines.Length == c.Lines.Select(x => x.Source.Location.CustodyRecordId).Distinct().Count() && shipmentLines.All(lineId => c.Lines.Any(x => x.Source.Location.CustodyRecordId == lineId
                         && x.Source.Location.Custody == InventoryCustody.Processor)), "Processor return does not match exact whole shipment.");
                 destination = new(processor.WarehouseId, processor.RoomId); shipment.ReversedAt = now; shipment.ReversedByUserId = c.ActorId;
                 shipment.ReversalReason = c.Reason; if (first) shipment.ConcurrencyVersion++;
@@ -226,6 +228,14 @@ public sealed partial class InventoryCommandExecutor
             Require(await db.Rooms.AnyAsync(x => x.Id == destination.RoomId && x.WarehouseId == destination.WarehouseId
                 && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Return destination is unavailable or sealed.");
             Require(before >= 0, "Return/receive destination has negative legacy inventory.");
+            var targetEvidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(destination.WarehouseId, [destination.RoomId]), now, ct))
+                .Positions.SingleOrDefault(x => x.Identity.Key == i.Key);
+            if (targetEvidence != null)
+            {
+                var targetResult = InventoryAvailabilityResolver.Resolve(targetEvidence, new());
+                Require(targetResult.IsOperable, "Current destination inventory needs review before return or receiving.");
+                await NormalizePositionAsync(db, factory, c, targetEvidence, targetResult, now, attempt, ct);
+            }
             var credit = Ledger(c, i, destination.WarehouseId, destination.RoomId, quantity, before, key + ":in", now);
             credit.InterCrewTransfer = crew; credit.OutsideWarehouseTransfer = outside; credit.ProcessorShipmentLine = processor;
             credit.AdjustmentType = crew != null ? c.Kind == InventoryCommandKind.ReceiveTransfer ? InterCrewTransferAdjustmentTypes.Receive : InterCrewTransferAdjustmentTypes.ReversalSource

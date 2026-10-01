@@ -33,7 +33,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
             || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
             || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion
-                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation) || command.Lines.Length > 100
+                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
                 || string.IsNullOrWhiteSpace(x.TreatmentSignature)))
@@ -123,6 +123,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     InventoryCommandKind.UpdateReceiptMetadata => await UpdateReceiptMetadataAsync(db, command, readAt, cancellationToken),
                     InventoryCommandKind.ImportBaseline => await ImportBaselineAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.CorrectReceiptLocation => await CorrectReceiptLocationAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.CorrectReceiptIdentity => await CorrectReceiptIdentityAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.TreatmentReversal => await ReverseCurrentTreatmentAsync(db, factory, command, resolved.Select(x => x.Result).ToArray(), readAt, cancellationToken),
                     _ => await ApplyAsync(db, factory, command, resolved, readAt, attempt, cancellationToken)
                 };

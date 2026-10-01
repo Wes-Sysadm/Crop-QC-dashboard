@@ -32,9 +32,45 @@ public sealed partial class BinsRunService
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms), new(), BusinessTime.UtcNow, ct);
         var positions = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
         var corrections = correctingRunId is long runId ? await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, runId, ct) : null;
+        var candidates = snapshots.ToList();
+        if (corrections != null)
+        {
+            var missing = corrections.Values.Select(x => x.Current).Where(x => !positions.ContainsKey((x.Location.RoomId, x.Identity.Key))).ToArray();
+            var growerIds = missing.Select(x => x.Identity.GrowerLotId).ToArray();
+            var profileIds = missing.Select(x => x.Identity.FruitProfileId).ToArray();
+            var growers = await dbContext.GrowerLots.AsNoTracking().Where(x => growerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+            var profiles = await dbContext.FruitProfiles.AsNoTracking().Where(x => profileIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+            foreach (var r in missing)
+            {
+                var template = snapshots.First(x => x.RoomId == r.Location.RoomId);
+                var i = r.Identity;
+                positions.Add((r.Location.RoomId, i.Key), r);
+                candidates.Add(template with
+                {
+                    InventoryKey = LedgerInventoryKey(r.Location.WarehouseId, r.Location.RoomId!.Value,
+                    i.CropYear, i.Lot, i.Variety, i.FruitProfileId, i.GrowerLotId),
+                    ReceiptId = null,
+                    InventoryAdjustmentId = null,
+                    ReceiptReference = "Exact current run restoration",
+                    CropYear = i.CropYear,
+                    GrowerLotId = i.GrowerLotId,
+                    FruitProfileId = i.FruitProfileId,
+                    Grower = growers[i.GrowerLotId!.Value].Grower,
+                    GrowerNumber = i.GrowerNumber,
+                    Lot = i.Lot,
+                    Variety = i.Variety,
+                    FruitType = profiles[i.FruitProfileId!.Value].FruitType,
+                    ProductionType = i.ProductionType,
+                    IsOrganic = i.IsOrganic,
+                    InventoryStatus = i.Status,
+                    CurrentBins = 0,
+                    CanonicalOrchardBlockId = null
+                });
+            }
+        }
         var sealedRooms = await dbContext.Rooms.Where(x => rooms.Contains(x.Id) && x.IsSealed).Select(x => x.Id).ToListAsync(ct);
         var options = new List<BinsRunInventoryOptionViewModel>();
-        foreach (var s in snapshots)
+        foreach (var s in candidates)
         {
             if (!positions.TryGetValue((s.RoomId, CanonicalIdentity(s).Key), out var r)) continue;
             samples.TryGetValue(QcIdentityKey(s), out var distribution);
@@ -83,10 +119,13 @@ public sealed partial class BinsRunService
         if (parsed.Select(x => x.Warehouse).Distinct().Count() != 1) return "All room-lot rows in one Actual Run must belong to the same facility.";
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
             new(parsed[0].Warehouse, parsed.Select(x => x.Room).Distinct().ToImmutableArray()), new(), BusinessTime.UtcNow, ct);
+        var choices = form.Id is long correctingId
+            ? (await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, correctingId, ct)).Values.Select(x => x.Current).ToArray()
+            : batch.Positions.ToArray();
         var lines = ImmutableArray.CreateBuilder<InventoryCommandLine>();
         foreach (var item in parsed)
         {
-            var matches = batch.Positions.Where(x => x.Location.RoomId == item.Room && x.Identity.CropYear == item.Crop
+            var matches = choices.Where(x => x.Location.RoomId == item.Room && x.Identity.CropYear == item.Crop
                 && x.Identity.Lot == item.Lot && x.Identity.FruitProfileId == item.Profile && x.Identity.GrowerLotId == item.Grower).ToArray();
             if (matches.Length != 1) return "Inventory identity changed; reload and try again.";
             var r = matches[0];

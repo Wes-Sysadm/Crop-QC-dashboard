@@ -24,7 +24,9 @@ public sealed partial class BinsRunService
             || form.RoomId != null && form.RoomId != room || form.WarehouseId != null && form.WarehouseId != wh)
             return "Select current inventory from the requested facility and room.";
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(wh, [room]), new(), BusinessTime.UtcNow, ct);
-        var p = batch.Positions.SingleOrDefault(x => x.Identity.CropYear == crop && x.Identity.Lot == lot && x.Identity.FruitProfileId == profile && x.Identity.GrowerLotId == grower);
+        var corrections = entryId is long correctingId ? await new InventoryRunCorrectionAvailability(dbContext).ReadLegacyAsync(batch, correctingId, ct) : null;
+        var choices = corrections == null ? batch.Positions.ToArray() : corrections.Values.Select(x => x.Current).ToArray();
+        var p = choices.SingleOrDefault(x => x.Identity.CropYear == crop && x.Identity.Lot == lot && x.Identity.FruitProfileId == profile && x.Identity.GrowerLotId == grower);
         if (p == null || !p.IsOperable) return "Current inventory or treatment identity cannot be proven.";
         if (form.CanonicalFingerprint != p.Watermark.Fingerprint) return "Inventory changed; reload and try again.";
         var existing = entryId is long id ? await dbContext.BinsRunEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) : null;
@@ -34,7 +36,7 @@ public sealed partial class BinsRunService
         var available = CanonicalTreatmentSelections.MovementSlices(p).SingleOrDefault(x => x.Signature == form.TreatmentSignature)?.Quantity ?? 0;
         if (entryId is long original)
         {
-            var own = (await new InventoryRunCorrectionAvailability(dbContext).ReadLegacyAsync(batch, original, ct))[p.PositionKey];
+            var own = corrections![p.PositionKey];
             if (own.Blocker != null) return own.Blocker;
             available = own.AvailableAfterOwnReversal.SingleOrDefault(x => x.Signature == form.TreatmentSignature)?.Quantity ?? 0;
         }

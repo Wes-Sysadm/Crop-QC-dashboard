@@ -19,19 +19,25 @@ public sealed partial class InventoryCommandExecutor
         var original = old.InventoryAdjustments.Single();
         var moves = await db.TreatmentLineageMovements.Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
             .Where(x => x.RoomInventoryLossId == old.Id).ToListAsync(ct);
-        var result = await RestoreConsumptionAsync(db, factory, c, original, moves, old.BinCount, now, attempt, ct);
-        result.Ledger.RoomInventoryLoss = old; result.Ledger.AdjustmentType = InventoryLedgerKinds.DroppedBinsReversal;
-        foreach (var move in result.Movements) { move.RoomInventoryLoss = old; move.MovementType = "InventoryLossReversal"; }
+        var results = await RestoreConsumptionAsync(db, factory, c, original, moves, old.BinCount, now, attempt, ct);
+        foreach (var result in results)
+        {
+            result.Ledger.RoomInventoryLoss = old; result.Ledger.AdjustmentType = InventoryLedgerKinds.DroppedBinsReversal;
+            foreach (var move in result.Movements) { move.RoomInventoryLoss = old; move.MovementType = "InventoryLossReversal"; }
+        }
         old.IsReversed = true; old.ReversedAt = now; old.ReversedByUserId = c.ActorId; old.ReverseReason = c.Reason;
         await db.SaveChangesAsync(ct);
-        var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(old.WarehouseId, [old.RoomId]), new(), now, ct))
-            .Positions.Single(x => x.PositionKey == result.Effect.PositionKey);
-        Require(after.IsOperable && after.AuthoritativeQuantity == result.Effect.After && after.RawProjectionQuantity == after.AuthoritativeQuantity,
+        var after = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(old.WarehouseId, [old.RoomId]), new(), now, ct);
+        Require(results.All(result => after.Positions.Any(x => x.PositionKey == result.Effect.PositionKey && x.IsOperable
+            && x.AuthoritativeQuantity == result.Effect.After && x.RawProjectionQuantity == x.AuthoritativeQuantity)),
             "Loss restoration does not reconcile authoritative inventory and current treatment.");
-        return [result.Effect with { ParentId = old.Id, LedgerIds = [result.Ledger.Id], MovementIds = result.Movements.Select(x => x.Id).ToImmutableArray() }];
+        return results.Select(result => result.Effect with { ParentId = old.Id, LedgerIds = [result.Ledger.Id], MovementIds = result.Movements.Select(x => x.Id).ToImmutableArray() }).ToImmutableArray();
     }
 
-    private async Task<(InventoryCommandEffect Effect, RoomInventoryAdjustment Ledger, List<TreatmentLineageMovement> Movements)> RestoreConsumptionAsync(
+    private sealed record RestoredConsumption(InventoryIdentity Identity, InventoryCommandEffect Effect,
+        RoomInventoryAdjustment Ledger, List<TreatmentLineageMovement> Movements);
+
+    private async Task<List<RestoredConsumption>> RestoreConsumptionAsync(
         CropQcDbContext db, CanonicalProjectionFactory factory, InventoryCommand c, RoomInventoryAdjustment original,
         List<TreatmentLineageMovement> moves, int quantity, DateTimeOffset now, int attempt, CancellationToken ct)
     {
@@ -53,35 +59,45 @@ public sealed partial class InventoryCommandExecutor
             "Original consumed identity or treatment evidence conflicts.");
         Require(await db.Rooms.AnyAsync(x => x.Id == original.RoomId && x.WarehouseId == original.WarehouseId
             && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Restoration room is unavailable or sealed.");
-        var loader = new InventoryEvidenceLoader(db);
-        var evidence = (await loader.LoadAsync(new(original.WarehouseId, [original.RoomId]), now, ct)).Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
-        Require(evidence != null, "Original room inventory position is unavailable.");
-        var resolved = InventoryAvailabilityResolver.Resolve(evidence!, new());
-        Require(resolved.IsOperable, "Current inventory requires review before restoration.");
-        await NormalizePositionAsync(db, factory, c, evidence!, resolved, now, attempt, ct);
-        var ledger = Ledger(c, identity, original.WarehouseId, original.RoomId, quantity, resolved.AuthoritativeQuantity, c.OperationKey + ":restore:" + original.Id, now);
-        ledger.ReceiptId = original.ReceiptId;
-        var reversals = new List<TreatmentLineageMovement>();
+        var identities = await CanonicalIdentityMap.LoadAsync(db, moves.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToArray(), ct);
+        var roomEvidence = await new InventoryEvidenceLoader(db).LoadAsync(new(original.WarehouseId, [original.RoomId]), now, ct);
         var appIds = moves.SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
             .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
-        foreach (var move in moves)
+        var results = new List<RestoredConsumption>();
+        foreach (var group in moves.GroupBy(x => identities.Resolve(identity, x.ReceiptId).Current))
         {
-            var source = move.SourceSegment!;
-            var treatment = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState,
-                source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), applications);
-            var target = await factory.CurrentAsync(identity, original.WarehouseId, original.RoomId, treatment.Signature,
-                treatment.State, source.ReceiptId, treatment.ApplicationIds, now, ct);
-            Credit(target, move.BinCount, now);
-            var reversal = Move(c, identity, new(source, move.BinCount, treatment), target, null, original.RoomId,
-                c.OperationKey + ":restore:" + move.Id, now, "ConsumptionReversal");
-            reversal.ReversesTreatmentLineageMovementId = move.Id;
-            reversals.Add(reversal);
+            var current = group.Key;
+            var evidence = roomEvidence.Positions.SingleOrDefault(x => x.Identity.Key == current.Key);
+            var resolved = evidence == null ? null : InventoryAvailabilityResolver.Resolve(evidence, new());
+            Require(resolved == null || resolved.IsOperable, "Current inventory requires review before restoration.");
+            if (resolved != null) await NormalizePositionAsync(db, factory, c, evidence!, resolved, now, attempt, ct);
+            var before = resolved?.AuthoritativeQuantity ?? 0;
+            var amount = group.Sum(x => x.BinCount);
+            var ledger = Ledger(c, current, original.WarehouseId, original.RoomId, amount, before,
+                c.OperationKey + ":restore:" + original.Id + ":" + results.Count, now);
+            ledger.ReceiptId = original.ReceiptId;
+            var reversals = new List<TreatmentLineageMovement>();
+            foreach (var move in group)
+            {
+                var source = move.SourceSegment!;
+                Require(source.ReceiptId == move.ReceiptId, "Consumption receipt provenance changed.");
+                var treatment = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState,
+                    source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray(), applications);
+                var target = await factory.CurrentAsync(current, original.WarehouseId, original.RoomId, treatment.Signature,
+                    treatment.State, source.ReceiptId, treatment.ApplicationIds, now, ct);
+                Credit(target, move.BinCount, now);
+                var reversal = Move(c, current, new(source, move.BinCount, treatment), target, null, original.RoomId,
+                    c.OperationKey + ":restore:" + move.Id, now, "ConsumptionReversal");
+                reversal.ReversesTreatmentLineageMovementId = move.Id;
+                reversals.Add(reversal);
+            }
+            db.RoomInventoryAdjustments.Add(ledger); db.TreatmentLineageMovements.AddRange(reversals);
+            results.Add(new(current, new($"{InventoryCustody.Room}:{original.WarehouseId}:{original.RoomId}::{current.Key}",
+                before, checked(before + amount), amount, null, [], []), ledger, reversals));
         }
-        db.RoomInventoryAdjustments.Add(ledger); db.TreatmentLineageMovements.AddRange(reversals);
         await Stage("Restoration", db, attempt, ct);
         // Parent links and reversal type are assigned by the typed owner before persistence.
-        return (new(resolved.PositionKey, resolved.AuthoritativeQuantity, checked(resolved.AuthoritativeQuantity + quantity), quantity,
-            null, [], []), ledger, reversals);
+        return results;
     }
 }

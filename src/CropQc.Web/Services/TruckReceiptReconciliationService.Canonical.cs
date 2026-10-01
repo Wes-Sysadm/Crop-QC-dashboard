@@ -36,7 +36,7 @@ public sealed partial class TruckReceiptReconciliationService
             Require(movement != null, "Dispatch allocation was not found.");
             var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
                 new(transfer.SourceWarehouseId, [], InventoryCustody.InTransit, transfer.Id), new(AllowedCustody: InventoryCustody.InTransit), time.UtcNow, ct);
-            var p = batch.Positions.SingleOrDefault(x => x.Identity.Key == InventoryStatusIdentity.NormalizeLineageKey(movement!.IdentityKey));
+            var p = batch.Positions.SingleOrDefault(x => x.TreatmentSlices.Any(s => s.ProjectionIds.Contains(movement!.SourceSegmentId ?? 0)));
             Require(p != null && p.IsOperable, "Transit allocation cannot be proven.");
             var treatment = p!.TreatmentSlices.SingleOrDefault(x => x.ProjectionIds.Contains(movement!.SourceSegmentId ?? 0));
             Require(treatment != null, "Current treatment for the exact dispatch allocation cannot be proven.");
