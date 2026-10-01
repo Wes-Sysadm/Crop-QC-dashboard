@@ -1726,6 +1726,7 @@ public sealed class ReceiptInventoryTrueUpAllocationForm
 
 public sealed class ReceiptInventoryOverridePreviewViewModel
 {
+    public string? CanonicalBlocker { get; set; }
     public long ReceiptId { get; set; }
     public long ConcurrencyVersion { get; set; }
     public string InventoryStateToken { get; set; } = "";
@@ -1819,6 +1820,7 @@ public sealed record VoidedReceiptAdminViewModel(
 
 public sealed class DeleteReceiptForm
 {
+    public string ExpectedInventoryStateToken { get; set; } = "";
     public long Id { get; set; }
     public string Reason { get; set; } = "";
     public string ConfirmationValue { get; set; } = "";

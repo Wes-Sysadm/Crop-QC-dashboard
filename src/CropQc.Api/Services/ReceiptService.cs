@@ -31,6 +31,8 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
             var email = principal?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
             if (principal?.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(email))
                 return (null, "An authenticated receiving operator is required.");
+            if (!await CropQc.Data.Authentication.OperatorSession.CanReceiveAsync(dbContext, principal, cancellationToken))
+                return (null, "Receiving create permission is required.");
             var actor = await dbContext.Users.Where(x => x.IsActive && x.Email == email).Select(x => (int?)x.Id).SingleOrDefaultAsync(cancellationToken);
             if (actor == null || canonicalReceiving == null || string.IsNullOrWhiteSpace(request.OperationKey))
                 return (null, "An active operator, canonical receiving service and operation key are required.");

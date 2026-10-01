@@ -19,6 +19,8 @@ public sealed class CanonicalWorkflowConcurrencyTests
     public Task Processor_versus_transfer_through_normal_services() => Race("Processor", "Move");
     [InventoryPostgresFact]
     public Task Treatment_versus_transfer_through_normal_services() => Race("Treatment", "Move");
+    [InventoryPostgresFact]
+    public Task Receipt_correction_versus_transfer_through_normal_services() => Race("Correction", "Move");
 
     private static async Task Race(string first, string second)
     {
@@ -48,7 +50,13 @@ public sealed class CanonicalWorkflowConcurrencyTests
         await using var check = f.CreateDbContext();
         Assert.Equal(1, await check.InventoryCommands.CountAsync());
         Assert.Equal(1, await check.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization"));
-        Assert.Equal(19, (await check.Receipts.SingleAsync(x => x.Id == 100000)).BinCount);
+        var receiptBins = (await check.Receipts.SingleAsync(x => x.Id == 100000)).BinCount;
+        if (first == "Correction")
+        {
+            Assert.Equal(results[0] == null ? 17 : 19, receiptBins);
+            Assert.Equal(receiptBins, await f.Physical() + await f.Physical(9003));
+        }
+        else Assert.Equal(19, receiptBins);
         Assert.InRange(await f.Physical(), 0, 19);
         Assert.InRange(await f.Physical(9003), 0, 19);
         Assert.All(await check.TreatmentLineageSegments.ToListAsync(), x => Assert.True(x.CurrentBins >= 0));
@@ -62,6 +70,12 @@ public sealed class CanonicalWorkflowConcurrencyTests
         var time = new PacificBusinessTimeService(new SystemClock());
         var ledger = new CropQc.Web.Services.RoomInventoryLedgerQueryService(db);
         var treatment = new RoomTreatmentService(db, ledger, access, http, time, NullLogger<RoomTreatmentService>.Instance, executor);
+        if (operation == "Correction")
+        {
+            var service = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
+            var form = await CanonicalReceiptCorrectionWorkflowTests.Form(db, service, 100000, 17);
+            return async () => (await service.ApplyEditAsync(form, principal, default)).Error;
+        }
         if (operation == "Dump")
         {
             var service = new BinsRunService(db, access, NullLogger<BinsRunService>.Instance, canonicalCommands: executor);

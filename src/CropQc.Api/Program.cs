@@ -2,12 +2,21 @@ using CropQc.Api.Services;
 using CropQc.Data;
 using CropQc.Data.Inventory;
 using CropQc.Shared.Storage;
+using CropQc.Data.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCanonicalInventoryReads();
 builder.Services.AddCanonicalInventoryCommands(builder.Configuration.GetValue<bool>("CanonicalInventoryCommandsEnabled"));
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
+OperatorSession.ConfigureKeys(builder.Services, builder.Configuration);
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options => OperatorSession.ConfigureCookie(options, builder.Configuration, builder.Environment.IsDevelopment(), api: true));
+builder.Services.AddAuthorization();
+builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
+builder.Services.AddScoped<CanonicalReceivingAuthorizationFilter>();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(
@@ -38,7 +47,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/api/operator-session", async (HttpContext context, CropQcDbContext db, IAntiforgery antiforgery) =>
+{
+    if (!await OperatorSession.CanReceiveAsync(db, context.User, context.RequestAborted)) return Results.Forbid();
+    context.Response.Headers.CacheControl = "no-store";
+    var tokens = antiforgery.GetAndStoreTokens(context);
+    return Results.Ok(new { tokens.RequestToken, tokens.HeaderName });
+}).RequireAuthorization();
 
 app.MapGet("/", () => Results.Ok(new
 {

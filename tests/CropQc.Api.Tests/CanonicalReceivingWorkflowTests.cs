@@ -135,6 +135,7 @@ public sealed class CanonicalReceivingWorkflowTests
         Assert.Null(replay.Error);
         Assert.Equal(saved, await f.Snapshot());
         var api = new CropQc.Api.Services.ReceiptService(db, new CropQc.Api.Services.AuditService(db), new(db, executor), http);
+        await CanonicalOperatorSessionTests.GrantReceivingAsync(db);
         var request = new CropQc.Api.Dtos.CreateReceiptRequest(2026, DateTimeOffset.UtcNow, "LOCAL-API", 9001, 9003,
             9004, grower.Grower, grower.LotNumber, 11, Guid.NewGuid().ToString("N"), 100000);
         var apiCreated = await api.CreateAsync(request, default);

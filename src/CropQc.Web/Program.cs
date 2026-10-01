@@ -33,7 +33,7 @@ builder.Services.AddControllersWithViews(options =>
 {
     options.ModelBinderProviders.Insert(0, new PacificDateTimeOffsetModelBinderProvider());
 });
-ConfigureDataProtection(builder.Services, builder.Configuration);
+CropQc.Data.Authentication.OperatorSession.ConfigureKeys(builder.Services, builder.Configuration);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -55,36 +55,7 @@ var authenticationBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        var sessionLifetime = TimeSpan.FromDays(googleAuthOptions.SessionDays);
-        options.LoginPath = "/Login";
-        options.LogoutPath = "/Logout";
-        options.AccessDeniedPath = "/AccessDenied";
-        options.ExpireTimeSpan = sessionLifetime;
-        options.SlidingExpiration = true;
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
-            ? CookieSecurePolicy.SameAsRequest
-            : CookieSecurePolicy.Always;
-        options.Events.OnValidatePrincipal = async context =>
-        {
-            var email = context.Principal?.FindFirstValue(ClaimTypes.Email);
-            if (string.IsNullOrWhiteSpace(email))
-            {
-                context.RejectPrincipal();
-                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                return;
-            }
-
-            var dbContext = context.HttpContext.RequestServices.GetRequiredService<CropQcDbContext>();
-            var isActive = await dbContext.Users.AsNoTracking()
-                .AnyAsync(x => x.Email == email && x.IsActive, context.HttpContext.RequestAborted);
-            if (!isActive)
-            {
-                context.RejectPrincipal();
-                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            }
-        };
+        CropQc.Data.Authentication.OperatorSession.ConfigureCookie(options, builder.Configuration, builder.Environment.IsDevelopment());
     });
 if (googleAuthOptions.IsGoogleConfigured)
 {
@@ -2058,27 +2029,6 @@ static async Task<bool> VerifyInventoryDeductionReadinessAsync(IServiceProvider 
     }
 
     return result.IsReady && identityResult.IsReady;
-}
-
-static void ConfigureDataProtection(IServiceCollection services, IConfiguration configuration)
-{
-    var applicationName = configuration["DataProtection:ApplicationName"] ?? "CropQcDashboard";
-    var dataProtectionBuilder = services.AddDataProtection()
-        .SetApplicationName(applicationName);
-
-    if (!configuration.GetValue<bool>("DataProtection:PersistKeysToFileSystem"))
-    {
-        return;
-    }
-
-    var keysPath = configuration["DataProtection:KeysPath"];
-    if (string.IsNullOrWhiteSpace(keysPath))
-    {
-        throw new InvalidOperationException("DataProtection:KeysPath is required when DataProtection:PersistKeysToFileSystem is true.");
-    }
-
-    Directory.CreateDirectory(keysPath);
-    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 }
 
 static void AddAccessPolicy(AuthorizationOptions options, string policyName, string areaKey, PageAccessLevel minimumLevel)

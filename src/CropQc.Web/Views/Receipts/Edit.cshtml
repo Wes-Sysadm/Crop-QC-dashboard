@@ -1,5 +1,6 @@
 @model EditReceiptPageViewModel
 @using System.Text.Json
+@inject CropQc.Data.Inventory.CanonicalInventoryMode CanonicalMode
 @{
     ViewData["Title"] = "Edit Receipt";
     var form = Model.Form;
@@ -83,6 +84,10 @@
         @if (Model.CanAdminOverride && Model.AdminOverridePreview is not null)
         {
             var preview = Model.AdminOverridePreview;
+            @if (preview.CanonicalBlocker is not null)
+            {
+                <p class="notice warning">@preview.CanonicalBlocker</p>
+            }
             <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review Bin Count Override</button>
             <section id="adminInventoryOverride" class="panel danger-zone wide receipt-bin-override-review" hidden
                      data-original-bins="@form.BinCount" data-original-warehouse="@form.WarehouseId"
@@ -118,8 +123,8 @@
                     </tbody></table>
                 }
                 <section id="positiveTrueUpAllocation" class="wide" hidden>
-                    <h3>Where is the additional inventory now?</h3>
-                    <p>The additional bins will be added to the current canonical inventory position. The original receiving room and historical movements will not be rewritten.</p>
+                    <h3>@(CanonicalMode.Enabled ? "Which current inventory should be corrected?" : "Where is the additional inventory now?")</h3>
+                    <p>Allocate the quantity change to current inventory below. The original receiving room and historical movements will not be rewritten.</p>
                     <p><strong>Current canonical inventory:</strong> @preview.CurrentCanonicalInventory bins</p>
                     @if (preview.TrueUpPositions.Count == 0)
                     {
@@ -283,9 +288,10 @@
                 const delta = Number.isFinite(proposed) ? proposed - original : null;
                 document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
                 const positiveTrueUp = document.getElementById("positiveTrueUpAllocation");
-                if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0);
+                const allocateReduction = @JsonSerializer.Serialize(CanonicalMode.Enabled);
+                if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0 || allocateReduction && delta < 0);
                 for (const allocation of document.querySelectorAll(".true-up-allocation")) {
-                    allocation.disabled = !(delta > 0);
+                    allocation.disabled = !(delta > 0 || allocateReduction && delta < 0);
                 }
                 document.getElementById("overrideReceipt").textContent = currentValue("CompuTechReceiptId") || "-";
                 const growerNumber = currentValue("GrowerNumber").trim();
@@ -293,7 +299,7 @@
                 document.getElementById("overrideGrower").textContent = [growerNumber, growerName].filter(Boolean).join(" - ") || "-";
                 document.getElementById("overrideRoom").textContent = roomSelect?.selectedOptions[0]?.textContent?.trim() || "-";
                 const negativeAcknowledgment = document.getElementById("negativeInventoryAcknowledgment");
-                negativeAcknowledgment.hidden = @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (delta ?? 0) >= 0;
+                negativeAcknowledgment.hidden = allocateReduction || @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (delta ?? 0) >= 0;
                 if (negativeAcknowledgment.hidden) negativeAcknowledgment.querySelector("input[type='checkbox']").checked = false;
             }
             for (const name of watched) {

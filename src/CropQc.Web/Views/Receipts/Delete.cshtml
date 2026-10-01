@@ -58,6 +58,7 @@
         <input type="hidden" name="Id" value="@Model.Id" />
         <input type="hidden" name="OperationToken" value="@Model.Form.OperationToken" />
         <input type="hidden" name="ExpectedConcurrencyVersion" value="@Model.ConcurrencyVersion" />
+        <input type="hidden" name="ExpectedInventoryStateToken" value="@Model.Form.ExpectedInventoryStateToken" />
         <div class="field">
             <label for="confirmationValue">Type receipt number <strong>@Model.ReceiptNumber</strong></label>
             <input id="confirmationValue" name="ConfirmationValue" autocomplete="off" required />
