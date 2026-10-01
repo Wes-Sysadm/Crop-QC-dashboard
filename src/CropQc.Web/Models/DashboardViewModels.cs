@@ -662,7 +662,7 @@ public sealed record RoomInventoryLossOptionViewModel(
     int CurrentBins,
     string TreatmentSignature = "",
     string TreatmentLabel = "Untreated",
-    long? TreatmentSegmentId = null, string? CanonicalFingerprint = null);
+    long? TreatmentSegmentId = null, string? CanonicalFingerprint = null, bool IsAvailable = true, string? UnavailableReason = null);
 
 public sealed record RoomInventoryLossHistoryViewModel(
     long Id,

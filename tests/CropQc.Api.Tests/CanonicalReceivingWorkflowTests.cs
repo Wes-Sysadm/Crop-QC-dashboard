@@ -259,9 +259,9 @@ public sealed class CanonicalReceivingWorkflowTests
             [new Claim(ClaimTypes.Email, "canonical-test@example.invalid")], "test"))
         }
     };
-    internal static DashboardDataService Dashboard(CropQcDbContext db, IInventoryCommandExecutor executor, IHttpContextAccessor? http = null)
+    internal static DashboardDataService Dashboard(CropQcDbContext db, IInventoryCommandExecutor executor, IHttpContextAccessor? http = null, bool truckReceipts = false)
     {
-        var configuration = new ConfigurationBuilder().Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["TruckReceiptReconciliation:Enabled"] = truckReceipts.ToString() }).Build();
         return new(db, null!, new FileStorageOptions(), new EmailOptions(), null!, new GoogleAuthenticationOptions(),
             null!, null!, new QcPhotoRequirementPolicy(), null!, new CropYearService(db, configuration), http ?? Operator(),
             configuration, NullLogger<DashboardDataService>.Instance, new CanonicalOutsideWorkflowTests.Access(), canonicalCommands: executor);

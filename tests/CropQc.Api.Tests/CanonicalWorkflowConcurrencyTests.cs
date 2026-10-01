@@ -78,9 +78,22 @@ public sealed class CanonicalWorkflowConcurrencyTests
     [InventoryPostgresFact]
     public Task Receipt_correction_versus_transfer_through_normal_services() => Race("Correction", "Move");
 
-    private static async Task Race(string first, string second)
+    [InventoryCommandRestoreFact]
+    public Task Restored_room_move_versus_dump_preserves_unrelated_history() => Race("Move", "Dump", true);
+    [InventoryCommandRestoreFact]
+    public Task Restored_treatment_versus_move_preserves_unrelated_history() => Race("Treatment", "Move", true);
+
+    private static async Task Race(string first, string second, bool restored = false)
     {
-        await using var f = await Fixture.Create();
+        await using var f = restored ? await CanonicalRestoreFixture.Clone() : await Fixture.Create();
+        Dictionary<string, string>? protectedFilters = null; string? protectedBefore = null;
+        if (restored)
+        {
+            protectedFilters = await CanonicalRestoreFixture.ExistingRows(f);
+            protectedFilters["Warehouses"] += " AND \"Code\" NOT IN ('WP','BASE-WP')";
+            protectedBefore = await f.Snapshot(protectedFilters);
+            await CanonicalRestoreFixture.SeedIsolatedRooms(f, 1);
+        }
         await using (var seed = f.CreateDbContext())
         {
             var actor = await seed.Users.SingleAsync(x => x.Id == 8000);
@@ -99,13 +112,14 @@ public sealed class CanonicalWorkflowConcurrencyTests
         });
         await using var left = factory.CreateDbContext();
         await using var right = factory.CreateDbContext();
+        var oldNormalizations = await left.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization");
         var a = await Prepare(first, left, new InventoryCommandExecutor(factory, observer, new CanonicalRunExpectationWriter()));
         var b = await Prepare(second, right, new InventoryCommandExecutor(factory, observer, new CanonicalRunExpectationWriter()));
         var results = await Task.WhenAll(a(), b());
         Assert.True(results.Count(x => x == null) == 1, string.Join("; ", results.Select(x => x ?? "Committed")));
         await using var check = f.CreateDbContext();
         Assert.Equal(1, await check.InventoryCommands.CountAsync());
-        Assert.Equal(1, await check.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization"));
+        Assert.Equal(oldNormalizations + 1, await check.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization"));
         var receiptBins = (await check.Receipts.SingleAsync(x => x.Id == 100000)).BinCount;
         if (first == "Correction")
         {
@@ -115,7 +129,8 @@ public sealed class CanonicalWorkflowConcurrencyTests
         else Assert.Equal(19, receiptBins);
         Assert.InRange(await f.Physical(), 0, 19);
         Assert.InRange(await f.Physical(9003), 0, 19);
-        Assert.All(await check.TreatmentLineageSegments.ToListAsync(), x => Assert.True(x.CurrentBins >= 0));
+        Assert.All(await check.TreatmentLineageSegments.Where(x => x.WarehouseId == 9001).ToListAsync(), x => Assert.True(x.CurrentBins >= 0));
+        if (restored) Assert.Equal(protectedBefore, await f.Snapshot(protectedFilters));
     }
 
     private static async Task<Func<Task<string?>>> Prepare(string operation, CropQcDbContext db, InventoryCommandExecutor executor)
@@ -178,7 +193,7 @@ public sealed class CanonicalWorkflowConcurrencyTests
         }
         var processor = new ProcessorShipmentService(db, ledger, treatment, treatment,
             new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance), access, http, time, executor);
-        var stock = Assert.Single((await processor.GetPageAsync(null, false, null, null, null, null, default)).Inventory);
+        var stock = Assert.Single((await processor.GetPageAsync(null, false, null, null, null, null, default)).Inventory.Where(x => x.WarehouseId == 9001));
         var shipment = new ProcessorShipmentForm
         {
             ProcessorId = 9005,

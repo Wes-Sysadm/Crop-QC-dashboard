@@ -21,6 +21,15 @@ public sealed partial class BinsRunService
         return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(key, kind, actor.Value, BusinessTime.UtcNow,
             reason, [], ApplicationIntent: submission, PhysicalParentId: id, ExpectedParentVersion: version), ct));
     }
+    private async Task<IReadOnlyList<InventorySnapshot>> CanonicalPlanningSnapshotsAsync(IReadOnlyList<InventorySnapshot> snapshots, CancellationToken ct)
+    {
+        if (snapshots.Count == 0) return snapshots;
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
+            new(null, snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray()), new(), BusinessTime.UtcNow, ct);
+        var positions = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
+        return snapshots.Select(x => x with { CurrentBins = positions.GetValueOrDefault((x.RoomId, CanonicalIdentity(x).Key))?.AvailableQuantity ?? 0 }).ToArray();
+    }
+
     private static InventoryIdentity CanonicalIdentity(InventorySnapshot s) => new(s.CropYear, s.GrowerLotId, s.FruitProfileId,
         s.Lot, s.GrowerNumber, s.Variety, s.ProductionType, s.IsOrganic, s.InventoryStatus);
 

@@ -82,6 +82,8 @@ public sealed record InventoryAvailabilityResult(string PositionKey, InventoryId
     ImmutableArray<InventoryBlocker> Blockers, InventoryReadWatermark Watermark,
     ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
 {
+    public ImmutableArray<InventoryCustodyAllocation> CustodyAllocations { get; init; } =
+        CustodyAllocations.IsDefault ? [] : CustodyAllocations;
     public bool IsOperable => Blockers.IsEmpty && AuthoritativeQuantity >= 0;
     public int ProjectionExcess => Math.Max(0, RawProjectionQuantity - Math.Max(0, AuthoritativeQuantity));
 }
@@ -106,7 +108,7 @@ public sealed record InventoryMovementEvidence(long Id, string Kind, int Quantit
 public sealed record InventoryReceiptEvidence(long Id, int Quantity, bool ExactIdentity, bool IsDeleted,
     bool IsTransferReceipt, DateTimeOffset UpdatedAt, long Version);
 public sealed record InventoryApplicationEvidence(long Id, DateTimeOffset AppliedAt, DateTimeOffset? ReversedAt,
-    long? ReceiptId);
+    long? ReceiptId, int? RoomId = null);
 public sealed record InventoryCustodyAllocation(long MovementId, long SourceProjectionId, int Quantity,
     InventoryIdentity Identity, string TreatmentSignature, string TreatmentState, long? ReceiptId);
 public sealed record InventoryPositionEvidence(InventoryIdentity Identity, InventoryLocation Location,
@@ -115,7 +117,13 @@ public sealed record InventoryPositionEvidence(InventoryIdentity Identity, Inven
     ImmutableArray<InventoryMovementEvidence> Movements, ImmutableArray<InventoryReceiptEvidence> Receipts,
     ImmutableArray<InventoryApplicationEvidence> Applications, InventoryReadWatermark Watermark,
     bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default,
-    ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default);
+    ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
+{
+    public ImmutableArray<InventoryEvidenceReference> IdentityCorrections { get; init; } =
+        IdentityCorrections.IsDefault ? [] : IdentityCorrections;
+    public ImmutableArray<InventoryCustodyAllocation> CustodyAllocations { get; init; } =
+        CustodyAllocations.IsDefault ? [] : CustodyAllocations;
+}
 public sealed record InventoryEvidenceBatch(ImmutableArray<InventoryPositionEvidence> Positions, int RowsLoaded);
 public interface IInventoryEvidenceLoader
 {

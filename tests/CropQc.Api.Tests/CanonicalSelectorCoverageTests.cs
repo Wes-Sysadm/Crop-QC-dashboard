@@ -53,12 +53,12 @@ public sealed class CanonicalSelectorCoverageTests(ITestOutputHelper output)
                 Assert.All(rows, x => { Assert.Equal(19, x.Qty); Assert.Equal("u", x.Treatment); Assert.True(x.Available); });
                 measurements.Add(new { size, selector = name, queries = counter.Reads, elapsedMs = watch.Elapsed.TotalMilliseconds });
             }
-            await Check("room move", async () => (await dashboard.GetRoomDetailAsync(9002, default)).TransferLotOptions.Select(x => (x.CurrentBins, x.TreatmentSignature, true)).ToArray());
+            await Check("room move", async () => (await dashboard.GetRoomDetailAsync(9002, default)).TransferLotOptions.Select(x => (x.CurrentBins, x.TreatmentSignature, x.IsAvailable)).ToArray());
             await Check("transfer", async () => (await crew.GetPageAsync(new() { RoomId = 9002, WarehouseId = 9001 }, default)).Inventory.Select(x => (x.AvailableBins, x.TreatmentSignature, x.IsAvailable)).ToArray());
             await Check("dump", async () => (await dump.GetPageAsync(new() { Section = "Actual", RoomIds = [9002], WarehouseId = 9001 }, http.HttpContext!.User, default)).AvailableInventory.Select(x => (x.CurrentBins, x.TreatmentSignature, x.IsAvailable)).ToArray());
             await Check("processor", async () => (await processor.GetPageAsync(null, false, null, null, null, null, default)).Inventory.Select(x => (x.AvailableBins, x.TreatmentSignature, !x.IsRoomSealed)).ToArray());
             await Check("outside", async () => (await outside.GetInventoryAsync(default)).Select(x => (x.AvailableBins, x.TreatmentSignature, x.IsAvailable)).ToArray());
-            await Check("loss", async () => (await loss.GetRoomDataAsync(9002, default)).Options.Select(x => (x.CurrentBins, x.TreatmentSignature, true)).ToArray());
+            await Check("loss", async () => (await loss.GetRoomDataAsync(9002, default)).Options.Select(x => (x.CurrentBins, x.TreatmentSignature, x.IsAvailable)).ToArray());
             Assert.Equal(snapshot, await f.Snapshot());
             output.WriteLine(JsonSerializer.Serialize(measurements));
             if (single == null) single = counts;

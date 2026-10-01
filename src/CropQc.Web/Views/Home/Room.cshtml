@@ -429,7 +429,7 @@
                         <option value="">Select current inventory</option>
                         @foreach (var option in Model.InventoryLossOptions)
                         {
-                            <option value="@option.InventoryAdjustmentId"
+                            <option value="@option.InventoryAdjustmentId" disabled="@(!option.IsAvailable)"
                                     data-facility="@option.Facility"
                                     data-room="@option.Room"
                                     data-grower="@option.Grower"
@@ -440,7 +440,7 @@
                                     data-fingerprint="@option.CanonicalFingerprint"
                                     data-treatment-segment-id="@option.TreatmentSegmentId"
                                     data-organic="@(option.IsOrganic == true ? "Organic" : option.IsOrganic == false ? "Conventional" : "Organic status unavailable")"
-                                    data-current="@option.CurrentBins">@option.Label</option>
+                                    data-current="@option.CurrentBins">@option.Label @option.UnavailableReason</option>
                         }
                     </select>
                 </label>

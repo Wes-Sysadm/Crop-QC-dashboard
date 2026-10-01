@@ -152,7 +152,7 @@ public sealed partial class RoomInventoryLossService(
                     segment.CurrentBins,
                     segment.TreatmentSignature,
                     segment.Label,
-                    segment.SegmentId, segment.CanonicalFingerprint));
+                    segment.SegmentId, segment.CanonicalFingerprint, segment.IsAvailable, segment.UnavailableReason));
             }
         }
         var principal = httpContextAccessor.HttpContext?.User;

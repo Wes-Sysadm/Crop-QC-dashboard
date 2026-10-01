@@ -24,7 +24,7 @@ public sealed partial class InventoryCommandExecutor
         var currentIdentity = identities.Resolve(CanonicalIdentityMap.Historical(source), dispatch.ReceiptId).Current;
         var appIds = source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
-            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
+            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToArrayAsync(ct);
         var treatment = InventoryEffectiveTreatment.Read(source.TreatmentSignature, source.TreatmentState, appIds, applications);
         var remaining = dispatch.BinCount - all.Where(x => x.ReversesTreatmentLineageMovementId == dispatch.Id).Sum(x => x.BinCount);
         Require(line.Quantity <= remaining && line.Quantity <= transfer.BinsLoaded

@@ -55,18 +55,7 @@ public sealed class CanonicalActualRunWorkflowTests
     [InventoryCommandRestoreFact]
     public async Task Normal_ActualRun_selector_and_submission_consume_68_plus_104_atomically()
     {
-        var connection = Environment.GetEnvironmentVariable("CANONICAL_INVENTORY_RESTORE_POSTGRES")!;
-        ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connection);
-        var template = new NpgsqlConnectionStringBuilder(connection);
-        Assert.True(template.Host is "localhost" or "127.0.0.1");
-        var name = $"command_phase3_{Guid.NewGuid():N}_test";
-        await using (var admin = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connection) { Database = "postgres" }.ConnectionString))
-        {
-            await admin.OpenAsync();
-            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{name}\" TEMPLATE \"{template.Database!.Replace("\"", "\"\"")}\"", admin);
-            await create.ExecuteNonQueryAsync();
-        }
-        await using var cleanup = new Fixture(new NpgsqlConnectionStringBuilder(connection) { Database = name }.ConnectionString);
+        await using var cleanup = await CanonicalRestoreFixture.Clone();
         var factory = new EnabledFactory(cleanup.Connection);
         await using var db = factory.CreateDbContext();
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, ApplicationAreas.OwnerEmail)], "test"));
@@ -94,7 +83,34 @@ public sealed class CanonicalActualRunWorkflowTests
                 BinsRun = x.RoomId == 1 ? 68 : 104
             }).ToList()
         };
+        var originalRows = await CanonicalRestoreFixture.ExistingRows(cleanup);
+        originalRows["TreatmentLineageSegments"] = "NOT (\"RoomId\" IN (1,4) AND \"FruitProfileId\"=17 AND \"GrowerLotId\"=448 AND \"CropYear\"=2026 AND \"LotNumberSnapshot\"='1372')";
+        var protectedBefore = await cleanup.Snapshot(originalRows);
+        var proof = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(4, [1, 4]), new(), DateTimeOffset.UtcNow);
+        var wp7 = Assert.Single(proof.Positions.Where(x => x.Location.RoomId == 4 && x.Identity.Lot == "1372" && x.Identity.FruitProfileId == 17));
+        Assert.Equal(1568, wp7.RawProjectionQuantity);
+        Assert.Equal(324, wp7.HistoricalProjections.Where(x => x.Reason == ProjectionExclusionReason.DuplicateStatusAlias).Sum(x => x.ExcludedQuantity));
+        Assert.Equal(122, wp7.HistoricalProjections.Where(x => x.Reason == ProjectionExclusionReason.ConsumedHistoricalRepresentation).Sum(x => x.ExcludedQuantity));
+        var beforeWrite = await cleanup.Snapshot();
+        foreach (var failAt in new[] { "Normalized", "Source1", "PersistedSource1", "Source2", "PersistedSource2", "Movement", "OperationAudit", "BeforeCommit" })
+        {
+            var failing = new BinsRunService(db, access, NullLogger<BinsRunService>.Instance,
+                canonicalCommands: new InventoryCommandExecutor(factory, new Observer((stage, _) => stage == failAt
+                    ? Task.FromException(new IOException(failAt)) : Task.CompletedTask), new CanonicalRunExpectationWriter()));
+            await Assert.ThrowsAsync<IOException>(() => failing.CreateActualRunAsync(form, principal, default));
+            Assert.Equal(beforeWrite, await cleanup.Snapshot());
+        }
         Assert.Null(await service.CreateActualRunAsync(form, principal, default));
+        Assert.Equal(protectedBefore, await cleanup.Snapshot(originalRows));
+        var normalization = await db.AuditLogs.AsNoTracking().Where(x => x.Action == "CanonicalInventoryNormalization" && x.EntityKey == wp7.PositionKey).OrderByDescending(x => x.Id).FirstAsync();
+        var plan = System.Text.Json.JsonSerializer.Deserialize<InventoryNormalizationPlan>(normalization.AfterValuesJson!, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        Assert.Equal(1122, plan.ReplacementQuantity);
+        Assert.Equal(1568, plan.Changes.Sum(x => x.BeforeQuantity));
+        foreach (var change in plan.Changes)
+        {
+            var retained = await db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == change.Id);
+            Assert.Equal("Historical", retained.Disposition); Assert.Equal(change.BeforeQuantity, retained.RetiredQuantity); Assert.Equal(0, retained.CurrentBins);
+        }
         var revision = await db.ActualRunRevisions.AsNoTracking().SingleAsync(x => x.OperationKey == form.OperationKey);
         Assert.Equal(172, await db.BinsRunEntries.Where(x => x.ActualRunRevisionId == revision.Id).SumAsync(x => x.BinsRun));
         Assert.Equal(1, await db.RunExpectations.CountAsync(x => x.ActualRunRevisionId == revision.Id));

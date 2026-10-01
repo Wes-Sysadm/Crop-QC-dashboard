@@ -139,7 +139,7 @@ public sealed partial class InventoryEvidenceLoader
                     ReceiptId = x.Movement.ReceiptId
                 }).ToImmutableArray();
                 var originalAppIds = projections.SelectMany(x => x.ApplicationIds).ToHashSet();
-                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToImmutableArray();
+                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
                 projections = projections.Select(p =>
                 {
                     var effective = InventoryEffectiveTreatment.Read(p.Signature, p.State, p.ApplicationIds, allApplications);

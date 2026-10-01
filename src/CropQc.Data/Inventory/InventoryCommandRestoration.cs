@@ -63,7 +63,7 @@ public sealed partial class InventoryCommandExecutor
         var roomEvidence = await new InventoryEvidenceLoader(db).LoadAsync(new(original.WarehouseId, [original.RoomId]), now, ct);
         var appIds = moves.SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
-            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
+            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToArrayAsync(ct);
         var results = new List<RestoredConsumption>();
         foreach (var group in moves.GroupBy(x => identities.Resolve(identity, x.ReceiptId).Current))
         {

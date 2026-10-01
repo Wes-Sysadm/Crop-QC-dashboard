@@ -707,6 +707,7 @@ public sealed partial class BinsRunService(
         }
 
         var snapshots = await GetCurrentInventorySnapshotsAsync(request.WarehouseId, request.RoomId, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) snapshots = await CanonicalPlanningSnapshotsAsync(snapshots, cancellationToken);
         var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
         var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
         var selectedKeys = request.InventoryKeys
@@ -739,7 +740,9 @@ public sealed partial class BinsRunService(
         CancellationToken cancellationToken)
     {
         var normalized = query?.Trim() ?? "";
-        var snapshots = (await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken))
+        var current = await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) current = await CanonicalPlanningSnapshotsAsync(current, cancellationToken);
+        var snapshots = current
             .Where(x => x.CurrentBins > 0)
             .Where(x => normalized.Length == 0
                 || x.Facility.Contains(normalized, StringComparison.OrdinalIgnoreCase)
@@ -760,6 +763,8 @@ public sealed partial class BinsRunService(
     public async Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken)
     {
         var snapshot = await GetCurrentInventoryByKeyAsync(inventoryKey, cancellationToken);
+        if (snapshot != null && dbContext.CanonicalInventoryEnabled)
+            snapshot = (await CanonicalPlanningSnapshotsAsync([snapshot], cancellationToken)).Single();
         return snapshot is null || snapshot.CurrentBins <= 0 ? null : ToPlanningInventory(snapshot);
     }
 

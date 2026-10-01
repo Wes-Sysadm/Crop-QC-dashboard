@@ -44,7 +44,7 @@ public sealed class InventoryRunCorrectionAvailability(CropQcDbContext db)
         var identities = await CanonicalIdentityMap.LoadAsync(db, movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToArray(), ct);
         var appIds = movements.Where(x => x.SourceSegment != null).SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
-            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToArrayAsync(ct);
+            .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToArrayAsync(ct);
         foreach (var entry in entries)
         {
             var moves = movements.Where(x => x.BinsRunEntryId == entry.Id).ToArray();

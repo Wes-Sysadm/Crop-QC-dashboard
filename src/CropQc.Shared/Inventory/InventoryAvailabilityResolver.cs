@@ -208,11 +208,17 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             }
         }
         if (e.Movements.Any(x => x.At >= start && (!x.ExactIdentity || x.Signature != "u" || x.State != "Untreated"))) return false;
-        if (e.Applications.Any(x => x.ReceiptId is long id ? ids.Contains(id) : x.AppliedAt >= start)) return false;
+        if (e.Applications.Any(x => x.ReceiptId is long id ? ids.Contains(id) : AppliesToRoom(x, e) && x.AppliedAt >= start)) return false;
         if (e.Projections.Any(x => x.Quantity > 0 && (x.Signature != "u" || x.State != "Untreated" || !x.ApplicationIds.IsEmpty))) return false;
         receiptIds = ids.Order().ToImmutableArray();
         return true;
     }
+
+    // A treatment carried in from another room belongs to that allocation. It
+    // cannot make pre-existing untreated stock in this destination treated/ambiguous.
+    // Unknown scope remains conservative for older serialized fixture evidence.
+    private static bool AppliesToRoom(InventoryApplicationEvidence application, InventoryPositionEvidence evidence) =>
+        application.RoomId == null || application.RoomId == evidence.Location.RoomId;
 
     private static bool ValidTreatment(InventoryProjectionEvidence p, InventoryPositionEvidence e)
     {
@@ -232,7 +238,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
                 && receiptLedger.Length > 0 && receiptLedger.All(x => x.ExactIdentity) && receiptLedger.Sum(x => x.Quantity) == p.Quantity;
             return p.Signature == "u" && p.ApplicationIds.IsEmpty
                 && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId is long id
-                    ? !exactReceiptAllocation || id == p.ReceiptId : x.AppliedAt >= earliestArrival));
+                    ? !exactReceiptAllocation || id == p.ReceiptId : AppliesToRoom(x, e) && x.AppliedAt >= earliestArrival));
         }
         if (p.State != "Confirmed" || p.ApplicationIds.IsEmpty || !p.Signature.StartsWith("u|a:", StringComparison.Ordinal)) return false;
         var suffix = p.Signature[4..].Split(',');
