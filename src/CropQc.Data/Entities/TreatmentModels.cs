@@ -148,6 +148,11 @@ public sealed class RoomTreatmentApplicationSource
 
 public sealed class TreatmentLineageSegment
 {
+    public string Disposition { get; set; } = "Current";
+    public int? RetiredQuantity { get; set; }
+    public DateTimeOffset? RetiredAt { get; set; }
+    public string? RetiredByCommandKey { get; set; }
+
     public long Id { get; set; }
     public int WarehouseId { get; set; }
     public Warehouse Warehouse { get; set; } = null!;

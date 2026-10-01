@@ -95,7 +95,7 @@ public sealed record InventoryLedgerEvidence(long Id, int Quantity, string Kind,
     long? ReceiptId, string? MovementParent, bool ExactIdentity, DateTimeOffset? RecordedAt = null);
 public sealed record InventoryProjectionEvidence(long Id, string RawKey, int Quantity, string State,
     string Signature, long? ReceiptId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    long Version, bool ExactIdentity, ImmutableArray<long> ApplicationIds);
+    long Version, bool ExactIdentity, ImmutableArray<long> ApplicationIds, string Disposition = "Current", int? RetiredQuantity = null);
 public sealed record InventoryMovementEvidence(long Id, string Kind, int Quantity, DateTimeOffset At,
     DateTimeOffset CreatedAt, string Signature, string State, long? ReceiptId, long? SourceProjectionId,
     long? DestinationProjectionId, bool Incoming, bool Outgoing, string? Parent, long? ReversesId, bool ExactIdentity);

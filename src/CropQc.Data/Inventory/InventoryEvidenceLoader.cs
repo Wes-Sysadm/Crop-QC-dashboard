@@ -166,7 +166,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
     private static InventoryProjectionEvidence Projection(TreatmentLineageSegment x, InventoryIdentity identity, int warehouse) =>
         new(x.Id, x.IdentityKey, x.CurrentBins, x.TreatmentState, x.TreatmentSignature, x.ReceiptId, x.CreatedAt, x.UpdatedAt,
             x.ConcurrencyVersion, Identity(x).Key == identity.Key && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identity.Key
-                && x.WarehouseId == warehouse, x.Applications.OrderBy(a => a.Sequence).Select(a => a.RoomTreatmentApplicationId).ToImmutableArray());
+                && x.WarehouseId == warehouse, x.Applications.OrderBy(a => a.Sequence).Select(a => a.RoomTreatmentApplicationId).ToImmutableArray(), x.Disposition, x.RetiredQuantity);
     private static InventoryMovementEvidence Movement(TreatmentLineageMovement x, InventoryIdentity identity, int room) =>
         new(x.Id, x.MovementType, x.BinCount, x.OccurredAt, x.CreatedAt, x.TreatmentSignatureSnapshot, x.TreatmentStateSnapshot,
             x.ReceiptId, x.SourceSegmentId, x.DestinationSegmentId, x.DestinationRoomId == room, x.SourceRoomId == room,
