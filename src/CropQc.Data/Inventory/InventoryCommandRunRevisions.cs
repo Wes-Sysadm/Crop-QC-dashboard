@@ -7,6 +7,29 @@ namespace CropQc.Data.Inventory;
 
 public sealed partial class InventoryCommandExecutor
 {
+    private async Task<ImmutableArray<InventoryCommandEffect>> ReviseLegacyDumpAsync(CropQcDbContext db, CanonicalProjectionFactory factory,
+        InventoryCommand c, DateTimeOffset now, int attempt, CancellationToken ct)
+    {
+        Require(c.PhysicalParentId > 0 && c.Lines.Length == 1, "Legacy run correction needs one original entry and replacement allocation.");
+        var line = c.Lines.Single();
+        var loader = new InventoryEvidenceLoader(db);
+        var before = (await loader.LoadAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), now, ct)).Positions
+            .SingleOrDefault(x => x.Identity.Key == line.Source.Identity.Key);
+        Require(before != null && before.Watermark.Fingerprint == line.Source.ExpectedFingerprint && InventoryAvailabilityResolver.Resolve(before, new()).IsOperable,
+            "Inventory changed; reload before correcting this run.", InventoryCommandStatus.Stale);
+        var original = await db.BinsRunEntries.Include(x => x.InventoryAdjustment).SingleAsync(x => x.Id == c.PhysicalParentId, ct);
+        Require(original.InventoryAdjustment.RoomDepletionId == null, "Use receipt depletion reversal before recording a replacement depletion.");
+        var restored = await ReverseRunAsync(db, factory, c with { Kind = InventoryCommandKind.ReverseRunEntry, Lines = [] }, now, attempt, ct);
+        var evidence = (await loader.LoadAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), now, ct)).Positions
+            .Single(x => x.Identity.Key == line.Source.Identity.Key);
+        var refreshed = line with { Source = line.Source with { ExpectedFingerprint = evidence.Watermark.Fingerprint, ExpectedVersions = evidence.Watermark.Versions } };
+        var resolved = InventoryAvailabilityResolver.Resolve(evidence, InventoryCommandPolicy.Requirements(InventoryCommandKind.LegacyDump, refreshed));
+        Require(resolved.IsOperable && resolved.AvailableQuantity >= line.Quantity, "Exact restoration and current inventory cannot cover the replacement run.");
+        await NormalizePositionAsync(db, factory, c, evidence, resolved, now, attempt, ct);
+        var consumed = await ApplyAsync(db, factory, c with { Kind = InventoryCommandKind.LegacyDump }, [(refreshed, evidence, resolved)], now, attempt, ct);
+        return restored.AddRange(consumed);
+    }
+
     private async Task<ImmutableArray<InventoryCommandEffect>> ReviseRunAsync(CropQcDbContext db, CanonicalProjectionFactory factory,
         InventoryCommand c, DateTimeOffset now, int attempt, CancellationToken ct)
     {
@@ -77,7 +100,8 @@ public sealed partial class InventoryCommandExecutor
         }
         else
         {
-            entries = await db.BinsRunEntries.Include(x => x.InventoryAdjustment).Where(x => x.Id == c.PhysicalParentId).ToListAsync(ct);
+            entries = await db.BinsRunEntries.Include(x => x.InventoryAdjustment).Where(x => c.Kind == InventoryCommandKind.ReverseDepletion
+                ? x.InventoryAdjustment.RoomDepletionId == c.PhysicalParentId && x.InventoryAdjustment.ChangeAmount < 0 : x.Id == c.PhysicalParentId).ToListAsync(ct);
             Require(entries.Count == 1 && entries[0].ActualRunId == null && entries[0].TransactionType == ActualRunTransactionTypes.Legacy,
                 "Use Actual Run cancellation for revisioned entries.");
         }
@@ -91,6 +115,13 @@ public sealed partial class InventoryCommandExecutor
                 .Where(x => x.BinsRunEntryId == entry.Id).ToListAsync(ct);
             var restored = await RestoreConsumptionAsync(db, factory, c, entry.InventoryAdjustment, moves, entry.BinsRun, now, attempt, ct);
             restored.Ledger.AdjustmentType = "BinsRunReversal"; restored.Ledger.ActualRun = run; restored.Ledger.ActualRunRevision = revision;
+            if (entry.InventoryAdjustment.RoomDepletionId is long depletionId)
+            {
+                var depletion = await db.RoomDepletions.SingleAsync(x => x.Id == depletionId, ct);
+                Require(!depletion.IsVoided && depletion.BinCountDepleted == entry.BinsRun, "Depletion is voided or differs from its original consumption.");
+                depletion.IsVoided = true; depletion.VoidedAt = now; depletion.VoidedByUserId = c.ActorId; depletion.VoidReason = c.Reason;
+                restored.Ledger.RoomDepletion = depletion; restored.Ledger.AdjustmentType = "DepletionVoid";
+            }
             var reversal = new BinsRunEntry
             {
                 ReceiptId = entry.ReceiptId,

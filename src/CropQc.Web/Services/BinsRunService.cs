@@ -2038,6 +2038,7 @@ public sealed partial class BinsRunService(
 
     private async Task<string?> SaveNewBalanceAsync(long? entryId, BinsRunForm form, ClaimsPrincipal user, string auditAction, CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await SaveCanonicalLegacyRunAsync(entryId, form, user, cancellationToken);
         if (form.BinsRun <= 0)
         {
             return "Bins run must be greater than zero.";

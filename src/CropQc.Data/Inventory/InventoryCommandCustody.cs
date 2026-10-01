@@ -280,7 +280,8 @@ public sealed partial class InventoryCommandExecutor
         Require(destinationQuantity >= 0, "Return destination is negative.");
         var allReceives = await db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == transfer.Id && x.MovementType == "InterCrewReceive").ToListAsync(ct);
         var allReceiveIds = allReceives.Select(x => x.Id).ToArray();
-        var reversedReceiveIds = await db.TreatmentLineageMovements.Where(x => allReceiveIds.Contains(x.ReversesTreatmentLineageMovementId ?? 0))
+        var reversedReceiveIds = await db.TreatmentLineageMovements.Where(x => allReceiveIds.Contains(x.ReversesTreatmentLineageMovementId ?? 0)
+            && !x.OperationKey.StartsWith(c.OperationKey + ":"))
             .Select(x => x.ReversesTreatmentLineageMovementId!.Value).ToArrayAsync(ct);
         var receives = allReceives.Where(x => !reversedReceiveIds.Contains(x.Id)
             && (original == null || x.OperationKey.StartsWith(original.OperationKey + ":", StringComparison.Ordinal))).ToList();

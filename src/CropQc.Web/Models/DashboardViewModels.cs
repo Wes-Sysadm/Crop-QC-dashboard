@@ -116,6 +116,7 @@ public sealed class RoomVarietyColorSegmentViewModel
 
 public sealed class RoomDetailViewModel
 {
+    public bool CanonicalInventoryEnabled { get; set; }
     public string? DataWarning { get; set; }
     public RoomSummaryItemViewModel? Summary { get; set; }
     public IReadOnlyList<RoomLotSummaryViewModel> CurrentLots { get; set; } = [];
@@ -129,6 +130,7 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomProjectionLotViewModel> ProjectionLots { get; set; } = [];
     public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
+    public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public int TransferCurrentRoomBins { get; set; }
     public int TransferAvailableBins { get; set; }
@@ -464,7 +466,7 @@ public sealed class RoomLotSummaryViewModel
     public int SampleEvidenceCount { get; set; }
 }
 
-public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
+public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins, string TreatmentSignature = "", string CanonicalFingerprint = "");
 public sealed record RoomInventoryLotOptionViewModel(
     string LotKey,
     string Label,
@@ -577,6 +579,9 @@ public sealed class RoomDepletionListItemViewModel
 
 public sealed class RoomDepletionForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string TreatmentSignature { get; set; } = "";
+    public string CanonicalFingerprint { get; set; } = "";
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
     public int BinCount { get; set; }
@@ -588,6 +593,7 @@ public sealed class RoomDepletionForm
 
 public sealed class RoomInventoryTrueUpForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
@@ -897,6 +903,7 @@ public static class ActualRunSelectionModes
 
 public sealed class BinsRunForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
@@ -1163,6 +1170,7 @@ public sealed class CurrentInventorySourceRowViewModel
 
 public sealed class VoidRoomDepletionForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long DepletionId { get; set; }
     public int RoomId { get; set; }
     public string Reason { get; set; } = "";

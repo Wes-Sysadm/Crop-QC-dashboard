@@ -6,7 +6,8 @@ public enum InventoryCommandKind
 {
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
-    TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment
+    TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -23,7 +24,8 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     InventoryReceivingEvidence? ReceivingEvidence = null, InventoryProcessorTerms? ProcessorTerms = null,
     long? ExpectedTransferVersion = null, InventoryRunMetadata? Run = null, string? ApplicationIntent = null,
     InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
-    long? DispatchMovementId = null);
+    long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null);
+public sealed record InventoryLegacyRunMetadata(int? FacilityWarehouseId, string? FacilityCode, string AssignmentSource);
 public sealed record InventoryReceiptIntent(int CropYear, int WarehouseId, int RoomId, int GrowerLotId,
     int FruitProfileId, string ReceiptNumber, int Quantity, string ReceiptType = "Truck receipt");
 public sealed record InventoryDispatchMetadata(string? Reference, string? Notes);
@@ -43,8 +45,8 @@ public interface IInventoryCommandExecutor
 public static class InventoryCommandPolicy
 {
     public static InventoryOperationRequirements Requirements(InventoryCommandKind kind, InventoryCommandLine line) =>
-        new(RequireKnownTreatment: true, RequireExactReceipt: kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment,
-            ReceiptId: line.ReceiptId, TreatmentSignature: line.TreatmentSignature,
+        new(RequireKnownTreatment: kind != InventoryCommandKind.ManualStockAddition, RequireExactReceipt: kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion,
+            ReceiptId: line.ReceiptId, TreatmentSignature: kind == InventoryCommandKind.ManualStockAddition ? null : line.TreatmentSignature,
             AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint);
     public static bool IsRoomMove(InventoryCommandKind kind) => kind is InventoryCommandKind.RoomMove
         or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove;

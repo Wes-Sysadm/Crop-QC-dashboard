@@ -12,20 +12,33 @@ public sealed record InventoryRunCorrectionPosition(InventoryAvailabilityResult 
 /// Does not add the credit to physical authority or authorize any other operation.</summary>
 public sealed class InventoryRunCorrectionAvailability(CropQcDbContext db)
 {
+    public async Task<IReadOnlyDictionary<string, InventoryRunCorrectionPosition>> ReadLegacyAsync(InventoryAvailabilityBatch current, long entryId, CancellationToken ct)
+    {
+        var entries = await db.BinsRunEntries.AsNoTracking().Include(x => x.InventoryAdjustment).Where(x => x.Id == entryId).ToListAsync(ct);
+        return await ReadEntriesAsync(current, entries, entries.Count != 1 || entries.Any(x => x.ActualRunId != null || x.IsReversed || x.IsReconciled
+            || x.TransactionType != ActualRunTransactionTypes.Legacy), ct);
+    }
+
     public async Task<IReadOnlyDictionary<string, InventoryRunCorrectionPosition>> ReadAsync(InventoryAvailabilityBatch current, long runId, CancellationToken ct)
     {
         var run = await db.ActualRuns.AsNoTracking().Include(x => x.Revisions).SingleAsync(x => x.Id == runId, ct);
         var revision = run.Revisions.SingleOrDefault(x => x.IsCurrent);
         var entries = await db.BinsRunEntries.AsNoTracking().Include(x => x.InventoryAdjustment)
             .Where(x => x.ActualRunId == runId && !x.IsReversed && x.TransactionType == ActualRunTransactionTypes.Depletion).ToListAsync(ct);
+        return await ReadEntriesAsync(current, entries, run.Status != ActualRunStatuses.Active || revision == null
+            || entries.Any(x => x.ActualRunRevisionId != revision.Id || x.IsReconciled), ct);
+    }
+
+    private async Task<IReadOnlyDictionary<string, InventoryRunCorrectionPosition>> ReadEntriesAsync(InventoryAvailabilityBatch current,
+        List<BinsRunEntry> entries, bool invalid, CancellationToken ct)
+    {
         var ids = entries.Select(x => x.Id).ToArray();
         var movements = await db.TreatmentLineageMovements.AsNoTracking().Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
             .Where(x => ids.Contains(x.BinsRunEntryId ?? 0)).ToListAsync(ct);
         var movementIds = movements.Select(x => x.Id).ToArray();
         var alreadyRestored = await db.TreatmentLineageMovements.AsNoTracking().AnyAsync(x => movementIds.Contains(x.ReversesTreatmentLineageMovementId ?? 0), ct)
             || await db.BinsRunEntries.AsNoTracking().AnyAsync(x => ids.Contains(x.ReversesBinsRunEntryId ?? 0), ct);
-        var invalid = run.Status != ActualRunStatuses.Active || revision == null || alreadyRestored
-            || entries.Any(x => x.ActualRunRevisionId != revision.Id || x.IsReconciled);
+        invalid |= alreadyRestored;
         var result = new Dictionary<string, InventoryRunCorrectionPosition>();
         foreach (var p in current.Positions)
         {

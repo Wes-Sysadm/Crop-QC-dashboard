@@ -13,10 +13,13 @@ public sealed partial class InventoryCommandExecutor
         Require(c.Kind != InventoryCommandKind.ReverseRoomMove || c.PhysicalParentId > 0 && c.Lines.Length == 1,
             "Room reversal requires the exact original transfer.");
         Require(c.Lines.All(x => Enum.IsDefined(x.AdjustmentDirection) && (x.AdjustmentDirection == InventoryAdjustmentDirection.Decrease
-            || c.Kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.BaselineAdjustment)), "Only explicit corrections may add authoritative inventory.");
+            || c.Kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.BaselineAdjustment or InventoryCommandKind.ManualStockAddition)), "Only explicit corrections may add authoritative inventory.");
+        Require(c.Kind != InventoryCommandKind.ManualStockAddition || c.Lines.Length == 1 && c.Lines[0].AdjustmentDirection == InventoryAdjustmentDirection.Increase
+            && c.Lines[0].TreatmentSignature == "x" && c.Lines[0].ReceiptId == null, "Manual stock creation must explicitly retain Unknown treatment and unattributed receipt provenance.");
         Require(c.Lines.All(x => x.Source.Location.Custody == InventoryCustody.Room
             || c.Kind is InventoryCommandKind.ReceiveTransfer or InventoryCommandKind.Return or InventoryCommandKind.ReturnTransitAllocation), "Operation requires room inventory.");
         Require(c.Kind != InventoryCommandKind.ReceiptCorrection || c.Lines.All(x => x.ReceiptId != null), "Receipt correction requires exact receipt scope.");
+        Require(c.Kind != InventoryCommandKind.ReceiptDepletion || c.Lines.Length == 1 && c.Lines[0].ReceiptId > 0, "Receipt depletion requires one exact receipt and treatment selection.");
         Require(!InventoryCommandPolicy.IsRoomMove(c.Kind) || c.Lines.All(x => x.Destination != null
             && x.Destination.RoomId != x.Source.Location.RoomId), "Room movement requires a different destination.");
         Require(c.Kind != InventoryCommandKind.ReceiveTransfer || c.Lines.All(x => x.Source.Location.Custody == InventoryCustody.InTransit && x.Destination != null), "Receive requires in-transit custody and a destination.");
@@ -138,11 +141,13 @@ public sealed partial class InventoryCommandExecutor
             var allocations = new List<Allocation>();
             if (loc.Custody == InventoryCustody.Room)
             {
+                Require(await db.Rooms.AnyAsync(x => x.Id == loc.RoomId && x.WarehouseId == loc.WarehouseId && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct),
+                    "Source is unavailable, sealed or mismatched.");
                 var rows = await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => x.RoomId == loc.RoomId
                     && x.Disposition == "Current" && x.CurrentBins > 0 && x.TreatmentSignature == line.TreatmentSignature).OrderBy(x => x.Id).ToListAsync(ct);
                 var remaining = qty;
                 foreach (var row in rows.Where(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == i.Key
-                    && (c.Kind is not (InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment) || x.ReceiptId == line.ReceiptId)
+                    && (c.Kind is not (InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion) || x.ReceiptId == line.ReceiptId)
                     && (originalRoomTransfer == null || originalRoomMoves.Any(m => m.DestinationSegmentId == x.Id))))
                 {
                     Require(row.IdentityKey == i.Key, "Status alias requires an exact normalization plan before consumption.");
@@ -180,6 +185,8 @@ public sealed partial class InventoryCommandExecutor
             var entries = new List<RoomInventoryAdjustment>();
             var movements = new List<TreatmentLineageMovement>();
             long? parentId = null;
+            BinsRunEntry? legacyEntry = null;
+            RoomDepletion? receiptDepletion = null;
             var destination = line.Destination;
             int destinationBefore = 0;
             if (destination != null)
@@ -272,11 +279,35 @@ public sealed partial class InventoryCommandExecutor
                 AddAudit(db, c, "CanonicalTransferAllocationEdit", transfer.Id.ToString(), oldParent, new { transfer.BinsLoaded, transfer.ConcurrencyVersion }, now);
                 parentId = transfer.Id;
             }
-            else if (c.Kind == InventoryCommandKind.Dump)
+            else if (c.Kind is InventoryCommandKind.Dump or InventoryCommandKind.LegacyDump or InventoryCommandKind.ReceiptDepletion)
             {
                 debit!.AdjustmentType = "BinsRun"; debit.ActualRun = run; debit.ActualRunRevision = revision;
+                RoomDepletion? depletion = null;
+                if (c.Kind == InventoryCommandKind.ReceiptDepletion)
+                {
+                    var receipt = await db.Receipts.SingleAsync(x => x.Id == line.ReceiptId, ct);
+                    Require(!receipt.IsDeleted && !receipt.IsTransferReceipt && receipt.RoomId == loc.RoomId,
+                        "Receipt depletion requires exact inventory in the original receiving room.");
+                    depletion = new()
+                    {
+                        Receipt = receipt,
+                        WarehouseId = loc.WarehouseId,
+                        RoomId = loc.RoomId!.Value,
+                        FruitProfileId = i.FruitProfileId!.Value,
+                        GrowerName = receipt.GrowerName,
+                        LotCode = receipt.LotCode,
+                        BinCountDepleted = qty,
+                        Destination = c.Dispatch?.Reference,
+                        Notes = c.Dispatch?.Notes,
+                        DepletedAt = c.EffectiveAt,
+                        CreatedByUserId = c.ActorId,
+                        CreatedAt = now
+                    };
+                    db.RoomDepletions.Add(depletion); debit.RoomDepletion = depletion; debit.ReceiptId = receipt.Id; debit.AdjustmentType = "Depletion";
+                }
                 var entry = new BinsRunEntry
                 {
+                    ReceiptId = line.ReceiptId,
                     InventoryAdjustment = debit,
                     WarehouseId = loc.WarehouseId,
                     RoomId = loc.RoomId!.Value,
@@ -296,16 +327,25 @@ public sealed partial class InventoryCommandExecutor
                     CreatedByUserId = c.ActorId,
                     ActualRun = run,
                     ActualRunRevision = revision,
-                    TransactionType = ActualRunTransactionTypes.Depletion,
+                    TransactionType = run != null ? ActualRunTransactionTypes.Depletion : ActualRunTransactionTypes.Legacy,
                     TreatmentStateSnapshot = allocations[0].Segment.TreatmentState,
                     TreatmentSignatureSnapshot = line.TreatmentSignature,
                     ProductionTypeSnapshot = i.ProductionType,
                     IsOrganicSnapshot = i.IsOrganic,
-                    Notes = c.Reason
+                    Notes = c.Dispatch?.Notes ?? c.Reason,
+                    ReportingFacilityWarehouseId = c.LegacyRun?.FacilityWarehouseId,
+                    ReportingFacilityCodeSnapshot = c.LegacyRun?.FacilityCode,
+                    ReportingFacilityAssignmentSource = c.LegacyRun?.AssignmentSource,
+                    ReportingFacilityAssignedByUserId = c.LegacyRun?.FacilityWarehouseId != null ? c.ActorId : null,
+                    ReportingFacilityAssignedAt = c.LegacyRun?.FacilityWarehouseId != null ? now : null,
+                    ReportingCropYearSnapshot = i.CropYear,
+                    ReportingFruitProfileIdSnapshot = i.FruitProfileId,
+                    ReportingVarietyCodeSnapshot = i.Variety
                 };
                 db.BinsRunEntries.Add(entry);
                 foreach (var a in allocations) { var m = Move(c, i, a, null, loc.RoomId, null, partKey, now, "BinsRun"); m.BinsRunEntry = entry; movements.Add(m); }
-                parentId = run!.Id;
+                legacyEntry = entry; receiptDepletion = depletion;
+                parentId = run?.Id;
             }
             else if (c.Kind is InventoryCommandKind.OutsideWarehouseTransfer or InventoryCommandKind.InterCompanyDispatch or InventoryCommandKind.ProcessorSale)
                 parentId = await DispatchAsync(db, c, i, loc, allocations, debit!, movements, partKey, now, ct);
@@ -401,6 +441,7 @@ public sealed partial class InventoryCommandExecutor
             AddAudit(db, c, "CanonicalProjectionOperation", r.PositionKey, segmentBefore,
                 new { c.Kind, Quantity = qty, Segments = allocations.Select(x => new { x.Segment.Id, x.Segment.CurrentBins, x.Segment.ConcurrencyVersion, x.Segment.Disposition }) }, now);
             await db.SaveChangesAsync(ct);
+            if (legacyEntry != null && run == null) parentId = receiptDepletion?.Id ?? legacyEntry.Id;
             await Stage($"PersistedSource{index + 1}", db, attempt, ct);
             var after = loc.Custody == InventoryCustody.Room ? await PhysicalAsync(db, i, loc.WarehouseId, loc.RoomId!.Value, ct) : checked(before - qty);
             var expected = InventoryCommandPolicy.IsTreatment(c.Kind) ? before : checked(before + delta);

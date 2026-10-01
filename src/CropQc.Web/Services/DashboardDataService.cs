@@ -530,6 +530,7 @@ public sealed partial class DashboardDataService(
 
             return new RoomDetailViewModel
             {
+                CanonicalInventoryEnabled = dbContext.CanonicalInventoryEnabled,
                 Summary = summary,
                 CurrentLots = activeLots,
                 CurrentGrowers = currentGrowers,
@@ -541,10 +542,13 @@ public sealed partial class DashboardDataService(
                 BaselineProjection = BuildRoomProjection(activeLots, sampleDistributions, isSelection: false),
                 ProjectionLots = BuildRoomProjectionLots(activeLots, sampleDistributions, BusinessTime.NowPacific),
                 SampleTimeline = await BuildRoomSampleTimelineAsync(roomId, cancellationToken),
-                DepletionReceiptOptions = activeLots
+                DepletionReceiptOptions = dbContext.CanonicalInventoryEnabled ? await CanonicalDepletionOptionsAsync(roomId, cancellationToken) : activeLots
                     .Where(x => x.ReceiptId is not null)
                     .Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value, $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} {x.VarietyCode} ({x.CurrentBins} bins current)", x.CurrentBins))
                     .ToList(),
+                TrueUpReceiptOptions = dbContext.CanonicalInventoryEnabled ? await CanonicalManualStockOptionsAsync(roomId, cancellationToken) : activeLots
+                    .Where(x => x.ReceiptId != null).Select(x => new RoomReceiptOptionViewModel(x.ReceiptId!.Value,
+                        $"{x.DisplayReceiptId} - {x.GrowerName} {x.LotCode} ({x.CurrentBins} bins current)", x.CurrentBins)).ToList(),
                 TransferLotOptions = transferProjection.Options,
                 TransferCurrentRoomBins = transferProjection.CurrentRoomBins,
                 TransferAvailableBins = transferProjection.AvailableBins,
@@ -660,6 +664,8 @@ public sealed partial class DashboardDataService(
             return "Bin count must be positive.";
         }
 
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalDepletionAsync(form, cancellationToken);
+
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
         var sealError = await RoomMovementSealGuard.ValidateAsync(dbContext, [form.RoomId], [], BusinessTime, cancellationToken);
         if (sealError is not null) return sealError;
@@ -766,6 +772,8 @@ public sealed partial class DashboardDataService(
         {
             return "Void reason is required.";
         }
+
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalDepletionAsync(form, cancellationToken);
 
         await using var transaction = await BeginInventoryTransactionIfSupportedAsync(cancellationToken);
         var depletion = await dbContext.RoomDepletions
@@ -876,6 +884,8 @@ public sealed partial class DashboardDataService(
         {
             return "Reason is required for bin count true-up.";
         }
+
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalManualStockAsync(form, cancellationToken);
 
         var receipt = await dbContext.Receipts
             .Include(x => x.Warehouse)

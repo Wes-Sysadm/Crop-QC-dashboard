@@ -32,7 +32,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         var key = command.OperationKey;
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
             || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
-            || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry) || command.Lines.Length > 100
+            || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
                 || string.IsNullOrWhiteSpace(x.TreatmentSignature)))
@@ -59,7 +59,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 var loader = new InventoryEvidenceLoader(db);
                 var resolved = new List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)>();
                 var readAt = DateTimeOffset.UtcNow;
-                foreach (var line in command.Kind == InventoryCommandKind.ReviseRun ? [] : command.Lines)
+                foreach (var line in command.Kind is InventoryCommandKind.ReviseRun or InventoryCommandKind.ReviseLegacyDump ? [] : command.Lines)
                 {
                     var location = line.Source.Location;
                     if (location.Custody == InventoryCustody.Room)
@@ -74,7 +74,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     Require(!r.Blockers.Any(x => x.Code == InventoryBlockerCode.StaleRead), "Read fingerprint changed.", InventoryCommandStatus.Stale);
                     Require(line.Source.ExpectedVersions.IsDefaultOrEmpty || line.Source.ExpectedVersions.All(x => r.Watermark.Versions.Contains(x)),
                         "Expected entity version changed.", InventoryCommandStatus.Stale);
-                    Require(r.IsOperable && (line.AdjustmentDirection == InventoryAdjustmentDirection.Increase ? r.AvailableQuantity > 0 : r.AvailableQuantity >= line.Quantity),
+                    Require(r.IsOperable && (command.Kind == InventoryCommandKind.ManualStockAddition ? r.AuthoritativeQuantity >= 0
+                        : line.AdjustmentDirection == InventoryAdjustmentDirection.Increase ? r.AvailableQuantity > 0 : r.AvailableQuantity >= line.Quantity),
                         $"Canonical evidence or available quantity blocks {command.Kind}: {string.Join(',', r.Blockers.Select(x => x.Code))}.");
                     Require(!resolved.Any(x => x.Result.PositionKey == r.PositionKey && x.Line.TreatmentSignature == line.TreatmentSignature),
                         "Duplicate treatment slice in a command.", InventoryCommandStatus.InvalidIntent);
@@ -104,6 +105,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 var factory = new CanonicalProjectionFactory(db);
                 foreach (var item in resolved.Concat(destinations).Where(x => x.Evidence.Location.Custody == InventoryCustody.Room).DistinctBy(x => x.Result.PositionKey))
                 {
+                    if (command.Kind == InventoryCommandKind.ManualStockAddition && item.Result.RawProjectionQuantity == item.Result.AuthoritativeQuantity) continue;
                     await NormalizePositionAsync(db, factory, command, item.Evidence, item.Result, readAt, attempt, cancellationToken);
                 }
                 await Stage("Normalized", db, attempt, cancellationToken);
@@ -111,9 +113,11 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 {
                     InventoryCommandKind.ReceiveStock => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReverseLoss => await ReverseLossAsync(db, factory, command, readAt, attempt, cancellationToken),
-                    InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReviseRun => await ReviseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ReviseLegacyDump => await ReviseLegacyDumpAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReturnTransitAllocation => await ReturnTransitAllocationAsync(db, factory, command, resolved.Single().Result, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ManualStockAddition => await AddManualStockAsync(db, factory, command, resolved.Single().Result, readAt, attempt, cancellationToken),
                     _ => await ApplyAsync(db, factory, command, resolved, readAt, attempt, cancellationToken)
                 };
                 AddAudit(db, command, "CanonicalInventoryCommand", key, new { intent, hash }, effects, readAt);

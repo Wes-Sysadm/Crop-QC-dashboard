@@ -90,7 +90,7 @@ public sealed class BinsRunController(
             model.TransferInventoryReconciles = room.TransferInventoryReconciles;
             model.TransferInventoryError = room.TransferInventoryError;
             model.TransferInventoryNotice = room.TransferInventoryNotice;
-            model.TrueUpReceiptOptions = room.DepletionReceiptOptions;
+            model.TrueUpReceiptOptions = room.TrueUpReceiptOptions;
             model.TransferDestinationFacilities = room.TransferDestinationFacilities;
             model.TransferDestinationOptions = room.TransferDestinationOptions;
             if (filter.TransferDestinationWarehouseId is int destinationWarehouseId)
