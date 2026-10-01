@@ -17,10 +17,14 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
 
     public static InventoryAvailabilityResult Resolve(InventoryPositionEvidence e, InventoryOperationRequirements requirements)
     {
+        var retired = e.Projections.Where(x => x.Disposition == "Historical").ToArray();
+        e = e with { Projections = e.Projections.Where(x => x.Disposition != "Historical").ToImmutableArray() };
         var blockers = new List<InventoryBlocker>();
         var slices = new List<InventoryTreatmentSlice>();
         var history = new List<HistoricalInventoryProjection>();
         var candidates = new List<InventoryNormalizationCandidate>();
+        history.AddRange(retired.Select(x => new HistoricalInventoryProjection([x.Id], x.RetiredQuantity ?? 0,
+            ProjectionExclusionReason.StaleHistoricalPool, true, [Ref("TreatmentLineageSegment", x.Id)])));
         var references = e.Ledger.Select(x => Ref("RoomInventoryAdjustment", x.Id))
             .Concat(e.Movements.Select(x => Ref("TreatmentLineageMovement", x.Id)))
             .Concat(e.Projections.Select(x => Ref("TreatmentLineageSegment", x.Id)))
@@ -214,7 +218,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         {
             var earliestArrival = e.Ledger.Where(x => x.Quantity > 0).Select(x => x.At).DefaultIfEmpty(p.CreatedAt).Min();
             return p.Signature == "u" && p.ApplicationIds.IsEmpty
-                && !e.Applications.Any(x => x.ReceiptId != null || x.AppliedAt >= earliestArrival);
+                && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId != null || x.AppliedAt >= earliestArrival));
         }
         if (p.State != "Confirmed" || p.ApplicationIds.IsEmpty || !p.Signature.StartsWith("u|a:", StringComparison.Ordinal)) return false;
         var suffix = p.Signature[4..].Split(',');

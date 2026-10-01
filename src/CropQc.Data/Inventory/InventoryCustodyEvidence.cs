@@ -109,6 +109,9 @@ public sealed partial class InventoryEvidenceLoader
                 var projections = group.Select(x => Projection(segmentIndex[x.Movement.SourceSegmentId!.Value], identity, parent.Warehouse) with
                 {
                     Quantity = x.Quantity,
+                    // This is an immutable custody allocation, even when its source-room projection is retired.
+                    Disposition = "Current",
+                    RetiredQuantity = null,
                     Signature = x.Movement.TreatmentSignatureSnapshot,
                     State = x.Movement.TreatmentStateSnapshot,
                     ReceiptId = x.Movement.ReceiptId

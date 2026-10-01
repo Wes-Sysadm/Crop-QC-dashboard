@@ -5,6 +5,7 @@ namespace CropQc.Data;
 
 public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) : DbContext(options)
 {
+    public DbSet<InventoryCommandRecord> InventoryCommands => Set<InventoryCommandRecord>();
     private bool synchronizingDefectInspectionStatus;
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
@@ -248,6 +249,17 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<InventoryCommandRecord>(entity =>
+        {
+            entity.HasKey(x => x.OperationKey);
+            entity.Property(x => x.OperationKey).HasMaxLength(100);
+            entity.Property(x => x.IntentHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.IntentJson).IsRequired();
+            entity.Property(x => x.ResultJson).IsRequired();
+            entity.Property(x => x.ReversesOperationKey).HasMaxLength(100);
+            entity.HasIndex(x => x.ReversesOperationKey).IsUnique();
+        });
+
         ConfigureAuth(modelBuilder);
         ConfigureMasterData(modelBuilder, IsPostgreSqlProvider(), IsSqliteProvider());
         ConfigureQc(modelBuilder, IsPostgreSqlProvider());
@@ -2157,6 +2169,9 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
         modelBuilder.Entity<TreatmentLineageSegment>(entity =>
         {
+            entity.Property(x => x.Disposition).HasMaxLength(20).HasDefaultValue("Current");
+            entity.Property(x => x.RetiredByCommandKey).HasMaxLength(100);
+
             entity.Property(x => x.IdentityKey).HasMaxLength(500).IsRequired();
             entity.Property(x => x.GrowerNumberSnapshot).HasMaxLength(50);
             entity.Property(x => x.GrowerNameSnapshot).HasMaxLength(200).IsRequired();
@@ -2169,11 +2184,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
             entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature })
                 .HasDatabaseName("UX_TreatmentLineageSegments_Unassigned")
-                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NULL" : "[ReceiptId] IS NULL")
+                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NULL AND \"Disposition\" = 'Current'" : "[ReceiptId] IS NULL AND [Disposition] = 'Current'")
                 .IsUnique();
             entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature, x.ReceiptId })
                 .HasDatabaseName("UX_TreatmentLineageSegments_Receipt")
-                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NOT NULL" : "[ReceiptId] IS NOT NULL")
+                .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NOT NULL AND \"Disposition\" = 'Current'" : "[ReceiptId] IS NOT NULL AND [Disposition] = 'Current'")
                 .IsUnique();
             entity.HasIndex(x => new { x.RoomId, x.CurrentBins });
             entity.HasIndex(x => x.ReceiptId);
