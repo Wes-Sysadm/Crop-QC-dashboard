@@ -881,7 +881,9 @@ public sealed partial class BinsRunService(
 
         form.Id = id;
         form.RunProjectionId = null;
-        if (dbContext.CanonicalInventoryEnabled) return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled && (await dbContext.InventoryCommands.AsNoTracking().AnyAsync(x => x.OperationKey == form.OperationKey, cancellationToken)
+            || await HasActualRunLineChangesAsync(id, form.Lines, cancellationToken)))
+            return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
         if (!string.IsNullOrWhiteSpace(form.OperationKey)
             && await dbContext.ActualRunRevisions.AsNoTracking()
                 .AnyAsync(x => x.OperationKey == form.OperationKey.Trim() && x.ActualRunId == id, cancellationToken))
@@ -1001,6 +1003,8 @@ public sealed partial class BinsRunService(
         if (notes?.Length > 1000) return new("Run notes cannot exceed 1000 characters.");
 
         var newRunAt = form.RunAt.ToUniversalTime();
+        if (dbContext.Database.IsNpgsql())
+            newRunAt = new(newRunAt.Ticks - newRunAt.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
         if (newRunAt > BusinessTime.UtcNow.AddMinutes(5))
             return new("Run date/time cannot be more than five minutes in the future.");
         var userId = await CurrentUserIdAsync(user, cancellationToken);
@@ -1884,12 +1888,12 @@ public sealed partial class BinsRunService(
                 x => x.Select(y => y.SourceSegmentId).Distinct().ToList() is { Count: 1 } ids ? ids[0] : null);
 
         var existing = activeEntries.Select(x =>
-                $"{LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.Variety, x.FruitProfileId, x.GrowerLotId)}|{x.TreatmentSignature}|{sourceSegments.GetValueOrDefault(x.Id)}|{x.BinsRun}")
+                $"{LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.Variety, x.FruitProfileId, x.GrowerLotId)}|{x.TreatmentSignature}|{(dbContext.CanonicalInventoryEnabled ? null : sourceSegments.GetValueOrDefault(x.Id))}|{x.BinsRun}")
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var submitted = submittedLines
             .Where(x => !string.IsNullOrWhiteSpace(x.InventoryKey) || x.BinsRun != 0)
-            .Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{x.TreatmentSegmentId}|{x.BinsRun}")
+            .Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{(dbContext.CanonicalInventoryEnabled ? null : x.TreatmentSegmentId)}|{x.BinsRun}")
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return !existing.SequenceEqual(submitted, StringComparer.OrdinalIgnoreCase);

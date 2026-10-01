@@ -1,5 +1,6 @@
 using CropQc.Data;
 using CropQc.Data.Inventory;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using CropQc.Web.Services;
@@ -11,6 +12,61 @@ namespace CropQc.Api.Tests;
 
 public sealed class CanonicalWorkflowConcurrencyTests
 {
+    [InventoryPostgresFact]
+    public async Task Truck_completion_versus_partial_return_through_normal_services()
+    {
+        await using var f = await Fixture.Create();
+        var receiving = await f.ReceiveCommand();
+        var id = receiving.Lines[0].Source.Location.CustodyRecordId!.Value;
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var left = factory.CreateDbContext();
+        await using var right = factory.CreateDbContext();
+        var parent = await left.InterCrewTransfers.AsNoTracking().SingleAsync(x => x.Id == id);
+        var dispatch = await left.TreatmentLineageMovements.AsNoTracking().SingleAsync(x => x.InterCrewTransferId == id && x.MovementType == "InterCrewDispatch");
+        var beforeCommands = await left.InventoryCommands.CountAsync();
+        var arrived = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observer = new Observer(async (stage, attempt) =>
+        {
+            if (stage != "Resolved" || attempt != 1) return;
+            if (Interlocked.Increment(ref arrived) == 2) gate.SetResult();
+            await gate.Task.WaitAsync(TimeSpan.FromSeconds(45));
+        });
+        var completion = CanonicalTruckReceiptWorkflowTests.Service(left, new InventoryCommandExecutor(factory, observer));
+        var returns = CanonicalTruckReceiptWorkflowTests.Service(right, new InventoryCommandExecutor(factory, observer));
+        var results = await Task.WhenAll(
+            completion.CompleteAsync(new()
+            {
+                TransferId = id,
+                TransferVersion = parent.ConcurrencyVersion,
+                ReceiptId = receiving.ReceivingEvidence!.ReceiptId,
+                ReceiptVersion = receiving.ReceivingEvidence.ExpectedVersion
+            }, default),
+            returns.EditTransferAsync(new()
+            {
+                TransferId = id,
+                TransferVersion = parent.ConcurrencyVersion,
+                DispatchMovementId = dispatch.Id,
+                Bins = 5,
+                Reason = "Local concurrent partial return"
+            }, default));
+        Assert.True(results.Count(x => x == null) == 1, string.Join("; ", results.Select(x => x ?? "Committed")));
+        await using var check = factory.CreateDbContext();
+        Assert.Equal(beforeCommands + 1, await check.InventoryCommands.CountAsync());
+        var source = await f.Physical();
+        var destination = (await new CropQc.Data.Inventory.RoomInventoryLedgerQueryService(check).GetSnapshotsAsync(9006, [9007], default)).Sum(x => x.CurrentBins);
+        var transit = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(check)).ResolveAsync(new(9001, [], InventoryCustody.InTransit),
+            new(AllowedCustody: InventoryCustody.InTransit), DateTimeOffset.UtcNow);
+        Assert.All(transit.Positions, x => Assert.True(x.IsOperable));
+        Assert.Equal(19, source + destination + transit.Positions.Sum(x => x.AuthoritativeQuantity));
+        Assert.Equal(results[0] == null ? 0 : 5, source);
+        Assert.Equal(results[0] == null ? 19 : 0, destination);
+        Assert.Equal(results[0] == null ? 0 : 14, transit.Positions.Sum(x => x.AuthoritativeQuantity));
+        Assert.Equal(results[0] == null, await check.Receipts.Where(x => x.Id == receiving.ReceivingEvidence.ReceiptId).Select(x => x.TransferCompletedAt != null).SingleAsync());
+        var retained = await check.TreatmentLineageMovements.AsNoTracking().SingleAsync(x => x.Id == dispatch.Id);
+        Assert.Equal(dispatch.BinCount, retained.BinCount); Assert.Equal(dispatch.SourceSegmentId, retained.SourceSegmentId);
+    }
+
     [InventoryPostgresFact]
     public Task Dump_versus_dump_through_normal_services() => Race("Dump", "Dump");
     [InventoryPostgresFact]

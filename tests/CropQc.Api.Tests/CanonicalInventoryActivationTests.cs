@@ -10,6 +10,43 @@ namespace CropQc.Api.Tests;
 public sealed class CanonicalInventoryActivationTests
 {
     [Fact]
+    public async Task Parent_status_cannot_bypass_physical_custody_or_run_restoration()
+    {
+        var options = new DbContextOptionsBuilder<CropQcDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new CropQcDbContext(options, new(true));
+        var run = new ActualRun { Id = 1, Status = ActualRunStatuses.Active, CurrentRevisionNumber = 1 };
+        db.Attach(run); run.Status = ActualRunStatuses.Canceled;
+        await Assert.ThrowsAsync<InventoryWriterNotMigratedException>(() => db.SaveChangesAsync()); db.ChangeTracker.Clear();
+        var shipment = new ProcessorShipment
+        {
+            Id = 1,
+            OperationKey = "guard",
+            ProcessorNameSnapshot = "Processor",
+            OriginalPricingBasis = "PerBin",
+            PricingBasis = "PerBin",
+            Currency = "USD"
+        };
+        db.Attach(shipment); shipment.ReversedAt = DateTimeOffset.UtcNow;
+        await Assert.ThrowsAsync<InventoryWriterNotMigratedException>(() => db.SaveChangesAsync()); db.ChangeTracker.Clear();
+        var transfer = new InterCrewTransfer
+        {
+            Id = 1,
+            OperationKey = "guard",
+            DestinationCustodyGroup = "EBS",
+            GrowerNameSnapshot = "Grower",
+            LotNumberSnapshot = "1",
+            VarietyCodeSnapshot = "CGAL",
+            ProductionTypeSnapshot = "Conventional",
+            TreatmentStateSnapshot = "Untreated",
+            TreatmentSignatureSnapshot = "u",
+            TreatmentSummarySnapshot = "Untreated",
+            Status = InterCrewTransferStatuses.InTransit
+        };
+        db.Attach(transfer); transfer.Status = InterCrewTransferStatuses.Received;
+        await Assert.ThrowsAsync<InventoryWriterNotMigratedException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task Registered_executor_is_dormant_while_feature_is_off()
     {
         var services = new ServiceCollection();

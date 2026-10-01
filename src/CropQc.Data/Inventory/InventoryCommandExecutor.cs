@@ -32,7 +32,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         var key = command.OperationKey;
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
             || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
-            || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion
+            || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion
                 or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
@@ -112,7 +112,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 await Stage("Normalized", db, attempt, cancellationToken);
                 var effects = command.Kind switch
                 {
-                    InventoryCommandKind.ReceiveStock => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReverseLoss => await ReverseLossAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReviseRun => await ReviseRunAsync(db, factory, command, readAt, attempt, cancellationToken),

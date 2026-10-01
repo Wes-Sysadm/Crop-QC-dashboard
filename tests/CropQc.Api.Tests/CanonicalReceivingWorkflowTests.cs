@@ -17,6 +17,83 @@ namespace CropQc.Api.Tests;
 public sealed class CanonicalReceivingWorkflowTests
 {
     [InventoryPostgresFact]
+    public async Task Ordinary_receipt_conversion_and_unposted_receiving_use_one_audited_stock_creation()
+    {
+        await using var f = await Fixture.Create();
+        long[] ids;
+        await using (var seed = f.CreateDbContext())
+        {
+            var grower = await seed.GrowerLots.SingleAsync(x => x.Id == 100000);
+            var receipts = new[] { "Door sample", "Truck receipt" }.Select(type => new CropQc.Data.Entities.Receipt
+            {
+                CropYear = 2026,
+                WarehouseId = 9001,
+                RoomId = 9002,
+                FruitProfileId = 9004,
+                GrowerLotId = grower.Id,
+                GrowerName = grower.Grower,
+                GrowerNumber = grower.LotNumber,
+                LotCode = grower.LotNumber,
+                CompuTechReceiptId = "LOCAL-ACTIVATE-" + type,
+                ReceiptType = type,
+                BinCount = 7,
+                ReceivedAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }).ToArray();
+            seed.Receipts.AddRange(receipts); await seed.SaveChangesAsync(); ids = receipts.Select(x => x.Id).ToArray();
+        }
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        var executor = new InventoryCommandExecutor(factory);
+        foreach (var id in ids)
+        {
+            var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == id);
+            var form = new UpdateReceiptForm
+            {
+                Id = id,
+                ReceiptVersion = receipt.ConcurrencyVersion,
+                CropYear = 2026,
+                ConfirmCropYear = true,
+                ReceivedAt = receipt.ReceivedAt,
+                WarehouseId = 9001,
+                RoomId = 9002,
+                FruitProfileId = 9004,
+                GrowerLotId = 100000,
+                GrowerName = receipt.GrowerName,
+                GrowerNumber = receipt.GrowerNumber!,
+                LotCode = receipt.LotCode,
+                CompuTechReceiptId = receipt.CompuTechReceiptId,
+                ReceiptType = "Truck receipt",
+                BinCount = 7
+            };
+            var before = await f.Snapshot(); var beforeQuantity = await f.Physical();
+            foreach (var stage in new[] { "Movement", "BeforeCommit" })
+            {
+                var reached = false;
+                var failing = new InventoryCommandExecutor(factory, new Observer((at, _) =>
+                {
+                    if (at != stage) return Task.CompletedTask;
+                    reached = true; return Task.FromException(new InvalidOperationException("Local activation failure"));
+                }));
+                Assert.NotNull(await Dashboard(db, failing).UpdateReceiptAsync(form, default));
+                Assert.True(reached); Assert.Equal(before, await f.Snapshot());
+            }
+            var web = Dashboard(db, executor);
+            Assert.Null(await web.UpdateReceiptAsync(form, default));
+            Assert.Equal(beforeQuantity + 7, await f.Physical());
+            Assert.Equal(1, await db.RoomInventoryAdjustments.CountAsync(x => x.ReceiptId == id));
+            Assert.Equal(1, await db.TreatmentLineageMovements.CountAsync(x => x.ReceiptId == id));
+            Assert.Equal("Truck receipt", await db.Receipts.Where(x => x.Id == id).Select(x => x.ReceiptType).SingleAsync());
+            var saved = await f.Snapshot(); Assert.Null(await web.UpdateReceiptAsync(form, default)); Assert.Equal(saved, await f.Snapshot());
+            form.OperationKey = Guid.NewGuid().ToString("N"); form.BinCount = 8;
+            Assert.NotNull(await web.UpdateReceiptAsync(form, default)); Assert.Equal(saved, await f.Snapshot());
+        }
+        Assert.Equal(33, await f.Physical());
+        Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "CanonicalReceiptInventoryActivated"));
+    }
+
+    [InventoryPostgresFact]
     public async Task Receipt_treatment_only_changes_exact_receipt_stock_and_reversal_preserves_other_receipt()
     {
         await using var f = await Fixture.Create();

@@ -14,6 +14,44 @@ namespace CropQc.Api.Tests;
 
 public sealed class CanonicalActualRunWorkflowTests
 {
+    [InventoryPostgresFact]
+    public async Task Normal_run_metadata_edit_keeps_consumption_revision_and_inventory_unchanged()
+    {
+        await using var f = await Fixture.Create();
+        await using (var seed = f.CreateDbContext())
+        {
+            var actor = await seed.Users.SingleAsync(x => x.Id == 8000);
+            actor.EmploymentFacility = "WP"; actor.EmploymentEffectiveAt = DateTimeOffset.UtcNow.AddDays(-1);
+            await seed.SaveChangesAsync();
+        }
+        var factory = new EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        var service = new BinsRunService(db, new CanonicalOutsideWorkflowTests.Access(), NullLogger<BinsRunService>.Instance,
+            canonicalCommands: new InventoryCommandExecutor(factory, runExpectations: new CanonicalRunExpectationWriter()));
+        var principal = CanonicalReceivingWorkflowTests.Operator().HttpContext!.User;
+        var option = Assert.Single((await service.GetPageAsync(new() { Section = "Actual", WarehouseId = 9001, RoomIds = [9002] }, principal, default)).AvailableInventory);
+        var form = new ActualRunForm
+        {
+            RunFacilityWarehouseId = 9001,
+            RunAt = DateTimeOffset.UtcNow,
+            SalesDeskId = await db.SalesDesks.Where(x => x.IsActive).Select(x => x.Id).FirstAsync(),
+            Lines = [new() { InventoryKey = option.InventoryKey, TreatmentSignature = option.TreatmentSignature,
+                CanonicalFingerprint = option.CanonicalFingerprint, ExpectedAvailableBins = 19, BinsRun = 7 }]
+        };
+        Assert.Null(await service.CreateActualRunAsync(form, principal, default));
+        var run = await db.ActualRuns.AsNoTracking().SingleAsync();
+        var protectedRows = new Dictionary<string, string> { ["ActualRuns"] = "false", ["ActualRunDetailCorrections"] = "false", ["AuditLogs"] = "false" };
+        var before = await f.Snapshot(protectedRows);
+        form.OperationKey = Guid.NewGuid().ToString("N"); form.Id = run.Id; form.ConcurrencyVersion = run.ConcurrencyVersion;
+        form.Notes = "Local metadata-only correction"; form.CorrectionReason = "Correct operator notes";
+        Assert.Null(await service.UpdateActualRunAsync(run.Id, form, principal, default));
+        Assert.Equal(before, await f.Snapshot(protectedRows));
+        Assert.Equal(12, await f.Physical()); Assert.Equal(1, await db.ActualRunDetailCorrections.CountAsync());
+        var saved = await f.Snapshot(); Assert.Null(await service.UpdateActualRunAsync(run.Id, form, principal, default)); Assert.Equal(saved, await f.Snapshot());
+        form.Notes = "Different replay payload";
+        Assert.NotNull(await service.UpdateActualRunAsync(run.Id, form, principal, default)); Assert.Equal(saved, await f.Snapshot());
+    }
+
     [InventoryCommandRestoreFact]
     public async Task Normal_ActualRun_selector_and_submission_consume_68_plus_104_atomically()
     {

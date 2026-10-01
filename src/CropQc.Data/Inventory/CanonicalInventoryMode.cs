@@ -18,7 +18,7 @@ internal static class CanonicalInventoryWriteGuard
         typeof(RoomInventoryAdjustment), typeof(TreatmentLineageSegment), typeof(TreatmentLineageMovement),
         typeof(TreatmentLineageSegmentApplication), typeof(RoomTreatmentApplication), typeof(RoomTreatmentApplicationSource),
         typeof(RoomTransfer), typeof(RoomDepletion), typeof(RoomInventoryLoss),
-        typeof(ReceiptInventoryOverride), typeof(InventoryIdentityCorrection), typeof(InventoryCommandRecord)
+        typeof(ReceiptInventoryOverride), typeof(InventoryIdentityCorrection), typeof(InventoryCommandRecord), typeof(ActualRunRevision)
     ];
     private static readonly HashSet<string> ReceiptInventoryFields =
     [nameof(Receipt.BinCount), nameof(Receipt.CropYear), nameof(Receipt.WarehouseId), nameof(Receipt.RoomId),
@@ -38,11 +38,19 @@ internal static class CanonicalInventoryWriteGuard
                     or nameof(BinsRunEntry.InventoryAdjustmentId) or nameof(BinsRunEntry.IsReversed) or nameof(BinsRunEntry.ReversesBinsRunEntryId)
                     or nameof(BinsRunEntry.ActualRunId) or nameof(BinsRunEntry.ActualRunRevisionId) or nameof(BinsRunEntry.TransactionType)))
                 || entry.Entity is OutsideWarehouseTransfer or ProcessorShipmentLine && entry.State != EntityState.Unchanged
+                || entry.Entity is ProcessorShipment && (entry.State != EntityState.Modified || entry.Property(nameof(ProcessorShipment.ReversedAt)).IsModified)
+                || entry.Entity is ActualRun && (entry.State != EntityState.Modified || entry.Properties.Any(p => p.IsModified
+                    && p.Metadata.Name is nameof(ActualRun.Status) or nameof(ActualRun.CurrentRevisionNumber)))
                 || entry.Entity is InterCrewTransfer && (entry.State != EntityState.Modified || entry.Properties.Any(p => p.IsModified
                     && p.Metadata.Name is nameof(InterCrewTransfer.BinsLoaded) or nameof(InterCrewTransfer.BinsReceived)
                     or nameof(InterCrewTransfer.SourceWarehouseId) or nameof(InterCrewTransfer.SourceRoomId)
                     or nameof(InterCrewTransfer.DestinationWarehouseId) or nameof(InterCrewTransfer.DestinationRoomId)
-                    or nameof(InterCrewTransfer.ReceivedAt) or nameof(InterCrewTransfer.ReversedAt)))
+                    or nameof(InterCrewTransfer.ReceivedAt) or nameof(InterCrewTransfer.ReversedAt)
+                    or nameof(InterCrewTransfer.CropYear) or nameof(InterCrewTransfer.GrowerLotId) or nameof(InterCrewTransfer.FruitProfileId)
+                    or nameof(InterCrewTransfer.LotNumberSnapshot) or nameof(InterCrewTransfer.InventoryStatusSnapshot))
+                    || entry.Property(nameof(InterCrewTransfer.Status)).IsModified
+                        && !(entry.Property(nameof(InterCrewTransfer.Status)).OriginalValue as string == InterCrewTransferStatuses.ReceivedNeedsReview
+                            && entry.Property(nameof(InterCrewTransfer.Status)).CurrentValue as string == InterCrewTransferStatuses.Received))
                 || entry.Entity is Receipt receipt
                     && (receipt.ReceiptType == "Truck receipt" || entry.Property(nameof(Receipt.ReceiptType)).OriginalValue as string == "Truck receipt")
                     && (!receipt.IsTransferReceipt || receipt.TransferCompletedAt != null

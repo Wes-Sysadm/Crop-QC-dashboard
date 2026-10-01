@@ -15,6 +15,24 @@ public sealed partial class InventoryCommandExecutor
             && input.ReceiptType == "Truck receipt" && !string.IsNullOrWhiteSpace(input.ReceiptNumber) && input.ReceiptNumber.Length <= 50,
             "Receiving requires a complete ordinary Truck receipt intent.", InventoryCommandStatus.InvalidIntent);
         var p = input!;
+        Receipt? receipt = null;
+        object? beforeReceipt = null;
+        if (command.Kind == InventoryCommandKind.ActivateReceiptInventory)
+        {
+            Require(command.PhysicalParentId > 0 && command.ExpectedParentVersion != null, "Receipt inventory activation requires its reviewed version.");
+            receipt = await db.Receipts.SingleOrDefaultAsync(x => x.Id == command.PhysicalParentId && !x.IsDeleted && !x.IsTransferReceipt, ct);
+            Require(receipt != null && receipt.ConcurrencyVersion == command.ExpectedParentVersion, "Receipt changed; reload before adding its inventory.", InventoryCommandStatus.Stale);
+            Require(receipt!.BinCount == p.Quantity, "Saved receipt quantity changes require an administrator correction.");
+            Require(!await db.RoomInventoryAdjustments.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.TreatmentLineageSegments.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.TreatmentLineageMovements.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.RoomTreatmentApplications.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.RoomTreatmentApplicationSources.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.BinsRunEntries.AnyAsync(x => x.ReceiptId == receipt.Id, ct)
+                && !await db.RoomDepletions.AnyAsync(x => x.ReceiptId == receipt.Id, ct),
+                "Existing receipt inventory or treatment history prevents ordinary receiving activation.");
+            beforeReceipt = ReceiptValues(receipt);
+        }
         var room = await db.Rooms.Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == p.RoomId, ct);
         Require(room != null && room.IsActive && room.Warehouse.IsActive && room.WarehouseId == p.WarehouseId && !room.IsSealed,
             "Receiving room is unavailable, sealed or mismatched.");
@@ -24,7 +42,8 @@ public sealed partial class InventoryCommandExecutor
         Require(!await db.InventoryIdentityCorrections.AnyAsync(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null
             && x.SourceCropYear == p.CropYear && x.SourceGrowerLotId == p.GrowerLotId && x.SourceFruitProfileId == p.FruitProfileId, ct),
             "Receiving identity is superseded; select its reviewed replacement.");
-        Require(!await db.Receipts.AnyAsync(x => x.CompuTechReceiptId == p.ReceiptNumber && !x.IsDeleted, ct), "This Receipt ID already exists.", InventoryCommandStatus.Conflict);
+        var existingReceiptId = receipt?.Id;
+        Require(!await db.Receipts.AnyAsync(x => x.CompuTechReceiptId == p.ReceiptNumber && !x.IsDeleted && x.Id != existingReceiptId, ct), "This Receipt ID already exists.", InventoryCommandStatus.Conflict);
         var identity = new InventoryIdentity(p.CropYear, p.GrowerLotId, p.FruitProfileId, grower!.LotNumber, grower.LotNumber,
             profile!.VarietyCode, profile.ProductionType, profile.IsOrganic, "");
         Require(identity.IsComplete, "Receiving identity is incomplete.");
@@ -39,25 +58,21 @@ public sealed partial class InventoryCommandExecutor
             before = resolved.AuthoritativeQuantity;
             await NormalizePositionAsync(db, factory, command, existing, resolved, now, attempt, ct);
         }
-        var receipt = new Receipt
+        var creating = receipt == null;
+        receipt ??= new Receipt
         {
-            CropYear = p.CropYear,
-            WarehouseId = p.WarehouseId,
-            RoomId = p.RoomId,
-            GrowerLotId = p.GrowerLotId,
-            FruitProfileId = p.FruitProfileId,
-            ReceivedAt = command.EffectiveAt,
             CompuTechReceiptId = p.ReceiptNumber,
             GrowerName = grower.Grower,
-            GrowerNumber = grower.LotNumber,
             LotCode = grower.LotNumber,
-            BinCount = p.Quantity,
-            ReceiptType = "Truck receipt",
             CreatedAt = now,
-            UpdatedAt = now,
-            ConcurrencyVersion = 1
+            ConcurrencyVersion = 0
         };
-        db.Receipts.Add(receipt);
+        receipt.CropYear = p.CropYear; receipt.WarehouseId = p.WarehouseId; receipt.RoomId = p.RoomId;
+        receipt.GrowerLotId = p.GrowerLotId; receipt.FruitProfileId = p.FruitProfileId; receipt.ReceivedAt = command.EffectiveAt;
+        receipt.CompuTechReceiptId = p.ReceiptNumber; receipt.GrowerName = grower.Grower;
+        receipt.GrowerNumber = grower.LotNumber; receipt.LotCode = grower.LotNumber; receipt.BinCount = p.Quantity;
+        receipt.ReceiptType = "Truck receipt"; receipt.UpdatedAt = now; receipt.ConcurrencyVersion++;
+        if (creating) db.Receipts.Add(receipt);
         await db.SaveChangesAsync(ct);
         var projection = await factory.CurrentAsync(identity, p.WarehouseId, p.RoomId, "u", "Untreated", receipt.Id, [], now, ct);
         Credit(projection, p.Quantity, now);
@@ -85,7 +100,8 @@ public sealed partial class InventoryCommandExecutor
             .Positions.Single(x => x.Identity.Key == identity.Key), new());
         Require(after.IsOperable && after.AuthoritativeQuantity == checked(before + p.Quantity)
             && after.RawProjectionQuantity == after.AuthoritativeQuantity, "Received inventory, provenance and current projections do not reconcile.");
-        AddAudit(db, command, "CanonicalReceiptCreated", receipt.Id.ToString(), new { Before = before }, new { Receipt = p, After = after.AuthoritativeQuantity }, now);
+        AddAudit(db, command, creating ? "CanonicalReceiptCreated" : "CanonicalReceiptInventoryActivated", receipt.Id.ToString(),
+            new { Before = before, Receipt = beforeReceipt }, new { Receipt = p, After = after.AuthoritativeQuantity }, now);
         return [new(after.PositionKey, before, after.AuthoritativeQuantity, p.Quantity, receipt.Id, [ledger.Id], [movement.Id])];
     }
 }
