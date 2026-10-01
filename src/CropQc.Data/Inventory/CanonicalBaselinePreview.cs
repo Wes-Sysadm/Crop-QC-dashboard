@@ -94,7 +94,7 @@ public sealed class CanonicalBaselinePreview(CropQcDbContext db)
                 InventoryStatus = InventoryStatusIdentity.Normalize(row.Status, profile!.ProductionType),
                 AdjustmentAt = row.EffectiveAt,
                 CreatedAt = now,
-                InventoryInvariantVersion = 1
+                InventoryInvariantVersion = InventoryLedgerKinds.CanonicalCommandInvariantVersion
             });
         }
         var evidence = await new InventoryEvidenceLoader(db).LoadAsync(new(null, roomIds.ToImmutableArray()), now, ct);

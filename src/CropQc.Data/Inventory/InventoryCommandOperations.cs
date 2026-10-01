@@ -527,7 +527,7 @@ public sealed partial class InventoryCommandExecutor
         CreatedAt = now,
         CreatedByUserId = c.ActorId,
         InventoryOperationKey = key,
-        InventoryInvariantVersion = 1
+        InventoryInvariantVersion = InventoryLedgerKinds.CanonicalCommandInvariantVersion
     };
     private static TreatmentLineageMovement Move(InventoryCommand c, InventoryIdentity i, Allocation a, TreatmentLineageSegment? target,
         int? sourceRoom, int? targetRoom, string key, DateTimeOffset now, string kind) => new()

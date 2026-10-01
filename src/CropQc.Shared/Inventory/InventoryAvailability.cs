@@ -5,6 +5,9 @@ namespace CropQc.Shared.Inventory;
 
 public static class InventoryLedgerKinds
 {
+    // Versions 0–2 retain legacy receipt-date baseline semantics. Canonical
+    // descendants use their own effective date; only ReceiptAdd uses receiving time.
+    public const int CanonicalCommandInvariantVersion = 3;
     public const string StartingInventoryImport = "StartingInventoryImport";
     public const string BinsRun = "BinsRun";
     public const string DroppedBins = "DroppedBins";

@@ -97,7 +97,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
                 && (asOf == null || baseline.AdjustmentAt <= asOf.Value)
                 && baseline.ReceiptId == null
                 && baseline.AdjustmentType == InventoryLedgerKinds.StartingInventoryImport
-                && (x.ReceiptId != null
+                && (x.ReceiptId != null && (x.InventoryInvariantVersion < InventoryLedgerKinds.CanonicalCommandInvariantVersion || x.AdjustmentType == "ReceiptAdd")
                     ? baseline.AdjustmentAt >= x.Receipt!.ReceivedAt
                     : baseline.AdjustmentAt > x.AdjustmentAt)))
             .Where(x =>

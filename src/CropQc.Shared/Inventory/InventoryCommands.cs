@@ -7,7 +7,7 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -25,7 +25,9 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     long? ExpectedTransferVersion = null, InventoryRunMetadata? Run = null, string? ApplicationIntent = null,
     InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
     long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
-    InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null);
+    InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null, InventoryReceiptLocationChange? ReceiptLocation = null);
+public sealed record InventoryReceiptLocationChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
+    InventoryReceiptIntent ExpectedReceipt, InventoryCommandDestination Destination);
 public sealed record InventoryBaselineImport(ImmutableArray<InventoryBaselineRow> Rows, string ExpectedFingerprint, bool ConfirmReplacement);
 public sealed record InventoryBaselineRow(int CropYear, int WarehouseId, int RoomId, int GrowerLotId, int FruitProfileId,
     string Lot, string Variety, string Status, int Quantity, DateTimeOffset EffectiveAt, string Source, string Notes,
