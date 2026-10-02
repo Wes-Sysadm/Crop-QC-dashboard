@@ -28,6 +28,14 @@ public sealed class BackupRunRecord
     public DateTimeOffset? RetentionProcessedAt { get; set; }
     public DateTimeOffset? LeaseReleasedAt { get; set; }
     public DateTimeOffset? PrunedAt { get; set; }
+    public Guid? WorkerId { get; set; }
+    public string? CurrentStage { get; set; }
+    public DateTimeOffset? HeartbeatAt { get; set; }
+    public DateTimeOffset? SnapshotCapturedAt { get; set; }
+    public string? SnapshotRevision { get; set; }
+    public int? FrozenObjectCount { get; set; }
+    public int? ObjectsCompleted { get; set; }
+    public long? BytesProcessed { get; set; }
 }
 
 public sealed class BackupOperationLease
@@ -66,6 +74,7 @@ public sealed class BackupNotificationRecord
 public static class BackupRunStatuses
 {
     public const string Running = "Running";
+    public const string Abandoned = "Abandoned";
     public const string Succeeded = "Succeeded";
     public const string Failed = "Failed";
 }
