@@ -525,6 +525,7 @@ namespace CropQc.Data.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Result")
+                        .IsConcurrencyToken()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 

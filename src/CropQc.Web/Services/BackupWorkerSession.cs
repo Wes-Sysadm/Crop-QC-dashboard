@@ -53,6 +53,7 @@ public sealed class BackupWorkerSession : IAsyncDisposable
             run.CompletedAt = DateTimeOffset.UtcNow;
             run.DurationMilliseconds = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
             run.ErrorSummary = "Owning PostgreSQL worker session ended; a successor acquired the exclusive backup lock. No completed package was certified.";
+            await CompleteAbandonedScheduleAsync(db, run, ct);
             db.AuditLogs.Add(new AuditLog
             {
                 Action = "BackupAbandoned",
@@ -73,6 +74,18 @@ public sealed class BackupWorkerSession : IAsyncDisposable
             await db.SaveChangesAsync(ct);
         }
         await tx.CommitAsync(ct);
+    }
+
+    internal static async Task CompleteAbandonedScheduleAsync(CropQcDbContext db, BackupRunRecord run, CancellationToken ct)
+    {
+        if (run.ScheduledPacificDate is not { } date) return;
+        var guard = await db.BackupNightlyRunGuards.SingleOrDefaultAsync(x => x.PacificDate == date, ct);
+        if (guard is null || guard.Result != BackupRunStatuses.Running || (guard.BackupRunId is { } id && id != run.Id))
+            throw new InvalidOperationException("Nightly backup recovery guard changed; review the attempt before recovery.");
+        guard.BackupRunId = run.Id;
+        guard.Result = BackupRunStatuses.Abandoned;
+        guard.CompletedAt = run.CompletedAt;
+        // Keep the date uniqueness guard: recovery never silently schedules a second attempt.
     }
 
     public async Task StartAsync(long id, CancellationToken ct, TimeSpan? interval = null)

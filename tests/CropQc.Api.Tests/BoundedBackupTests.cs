@@ -168,6 +168,13 @@ public sealed class BoundedBackupTests
         var owner = (await BackupWorkerSession.TryOpenAsync(f.Connection, default))!;
         await using var db = f.Context();
         var run = Run(owner.WorkerId);
+        run.ScheduledPacificDate = "2026-10-01";
+        db.BackupNightlyRunGuards.Add(new BackupNightlyRunGuard
+        {
+            PacificDate = run.ScheduledPacificDate,
+            CreatedAt = run.StartedAt,
+            Result = BackupRunStatuses.Running
+        });
         db.BackupRunRecords.Add(run);
         var lease = await db.BackupOperationLeases.SingleAsync(); lease.LeaseId = owner.WorkerId; lease.ExpiresAt = DateTimeOffset.UtcNow.AddDays(-1);
         await db.SaveChangesAsync();
@@ -190,6 +197,10 @@ public sealed class BoundedBackupTests
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
         await db.Entry(run).ReloadAsync();
         Assert.Equal(BackupRunStatuses.Abandoned, run.Status);
+        var nightly = await db.BackupNightlyRunGuards.AsNoTracking().SingleAsync();
+        Assert.Equal(BackupRunStatuses.Abandoned, nightly.Result);
+        Assert.Equal(run.Id, nightly.BackupRunId);
+        Assert.Equal(run.CompletedAt, nightly.CompletedAt);
         Assert.Null(run.VerifiedAt);
         Assert.Single(await db.AuditLogs.Where(x => x.Action == "BackupAbandoned").ToListAsync());
         await successor.RecoverOrphansAsync(default); // Idempotent; evidence retained.

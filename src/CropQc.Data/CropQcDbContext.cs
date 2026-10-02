@@ -840,7 +840,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.HasKey(x => x.PacificDate);
             entity.Property(x => x.PacificDate).HasMaxLength(10);
-            entity.Property(x => x.Result).HasMaxLength(100);
+            entity.Property(x => x.Result).HasMaxLength(100).IsConcurrencyToken();
             entity.HasIndex(x => x.BackupRunId);
         });
 

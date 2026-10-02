@@ -27,6 +27,7 @@ public static class BackupLegacyRecovery
         run.CompletedAt = DateTimeOffset.UtcNow;
         run.DurationMilliseconds = (long)(run.CompletedAt.Value - run.StartedAt).TotalMilliseconds;
         run.ErrorSummary = "Administrator confirmed legacy worker termination. Abandoned for release purposes; no package certified.";
+        await BackupWorkerSession.CompleteAbandonedScheduleAsync(db, run, ct);
         var lease = await db.BackupOperationLeases.SingleAsync(x => x.Id == 1, ct);
         lease.LeaseId = null;
         lease.ExpiresAt = null;
