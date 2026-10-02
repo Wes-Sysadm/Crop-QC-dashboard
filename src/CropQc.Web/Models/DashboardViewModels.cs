@@ -1340,7 +1340,12 @@ public sealed record BackupRunListItem(
     string? Sha256,
     DateTimeOffset? VerifiedAt,
     string? ErrorSummary,
-    string? PackageWebUrl);
+    string? PackageWebUrl,
+    string? CurrentStage = null,
+    DateTimeOffset? HeartbeatAt = null,
+    int? ObjectsCompleted = null,
+    int? FrozenObjectCount = null,
+    long? BytesProcessed = null);
 
 public sealed record BackupNotificationListItem(
     long Id,

@@ -39,7 +39,7 @@
     "Path": "src/CropQc.Data/CropQcDbContext.cs",
     "Classification": "Physical write boundary",
     "Reason": "Tracked field guard and raw SQL interceptor; command-transaction capability internal to Data assembly.",
-    "Sha256": "D138160B5C502EFBB16302D53CEB191ADE271982E3D33354A557C503F3B09322"
+    "Sha256": "C9D3E2209EA71F7895FA942562194A3137B6971685AFC62073063A1AE63E2131"
   },
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalBaselinePreview.cs",
@@ -201,7 +201,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "8D2133ABC1B23FCCB6F70531DC1776F34CFC8F99A480A3428F22C2C47EABD875"
+    "Sha256": "DE706CED99FDA1409D9C72201A797179A35C49522420B42ADFACFCFD669ED68E"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
@@ -219,7 +219,7 @@
     "Path": "src/CropQc.Web/Services/BackupService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "C34357C16A46382B3E14457CAF50AA2FEA56D7C0C07E0F093917CC1319637CD1"
+    "Sha256": "FB2942727E4DD6E997EBAEAAC00C40F2494B9DF3C7A89E86DFAB206E3FAB67AC"
   },
   {
     "Path": "src/CropQc.Web/Services/BinsRunReversal1820CorrectionService.cs",

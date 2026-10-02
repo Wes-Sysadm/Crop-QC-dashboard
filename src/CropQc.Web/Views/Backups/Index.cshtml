@@ -125,7 +125,13 @@
                     <tr>
                         <td>@BusinessTime.FormatPacific(run.StartedAt, "yyyy-MM-dd h:mm:ss tt")</td>
                         <td>@run.BackupType<br /><span class="muted">@run.RetentionCategory</span></td>
-                        <td>@run.Status</td>
+                        <td>@run.Status<br />@run.CurrentStage
+                            <br /><span class="muted">Heartbeat: @BusinessTime.FormatPacific(run.HeartbeatAt, "yyyy-MM-dd h:mm:ss tt", empty: "Not recorded")</span>
+                            @if (run.FrozenObjectCount is not null)
+                            {
+                                <br /><span>@(run.ObjectsCompleted ?? 0) / @run.FrozenObjectCount frozen photos; @(run.BytesProcessed ?? 0) referenced bytes verified</span>
+                            }
+                        </td>
                         <td>@(run.DurationMilliseconds is null ? "—" : $"{TimeSpan.FromMilliseconds(run.DurationMilliseconds.Value):g}")</td>
                         <td>@run.DatabaseProvider<br /><span class="muted">@(run.DeployedCommit is null ? "Unknown commit" : run.DeployedCommit[..Math.Min(12, run.DeployedCommit.Length)])</span></td>
                         <td class="text-wrap-anywhere">
