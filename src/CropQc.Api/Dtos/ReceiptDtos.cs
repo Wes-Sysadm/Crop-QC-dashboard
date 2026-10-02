@@ -9,7 +9,7 @@ public sealed record CreateReceiptRequest(
     int FruitProfileId,
     string GrowerName,
     string LotCode,
-    int BinCount);
+    int BinCount, string? OperationKey = null, int? GrowerLotId = null);
 
 public sealed record UpdateReceiptRequest(
     int CropYear,
@@ -20,7 +20,7 @@ public sealed record UpdateReceiptRequest(
     string GrowerName,
     string LotCode,
     int BinCount,
-    string Reason);
+    string Reason, string? OperationKey = null, long? ExpectedVersion = null);
 
 public sealed record ReceiptSearchRequest(
     int? CropYear,
@@ -43,4 +43,4 @@ public sealed record ReceiptDto(
     string LotCode,
     int BinCount,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt, long ConcurrencyVersion = 0);

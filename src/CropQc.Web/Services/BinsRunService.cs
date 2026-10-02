@@ -32,7 +32,7 @@ public interface IBinsRunService
 
 public sealed record ActualRunDetailCorrectionResult(string? Error, bool AlreadyApplied = false);
 
-public sealed class BinsRunService(
+public sealed partial class BinsRunService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     ILogger<BinsRunService> logger,
@@ -42,7 +42,8 @@ public sealed class BinsRunService(
     IConfiguration? configuration = null,
     ICanonicalGrowerService? canonicalGrowerService = null,
     IRoomTreatmentService? roomTreatmentService = null,
-    IBusinessTimeService? businessTime = null) : IBinsRunService
+    IBusinessTimeService? businessTime = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IBinsRunService
 {
     public const string AdjustmentType = "BinsRun";
     public const string ReversalAdjustmentType = "BinsRunReversal";
@@ -97,13 +98,19 @@ public sealed class BinsRunService(
         }
         var canTransfer = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Edit, cancellationToken);
         var canTrueUp = await userAccessService.HasAccessAsync(user, ApplicationAreas.RoomTransactions, PageAccessLevel.Admin, cancellationToken);
+        if (filter.EditActualRunId != null && filter.EditBinsRunEntryId != null)
+            throw new InvalidOperationException("Select one run to correct.");
+        var legacyEdit = dbContext.CanonicalInventoryEnabled && filter.EditBinsRunEntryId is long legacyId
+            ? await dbContext.BinsRunEntries.AsNoTracking().SingleOrDefaultAsync(x => x.Id == legacyId
+                && x.ActualRunId == null && x.TransactionType == ActualRunTransactionTypes.Legacy
+                && !x.IsReversed && !x.IsReconciled, cancellationToken) : null;
         var editInventoryRows = filter.EditActualRunId is long requestedRunId
             ? await dbContext.BinsRunEntries.AsNoTracking()
                 .Where(x => x.ActualRunId == requestedRunId
                     && x.TransactionType == ActualRunTransactionTypes.Depletion
                     && !x.IsReversed)
                 .ToListAsync(cancellationToken)
-            : [];
+            : legacyEdit == null ? [] : new List<BinsRunEntry> { legacyEdit };
         if (editInventoryRows.Count > 0 && filter.RoomIds.Count == 0)
         {
             filter.RoomIds = editInventoryRows
@@ -156,7 +163,9 @@ public sealed class BinsRunService(
             {
                 Grower = growerResolver.DisplayName(x.Grower, x.GrowerNumber ?? x.Lot)
             }).ToList();
-        var currentSnapshots = isActualSection
+        var currentSnapshots = dbContext.CanonicalInventoryEnabled && isActualSection && editInventoryRows.Count > 0
+            ? snapshots.ToList()
+            : isActualSection
             ? snapshots.Where(x =>
                 (editInventoryRows.Count == 0 || editInventoryRows.Any(y =>
                     y.WarehouseId == x.WarehouseId
@@ -174,7 +183,7 @@ public sealed class BinsRunService(
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData = isActualSection
             ? new Dictionary<string, LotSampleDistribution>(StringComparer.OrdinalIgnoreCase)
             : await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
-        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, editInventoryRows, cancellationToken);
+        var options = await BuildAvailableInventoryOptionsAsync(currentSnapshots, sampleData, editInventoryRows, cancellationToken, legacyEdit?.Id);
         var selectedOption = options.FirstOrDefault(x => string.Equals(x.InventoryKey, filter.SourceKey, StringComparison.OrdinalIgnoreCase))
             ?? options.FirstOrDefault();
         var roomSummary = isActualSection || filter.RoomId is null
@@ -187,6 +196,7 @@ public sealed class BinsRunService(
             .Include(x => x.CreatedByUser)
             .Where(x => filter.WarehouseId == null || x.WarehouseId == filter.WarehouseId)
             .Where(x => filter.RoomId == null || x.RoomId == filter.RoomId);
+        if (legacyEdit != null) historyQuery = historyQuery.Where(x => x.Id == legacyEdit.Id);
         if (filter.FromDate is DateTime fromDate)
         {
             historyQuery = historyQuery.Where(x => x.RunAt >= new DateTimeOffset(fromDate.Date));
@@ -275,6 +285,8 @@ public sealed class BinsRunService(
             .Select(x => new BinsRunHistoryItemViewModel
             {
                 Id = x.Id,
+                CanCorrectLegacy = dbContext.CanonicalInventoryEnabled && x.ActualRunId == null
+                    && x.TransactionType == ActualRunTransactionTypes.Legacy && !x.IsReversed && !x.IsReconciled,
                 InventoryKey = x.ReceiptId != null ? "R:" + x.ReceiptId.Value : $"A:{x.InventoryAdjustmentId}",
                 WarehouseId = x.WarehouseId,
                 RoomId = x.RoomId,
@@ -306,10 +318,13 @@ public sealed class BinsRunService(
                 WarehouseId = filter.WarehouseId,
                 RoomId = filter.RoomId,
                 InventoryKey = selectedOption?.InventoryKey ?? "",
+                CanonicalFingerprint = selectedOption?.CanonicalFingerprint ?? "",
+                BinsRun = legacyEdit?.BinsRun ?? 0,
                 TreatmentSignature = selectedOption?.TreatmentSignature ?? "",
                 TreatmentSegmentId = selectedOption?.TreatmentSegmentId,
                 ExpectedAvailableBins = selectedOption?.CurrentBins ?? 0,
-                RunAt = DateTimeOffset.Now,
+                RunAt = legacyEdit?.RunAt ?? DateTimeOffset.Now,
+                Notes = legacyEdit?.Notes,
                 RunProjectionId = filter.ProjectionId,
                 RunProjectionSourceId = filter.ProjectionSourceId
             },
@@ -692,6 +707,7 @@ public sealed class BinsRunService(
         }
 
         var snapshots = await GetCurrentInventorySnapshotsAsync(request.WarehouseId, request.RoomId, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) snapshots = await CanonicalPlanningSnapshotsAsync(snapshots, cancellationToken);
         var currentSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
         var sampleData = await GetLatestSampleDataByLotAsync(currentSnapshots, cancellationToken);
         var selectedKeys = request.InventoryKeys
@@ -724,7 +740,9 @@ public sealed class BinsRunService(
         CancellationToken cancellationToken)
     {
         var normalized = query?.Trim() ?? "";
-        var snapshots = (await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken))
+        var current = await GetCurrentInventorySnapshotsAsync(warehouseId, roomId, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) current = await CanonicalPlanningSnapshotsAsync(current, cancellationToken);
+        var snapshots = current
             .Where(x => x.CurrentBins > 0)
             .Where(x => normalized.Length == 0
                 || x.Facility.Contains(normalized, StringComparison.OrdinalIgnoreCase)
@@ -745,6 +763,8 @@ public sealed class BinsRunService(
     public async Task<RunProjectionInventorySource?> GetPlanningInventoryAsync(string inventoryKey, CancellationToken cancellationToken)
     {
         var snapshot = await GetCurrentInventoryByKeyAsync(inventoryKey, cancellationToken);
+        if (snapshot != null && dbContext.CanonicalInventoryEnabled)
+            snapshot = (await CanonicalPlanningSnapshotsAsync([snapshot], cancellationToken)).Single();
         return snapshot is null || snapshot.CurrentBins <= 0 ? null : ToPlanningInventory(snapshot);
     }
 
@@ -784,6 +804,8 @@ public sealed class BinsRunService(
         {
             return "Reason is required to reverse bins run.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalRunAsync(form.Id, null, form.OperationKey, form.Reason, user,
+            CropQc.Shared.Inventory.InventoryCommandKind.ReverseRunEntry, JsonSerializer.Serialize(form), cancellationToken);
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         var entry = await dbContext.BinsRunEntries
@@ -876,6 +898,9 @@ public sealed class BinsRunService(
 
         form.Id = id;
         form.RunProjectionId = null;
+        if (dbContext.CanonicalInventoryEnabled && (await dbContext.InventoryCommands.AsNoTracking().AnyAsync(x => x.OperationKey == form.OperationKey, cancellationToken)
+            || await HasActualRunLineChangesAsync(id, form.Lines, cancellationToken)))
+            return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
         if (!string.IsNullOrWhiteSpace(form.OperationKey)
             && await dbContext.ActualRunRevisions.AsNoTracking()
                 .AnyAsync(x => x.OperationKey == form.OperationKey.Trim() && x.ActualRunId == id, cancellationToken))
@@ -995,6 +1020,8 @@ public sealed class BinsRunService(
         if (notes?.Length > 1000) return new("Run notes cannot exceed 1000 characters.");
 
         var newRunAt = form.RunAt.ToUniversalTime();
+        if (dbContext.Database.IsNpgsql())
+            newRunAt = new(newRunAt.Ticks - newRunAt.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
         if (newRunAt > BusinessTime.UtcNow.AddMinutes(5))
             return new("Run date/time cannot be more than five minutes in the future.");
         var userId = await CurrentUserIdAsync(user, cancellationToken);
@@ -1151,6 +1178,8 @@ public sealed class BinsRunService(
         {
             return "The cancellation request identifier is required.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalRunAsync(form.Id, form.ConcurrencyVersion, form.OperationKey, form.Reason, user,
+            CropQc.Shared.Inventory.InventoryCommandKind.CancelRun, JsonSerializer.Serialize(form), cancellationToken);
 
         await using var transaction = await BeginTransactionIfSupportedAsync(cancellationToken);
         if (await dbContext.ActualRunRevisions.AsNoTracking().AnyAsync(x => x.OperationKey == form.OperationKey, cancellationToken))
@@ -1259,6 +1288,8 @@ public sealed class BinsRunService(
         string? approvalReason,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return await SaveCanonicalActualRunAsync(form, user, cancellationToken);
         if (string.IsNullOrWhiteSpace(form.OperationKey))
         {
             return "The save request identifier is required.";
@@ -1874,12 +1905,12 @@ public sealed class BinsRunService(
                 x => x.Select(y => y.SourceSegmentId).Distinct().ToList() is { Count: 1 } ids ? ids[0] : null);
 
         var existing = activeEntries.Select(x =>
-                $"{LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.Variety, x.FruitProfileId, x.GrowerLotId)}|{x.TreatmentSignature}|{sourceSegments.GetValueOrDefault(x.Id)}|{x.BinsRun}")
+                $"{LedgerInventoryKey(x.WarehouseId, x.RoomId, x.CropYear, x.LotNumber, x.Variety, x.FruitProfileId, x.GrowerLotId)}|{x.TreatmentSignature}|{(dbContext.CanonicalInventoryEnabled ? null : sourceSegments.GetValueOrDefault(x.Id))}|{x.BinsRun}")
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var submitted = submittedLines
             .Where(x => !string.IsNullOrWhiteSpace(x.InventoryKey) || x.BinsRun != 0)
-            .Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{x.TreatmentSegmentId}|{x.BinsRun}")
+            .Select(x => $"{x.InventoryKey.Trim()}|{x.TreatmentSignature.Trim()}|{(dbContext.CanonicalInventoryEnabled ? null : x.TreatmentSegmentId)}|{x.BinsRun}")
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return !existing.SequenceEqual(submitted, StringComparer.OrdinalIgnoreCase);
@@ -2030,6 +2061,7 @@ public sealed class BinsRunService(
 
     private async Task<string?> SaveNewBalanceAsync(long? entryId, BinsRunForm form, ClaimsPrincipal user, string auditAction, CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await SaveCanonicalLegacyRunAsync(entryId, form, user, cancellationToken);
         if (form.BinsRun <= 0)
         {
             return "Bins run must be greater than zero.";
@@ -2321,8 +2353,10 @@ public sealed class BinsRunService(
         IReadOnlyList<InventorySnapshot> snapshots,
         IReadOnlyDictionary<string, LotSampleDistribution> sampleData,
         IReadOnlyList<BinsRunEntry> activeActualRunEntries,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, long? correctingLegacyEntryId = null)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return await BuildCanonicalRunOptionsAsync(snapshots, sampleData, cancellationToken, activeActualRunEntries.FirstOrDefault()?.ActualRunId, correctingLegacyEntryId);
         var options = new List<BinsRunInventoryOptionViewModel>();
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()

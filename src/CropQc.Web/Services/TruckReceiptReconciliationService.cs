@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CropQc.Web.Services;
 
 /// <summary>One receiving receipt confirms one existing load. Dispatch movements are its immutable manifest.</summary>
-public sealed class TruckReceiptReconciliationService(
+public sealed partial class TruckReceiptReconciliationService(
     CropQcDbContext db,
     IOutsideWarehouseTransferService inventory,
     IInterCrewTreatmentLineageService lineage,
@@ -19,7 +19,8 @@ public sealed class TruckReceiptReconciliationService(
     IUserAccessService access,
     IHttpContextAccessor context,
     IBusinessTimeService time,
-    TruckReceiptOptions? options = null)
+    TruckReceiptOptions? options = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null)
 {
     private bool Enabled => options?.Enabled == true;
     public const string LegacyTransferMessage = "This legacy transfer keeps its original receiving workflow and cannot use Truck Receipt reconciliation.";
@@ -62,10 +63,11 @@ public sealed class TruckReceiptReconciliationService(
         if (receipt is { IsTransferReceipt: true, TransferCompletedAt: null } && transfer is null)
         {
             var pending = await Transfers().Where(x => x.RequiresTruckReceipt && x.Status == InterCrewTransferStatuses.InTransit && x.ReceivingReceiptId == null).OrderBy(x => x.LoadedAt).ToListAsync(ct);
+            var canonicalAllocations = db.CanonicalInventoryEnabled ? await CanonicalTransitAllocationsAsync(pending.Select(x => x.Id).ToArray(), ct) : null;
             var candidates = new List<InterCrewTransfer>();
             foreach (var candidate in pending)
             {
-                var allocations = await ActiveAllocationsAsync(candidate.Id, ct);
+                var allocations = canonicalAllocations == null ? await ActiveAllocationsAsync(candidate.Id, ct) : canonicalAllocations.GetValueOrDefault(candidate.Id, []);
                 if (!RouteMatches(candidate, receipt) || !Compatible(allocations, receipt)) continue;
                 candidates.Add(candidate);
                 page.CandidateVarieties[candidate.Id] = string.Join(", ", Compare(allocations, [], page.Profiles).Select(x => $"{x.Variety}: {x.Transfer}"));
@@ -80,7 +82,7 @@ public sealed class TruckReceiptReconciliationService(
     public static IReadOnlyList<VarietyReconciliation> Compare(IEnumerable<TransitAllocation> allocations,
         IEnumerable<ReceiptVarietyLine> lines, IEnumerable<FruitProfile> profiles)
     {
-        var shipped = allocations.GroupBy(x => x.Movement.SourceSegment!.FruitProfileId ?? 0).ToDictionary(x => x.Key, x => x.Sum(y => y.Bins));
+        var shipped = allocations.GroupBy(x => x.FruitProfileId ?? 0).ToDictionary(x => x.Key, x => x.Sum(y => y.Bins));
         var received = lines.GroupBy(x => x.FruitProfileId).ToDictionary(x => x.Key, x => x.Sum(y => y.BinCount));
         var names = profiles.ToDictionary(x => x.Id, x => $"{x.VarietyCode} — {x.Name} ({x.ProductionType})");
         return shipped.Keys.Union(received.Keys).Order().Select(id => new VarietyReconciliation(id,
@@ -132,7 +134,10 @@ public sealed class TruckReceiptReconciliationService(
         Audit(actor, "EditTransferReceiptVarieties", null, receipt, before, lines);
     }, ct);
 
-    public Task<string?> CompleteAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> CompleteAsync(TruckReceiptActionForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? CompleteCanonicalAsync(form, ct) : CompleteLegacyAsync(form, ct);
+
+    private Task<string?> CompleteLegacyAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         await RequireAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Edit, ct);
         var receipt = await db.Receipts.Include(x => x.VarietyLines).Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, ct);
@@ -187,7 +192,10 @@ public sealed class TruckReceiptReconciliationService(
         await invariant.ValidateBeforeCommitAsync(ct);
     }, ct);
 
-    public Task<string?> EditTransferAsync(TransitEditForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> EditTransferAsync(TransitEditForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? EditTransferCanonicalAsync(form, ct) : EditTransferLegacyAsync(form, ct);
+
+    private Task<string?> EditTransferLegacyAsync(TransitEditForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         await RequireAccessAsync(ApplicationAreas.Transfers, PageAccessLevel.Edit, ct);
         var transfer = await TransferAsync(form.TransferId, form.TransferVersion, ct);
@@ -260,7 +268,10 @@ public sealed class TruckReceiptReconciliationService(
         await invariant.ValidateBeforeCommitAsync(ct);
     }, ct);
 
-    public Task<string?> ReopenAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
+    public Task<string?> ReopenAsync(TruckReceiptActionForm form, CancellationToken ct) => db.CanonicalInventoryEnabled
+        ? ReopenCanonicalAsync(form, ct) : ReopenLegacyAsync(form, ct);
+
+    private Task<string?> ReopenLegacyAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
         Require(await IsAdminAsync(ct), "Only Admin users may reopen or unlink a transfer receipt.");
         Require(!string.IsNullOrWhiteSpace(form.Reason), "An audit reason is required.");
@@ -327,6 +338,10 @@ public sealed class TruckReceiptReconciliationService(
 
     public async Task<IReadOnlyList<TransitAllocation>> ActiveAllocationsAsync(long transferId, CancellationToken ct)
     {
+        if (db.CanonicalInventoryEnabled && await db.InterCrewTransfers.AnyAsync(x => x.Id == transferId && x.Status == InterCrewTransferStatuses.InTransit, ct))
+            return (await CanonicalTransitAllocationsAsync([transferId], ct)).GetValueOrDefault(transferId, []);
+        // Completed/cancelled manifests are historical display evidence, not an
+        // available inventory source. Active canonical custody is resolved above.
         var movements = await db.TreatmentLineageMovements.Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
             .Where(x => x.InterCrewTransferId == transferId).OrderBy(x => x.Id).ToListAsync(ct);
         return movements.Where(x => x.MovementType == TreatmentLineageMovementTypes.InterCrewDispatch && x.ReversesTreatmentLineageMovementId == null)
@@ -337,6 +352,13 @@ public sealed class TruckReceiptReconciliationService(
     private async Task<IReadOnlyList<TransitAllocation>> ValidateTransitAsync(InterCrewTransfer transfer, CancellationToken ct)
     {
         var allocations = await ActiveAllocationsAsync(transfer.Id, ct);
+        if (db.CanonicalInventoryEnabled)
+        {
+            Require(transfer.Status == InterCrewTransferStatuses.InTransit && allocations.Count > 0
+                && allocations.All(x => x.Canonical != null) && allocations.Sum(x => x.Bins) == transfer.BinsLoaded,
+                "Canonical transit inventory requires review before matching.");
+            return allocations;
+        }
         Require(transfer.Status == InterCrewTransferStatuses.InTransit && transfer.BinsReceived is null && transfer.BinsLoaded > 0
             && allocations.Count > 0 && allocations.All(x => x.Bins > 0 && x.Movement.SourceSegment is not null
                 && x.Movement.SourceSegment.RoomId == transfer.SourceRoomId
@@ -358,8 +380,8 @@ public sealed class TruckReceiptReconciliationService(
         transfer.RequiresTruckReceipt && TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)
         && TruckReceiptRoutes.Group(receipt.Warehouse.Code) == transfer.DestinationCustodyGroup;
     private static bool Compatible(IReadOnlyList<TransitAllocation> allocations, Receipt receipt) => allocations.Count > 0
-        && allocations.All(x => x.Movement.SourceSegment?.CropYear == receipt.CropYear)
-        && allocations.Any(x => receipt.VarietyLines.Any(y => y.FruitProfileId == x.Movement.SourceSegment!.FruitProfileId));
+        && allocations.All(x => x.CropYear == receipt.CropYear)
+        && allocations.Any(x => receipt.VarietyLines.Any(y => y.FruitProfileId == x.FruitProfileId));
     private IQueryable<InterCrewTransfer> Transfers() => db.InterCrewTransfers.AsNoTracking().Include(x => x.SourceWarehouse).Include(x => x.SourceRoom);
 
     private async Task<Receipt> ReceiptAsync(TruckReceiptActionForm form, CancellationToken ct)

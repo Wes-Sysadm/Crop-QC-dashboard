@@ -8236,11 +8236,11 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("OutsideWarehouseTransferId", "AdjustmentType")
                         .IsUnique()
-                        .HasFilter("[OutsideWarehouseTransferId] IS NOT NULL");
+                        .HasFilter("[OutsideWarehouseTransferId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
 
                     b.HasIndex("ProcessorShipmentLineId", "AdjustmentType")
                         .IsUnique()
-                        .HasFilter("[ProcessorShipmentLineId] IS NOT NULL");
+                        .HasFilter("[ProcessorShipmentLineId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
 
                     b.HasIndex("ReceiptId", "AdjustmentAt");
 
@@ -8248,11 +8248,11 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("RoomInventoryLossId", "AdjustmentType")
                         .IsUnique()
-                        .HasFilter("[RoomInventoryLossId] IS NOT NULL");
+                        .HasFilter("[RoomInventoryLossId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
 
                     b.HasIndex("RoomTransferId", "AdjustmentType")
                         .IsUnique()
-                        .HasFilter("[RoomTransferId] IS NOT NULL");
+                        .HasFilter("[RoomTransferId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
 
                     b.HasIndex("WarehouseId", "RoomId", "CropYear", "LotNumber", "VarietyCode", "AdjustmentAt");
 

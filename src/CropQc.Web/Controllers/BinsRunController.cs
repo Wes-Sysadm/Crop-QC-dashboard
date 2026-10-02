@@ -90,7 +90,7 @@ public sealed class BinsRunController(
             model.TransferInventoryReconciles = room.TransferInventoryReconciles;
             model.TransferInventoryError = room.TransferInventoryError;
             model.TransferInventoryNotice = room.TransferInventoryNotice;
-            model.TrueUpReceiptOptions = room.DepletionReceiptOptions;
+            model.TrueUpReceiptOptions = room.TrueUpReceiptOptions;
             model.TransferDestinationFacilities = room.TransferDestinationFacilities;
             model.TransferDestinationOptions = room.TransferDestinationOptions;
             if (filter.TransferDestinationWarehouseId is int destinationWarehouseId)
@@ -787,6 +787,15 @@ public sealed class BinsRunController(
             actualRunId,
             diagnostic.ProviderCode ?? "None");
         return $"Actual Run is temporarily unavailable because the database update required by this release has not been completed. No inventory was changed. Reference {referenceId}.";
+    }
+
+    [HttpGet("{id:long}/Edit")]
+    [Authorize(Policy = AccessPolicyNames.BinsRunEdit)]
+    public async Task<IActionResult> EditLegacy(long id, CancellationToken cancellationToken)
+    {
+        var model = await binsRunService.GetPageAsync(new() { Section = "Actual", EditBinsRunEntryId = id }, User, cancellationToken);
+        if (!model.History.Any(x => x.Id == id && x.CanCorrectLegacy)) return NotFound();
+        return View("LegacyCorrection", model);
     }
 
     [HttpPost("{id:long}/Edit")]

@@ -28,7 +28,7 @@ public interface IReceiptInventoryOverrideService
     Task<IReadOnlyList<VoidedReceiptAdminViewModel>> GetVoidedReceiptsAsync(CancellationToken cancellationToken);
 }
 
-public sealed class ReceiptInventoryOverrideService(
+public sealed partial class ReceiptInventoryOverrideService(
     CropQcDbContext dbContext,
     IUserAccessService userAccessService,
     IInventoryDeductionInvariantService inventoryInvariantService,
@@ -37,7 +37,8 @@ public sealed class ReceiptInventoryOverrideService(
     IRoomTreatmentService roomTreatmentService,
     IBusinessTimeService businessTime,
     ILogger<ReceiptInventoryOverrideService> logger,
-    IReceiptInventoryProvenanceResolver? receiptProvenance = null) : IReceiptInventoryOverrideService
+    IReceiptInventoryProvenanceResolver? receiptProvenance = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IReceiptInventoryOverrideService
 {
     public const string AdjustmentType = "ReceiptAdminOverride";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -46,6 +47,7 @@ public sealed class ReceiptInventoryOverrideService(
         long receiptId,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await CanonicalPreviewAsync(receiptId, cancellationToken);
         var receipt = await ReceiptQuery(asTracking: false)
             .SingleOrDefaultAsync(x => x.Id == receiptId && !x.IsDeleted, cancellationToken);
         if (receipt is null) return null;
@@ -138,6 +140,7 @@ public sealed class ReceiptInventoryOverrideService(
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationKey, form.Reason, form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
+        if (dbContext.CanonicalInventoryEnabled) return await CanonicalEditAsync(form, principal, cancellationToken);
 
         var duplicate = await FindDuplicateAsync(form.OperationKey, cancellationToken);
         if (duplicate is not null)
@@ -512,6 +515,7 @@ public sealed class ReceiptInventoryOverrideService(
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationToken, form.Reason, form.ConfirmDeletion && form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
+        if (dbContext.CanonicalInventoryEnabled) return await CanonicalVoidAsync(form, principal, cancellationToken);
         var duplicate = await FindDuplicateAsync(form.OperationToken, cancellationToken);
         if (duplicate is not null)
         {

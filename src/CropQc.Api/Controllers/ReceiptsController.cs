@@ -9,6 +9,7 @@ namespace CropQc.Api.Controllers;
 public sealed class ReceiptsController(IReceiptService service) : ControllerBase
 {
     [HttpPost]
+    [ServiceFilter(typeof(CanonicalReceivingAuthorizationFilter))]
     public async Task<IActionResult> Create(CreateReceiptRequest request, CancellationToken cancellationToken)
     {
         var (receipt, error) = await service.CreateAsync(request, cancellationToken);
@@ -27,6 +28,7 @@ public sealed class ReceiptsController(IReceiptService service) : ControllerBase
         Ok(await service.SearchAsync(request, cancellationToken));
 
     [HttpPut("{id:long}/same-day-fields")]
+    [ServiceFilter(typeof(CanonicalReceivingAuthorizationFilter))]
     public async Task<IActionResult> UpdateSameDay(long id, UpdateReceiptRequest request, CancellationToken cancellationToken)
     {
         var (receipt, error) = await service.UpdateSameDayAsync(id, request, cancellationToken);

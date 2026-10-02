@@ -421,6 +421,7 @@
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="OperationKey" value="@Model.InventoryLossForm.OperationKey" />
                 <input type="hidden" name="ExpectedCurrentBins" id="dropped-expected-current" value="0" />
+                <input type="hidden" name="CanonicalFingerprint" id="dropped-fingerprint" value="" />
                 <input type="hidden" name="TreatmentSignature" id="dropped-treatment-signature" value="" />
                 <input type="hidden" name="TreatmentSegmentId" id="dropped-treatment-segment-id" value="" />
                 <label class="field wide">Exact current inventory identity
@@ -428,7 +429,7 @@
                         <option value="">Select current inventory</option>
                         @foreach (var option in Model.InventoryLossOptions)
                         {
-                            <option value="@option.InventoryAdjustmentId"
+                            <option value="@option.InventoryAdjustmentId" disabled="@(!option.IsAvailable)"
                                     data-facility="@option.Facility"
                                     data-room="@option.Room"
                                     data-grower="@option.Grower"
@@ -436,9 +437,10 @@
                                     data-variety="@option.Variety"
                                     data-production="@option.ProductionType"
                                     data-treatment-signature="@option.TreatmentSignature"
+                                    data-fingerprint="@option.CanonicalFingerprint"
                                     data-treatment-segment-id="@option.TreatmentSegmentId"
                                     data-organic="@(option.IsOrganic == true ? "Organic" : option.IsOrganic == false ? "Conventional" : "Organic status unavailable")"
-                                    data-current="@option.CurrentBins">@option.Label</option>
+                                    data-current="@option.CurrentBins">@option.Label @option.UnavailableReason</option>
                         }
                     </select>
                 </label>
@@ -511,12 +513,15 @@
         <h2>Record Bins Sent to Line</h2>
         <p class="muted">Use depletion to remove fruit from current room summaries without deleting receipts, samples, photos, or email history.</p>
         <form class="form-grid" method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Deplete">
+            <input type="hidden" name="OperationKey" value="@Model.DepletionForm.OperationKey" />
+            <input type="hidden" name="CanonicalFingerprint" />
+            <input type="hidden" name="TreatmentSignature" />
             <label class="field">Lot / Receipt
-                <select name="ReceiptId" required>
+                <select name="ReceiptId" required onchange="this.form.elements['CanonicalFingerprint'].value=this.selectedOptions[0]?.dataset.fingerprint||'';this.form.elements['TreatmentSignature'].value=this.selectedOptions[0]?.dataset.signature||'';">
                     <option value="">Select current lot</option>
                     @foreach (var option in Model.DepletionReceiptOptions)
                     {
-                        <option value="@option.ReceiptId">@option.Label</option>
+                        <option value="@option.ReceiptId" data-fingerprint="@option.CanonicalFingerprint" data-signature="@option.TreatmentSignature">@option.Label</option>
                     }
                 </select>
             </label>
@@ -532,10 +537,13 @@
             <label class="field wide">Notes
                 <textarea name="Notes" maxlength="1000"></textarea>
             </label>
-            <label class="checkbox-field wide">
-                <input type="checkbox" name="ConfirmOverDepletion" value="true" />
-                Allow override if current bin count is unknown or correction is needed
-            </label>
+            @if (!Model.CanonicalInventoryEnabled)
+            {
+                <label class="checkbox-field wide">
+                    <input type="checkbox" name="ConfirmOverDepletion" value="true" />
+                    Allow override if current bin count is unknown or correction is needed
+                </label>
+            }
             <button type="submit">Record Depletion</button>
         </form>
     </section>
@@ -661,6 +669,7 @@
                     @if (Model.CanManageDepletions && !depletion.IsVoided && Model.Summary is not null)
                     {
                         <form method="post" action="/Dashboard/Rooms/@Model.Summary.RoomId/Depletions/@depletion.Id/Void" class="stack-form">
+                            <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
                             <label>Void reason <input name="Reason" required maxlength="1000" /></label>
                             <button type="submit" class="secondary-button">Void</button>
                         </form>
@@ -705,6 +714,7 @@
         const current = option?.dataset.current ?? '';
         expected.value = current;
         treatmentSignature.value = option?.dataset.treatmentSignature ?? '';
+        document.getElementById('dropped-fingerprint').value = option?.dataset.fingerprint ?? '';
         treatmentSegmentId.value = option?.dataset.treatmentSegmentId ?? '';
         summary.hidden = !current;
         for (const field of summary.querySelectorAll('[data-loss-field]')) {

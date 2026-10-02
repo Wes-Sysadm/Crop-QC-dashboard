@@ -106,7 +106,7 @@ public static class RoomInventoryLossAdjustmentTypes
     public const string DroppedBinsReversal = "DroppedBinsReversal";
 }
 
-public sealed class RoomInventoryLossService(
+public sealed partial class RoomInventoryLossService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledgerQuery,
     IInventoryDeductionInvariantService inventoryInvariant,
@@ -115,7 +115,8 @@ public sealed class RoomInventoryLossService(
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
     ILogger<RoomInventoryLossService> logger,
-    IRoomTreatmentService? roomTreatmentService = null) : IRoomInventoryLossService
+    IRoomTreatmentService? roomTreatmentService = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IRoomInventoryLossService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -125,13 +126,15 @@ public sealed class RoomInventoryLossService(
         var growerResolver = await canonicalGrowerService.LoadResolutionSetAsync(cancellationToken);
         var options = new List<RoomInventoryLossOptionViewModel>();
         var activeSnapshots = snapshots.Where(x => x.CurrentBins > 0).ToList();
-        var treatmentSelections = roomTreatmentService is null
+        var treatmentSelections = dbContext.CanonicalInventoryEnabled
+            ? await CanonicalTreatmentSelections.LoadAsync(dbContext, activeSnapshots, cancellationToken)
+            : roomTreatmentService is null
             ? null
             : await roomTreatmentService.GetSelectionsAsync(activeSnapshots, cancellationToken);
         foreach (var snapshot in activeSnapshots
                      .OrderBy(x => x.GrowerNumber ?? x.Grower).ThenBy(x => x.Lot).ThenBy(x => x.ProductionType).ThenBy(x => x.Variety))
         {
-            var segments = roomTreatmentService is null
+            var segments = roomTreatmentService is null && !dbContext.CanonicalInventoryEnabled
                 ? [new TreatmentSegmentSelection(RoomTreatmentService.IdentityKey(snapshot), "", TreatmentLineageStates.Untreated, snapshot.CurrentBins, "Untreated")]
                 : treatmentSelections![RoomTreatmentService.SelectionLookupKey(snapshot)];
             foreach (var segment in segments)
@@ -149,7 +152,7 @@ public sealed class RoomInventoryLossService(
                     segment.CurrentBins,
                     segment.TreatmentSignature,
                     segment.Label,
-                    segment.SegmentId));
+                    segment.SegmentId, segment.CanonicalFingerprint, segment.IsAvailable, segment.UnavailableReason));
             }
         }
         var principal = httpContextAccessor.HttpContext?.User;
@@ -190,6 +193,7 @@ public sealed class RoomInventoryLossService(
             return "The active user record could not be resolved.";
         }
 
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalLossAsync(form, actor.Id, cancellationToken);
         var result = await CreateCoreAsync(
             new RoomInventoryLossCreateRequest(
                 form.OperationKey,
@@ -432,6 +436,7 @@ public sealed class RoomInventoryLossService(
         {
             return "The active administrator record could not be resolved.";
         }
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalLossAsync(form, actor.Id, cancellationToken);
 
         await using var transaction = await BeginTransactionIfNeededAsync(cancellationToken);
         try

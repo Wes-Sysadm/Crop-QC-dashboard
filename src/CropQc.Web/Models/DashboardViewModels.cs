@@ -116,6 +116,7 @@ public sealed class RoomVarietyColorSegmentViewModel
 
 public sealed class RoomDetailViewModel
 {
+    public bool CanonicalInventoryEnabled { get; set; }
     public string? DataWarning { get; set; }
     public RoomSummaryItemViewModel? Summary { get; set; }
     public IReadOnlyList<RoomLotSummaryViewModel> CurrentLots { get; set; } = [];
@@ -129,6 +130,7 @@ public sealed class RoomDetailViewModel
     public IReadOnlyList<RoomProjectionLotViewModel> ProjectionLots { get; set; } = [];
     public IReadOnlyList<RoomSampleTimelineItemViewModel> SampleTimeline { get; set; } = [];
     public IReadOnlyList<RoomReceiptOptionViewModel> DepletionReceiptOptions { get; set; } = [];
+    public IReadOnlyList<RoomReceiptOptionViewModel> TrueUpReceiptOptions { get; set; } = [];
     public IReadOnlyList<RoomInventoryLotOptionViewModel> TransferLotOptions { get; set; } = [];
     public int TransferCurrentRoomBins { get; set; }
     public int TransferAvailableBins { get; set; }
@@ -191,6 +193,7 @@ public sealed class HarvestWatchRetireForm
 
 public sealed class RoomTreatmentApplyForm
 {
+    public string CanonicalSnapshot { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public int TreatmentChemicalId { get; set; }
@@ -201,6 +204,7 @@ public sealed class RoomTreatmentApplyForm
 
 public sealed class ReceiptTreatmentApplyForm
 {
+    public string CanonicalSnapshot { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long ReceiptId { get; set; }
     public int TreatmentChemicalId { get; set; }
@@ -212,6 +216,7 @@ public sealed class ReceiptTreatmentApplyForm
 
 public sealed class ReverseRoomTreatmentApplicationForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long Id { get; set; }
     public string Reason { get; set; } = "";
 }
@@ -461,7 +466,7 @@ public sealed class RoomLotSummaryViewModel
     public int SampleEvidenceCount { get; set; }
 }
 
-public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins);
+public sealed record RoomReceiptOptionViewModel(long ReceiptId, string Label, int CurrentBins, string TreatmentSignature = "", string CanonicalFingerprint = "");
 public sealed record RoomInventoryLotOptionViewModel(
     string LotKey,
     string Label,
@@ -574,6 +579,9 @@ public sealed class RoomDepletionListItemViewModel
 
 public sealed class RoomDepletionForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string TreatmentSignature { get; set; } = "";
+    public string CanonicalFingerprint { get; set; } = "";
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
     public int BinCount { get; set; }
@@ -585,6 +593,7 @@ public sealed class RoomDepletionForm
 
 public sealed class RoomInventoryTrueUpForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public long ReceiptId { get; set; }
@@ -621,6 +630,7 @@ public sealed class ReverseRoomTransferForm
 
 public sealed class RoomInventoryLossForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int RoomId { get; set; }
     public long InventoryAdjustmentId { get; set; }
@@ -652,7 +662,7 @@ public sealed record RoomInventoryLossOptionViewModel(
     int CurrentBins,
     string TreatmentSignature = "",
     string TreatmentLabel = "Untreated",
-    long? TreatmentSegmentId = null);
+    long? TreatmentSegmentId = null, string? CanonicalFingerprint = null, bool IsAvailable = true, string? UnavailableReason = null);
 
 public sealed record RoomInventoryLossHistoryViewModel(
     long Id,
@@ -695,6 +705,8 @@ public sealed class RoomInventoryImportPageViewModel
 
 public sealed class RoomInventoryImportForm
 {
+    public string OperationKey { get; set; } = "";
+    public string ExpectedFingerprint { get; set; } = "";
     public IFormFile? CsvFile { get; set; }
     public string? CsvText { get; set; }
     public bool UseBuiltInSeed { get; set; }
@@ -710,6 +722,10 @@ public sealed class RoomInventoryImportForm
 
 public sealed class RoomInventoryImportPreviewViewModel
 {
+    public string OperationKey { get; set; } = "";
+    public string ExpectedFingerprint { get; set; } = "";
+    public string? CanonicalError { get; set; }
+    public CropQc.Data.Inventory.CanonicalBaselineReview? CanonicalReview { get; set; }
     public int AddCount { get; set; }
     public int UpdateCount { get; set; }
     public int ReplaceBatchCount { get; set; }
@@ -721,8 +737,9 @@ public sealed class RoomInventoryImportPreviewViewModel
     public bool IsBuiltInSeed { get; set; }
     public IReadOnlyList<RoomInventoryImportPreviewRow> Rows { get; set; } = [];
     public IReadOnlyList<RoomInventoryImportRoomTotalPreview> RoomTotals { get; set; } = [];
-    public bool RequiresReplaceConfirmation => ReplaceBatchCount > 0;
-    public bool CanApply => DuplicateCount == 0 && InvalidCount == 0 && Rows.Any(x => x.Action is "Add" or "Update" or "Replace");
+    public bool RequiresReplaceConfirmation => CanonicalReview?.RequiresReplacement ?? ReplaceBatchCount > 0;
+    public bool CanApply => CanonicalError == null && DuplicateCount == 0 && InvalidCount == 0
+        && (CanonicalReview != null || Rows.Any(x => x.Action is "Add" or "Update" or "Replace"));
 }
 
 public sealed class RoomInventoryImportPreviewRow
@@ -863,6 +880,7 @@ public sealed class BinsRunFilterForm
     public string ProjectionVisibility { get; set; } = "Active";
     public string ProjectionSort { get; set; } = "Facility";
     public long? EditActualRunId { get; set; }
+    public long? EditBinsRunEntryId { get; set; }
     public string? ReportFacility { get; set; }
     public int? ReportCropYear { get; set; }
     public string? ReportVarietyKey { get; set; }
@@ -893,6 +911,7 @@ public static class ActualRunSelectionModes
 
 public sealed class BinsRunForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public int? WarehouseId { get; set; }
     public int? RoomId { get; set; }
@@ -923,6 +942,7 @@ public sealed class ActualRunForm
 
 public sealed class ActualRunLineForm
 {
+    public string CanonicalFingerprint { get; set; } = "";
     public string InventoryKey { get; set; } = "";
     public string TreatmentSignature { get; set; } = "";
     public long? TreatmentSegmentId { get; set; }
@@ -1003,7 +1023,8 @@ public sealed record BinsRunInventoryOptionViewModel(
     long? TreatmentSegmentId = null,
     long? TreatmentReceiptId = null,
     bool IsAvailable = true,
-    string? UnavailableReason = null);
+    string? UnavailableReason = null,
+    string CanonicalFingerprint = "");
 
 public sealed class ActualRunHistoryItemViewModel
 {
@@ -1111,6 +1132,7 @@ public sealed class BinsRunProjectionViewModel
 
 public sealed class BinsRunHistoryItemViewModel
 {
+    public bool CanCorrectLegacy { get; set; }
     public long Id { get; set; }
     public string InventoryKey { get; set; } = "";
     public int WarehouseId { get; set; }
@@ -1133,6 +1155,7 @@ public sealed class BinsRunHistoryItemViewModel
 
 public sealed class ReverseBinsRunForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long Id { get; set; }
     public string Reason { get; set; } = "";
 }
@@ -1156,6 +1179,7 @@ public sealed class CurrentInventorySourceRowViewModel
 
 public sealed class VoidRoomDepletionForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public long DepletionId { get; set; }
     public int RoomId { get; set; }
     public string Reason { get; set; } = "";
@@ -1649,6 +1673,7 @@ public sealed record ReceiptListItemViewModel(
 
 public class CreateReceiptForm
 {
+    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public bool IsTransferReceipt { get; set; }
     public int CropYear { get; set; } = DateTimeOffset.UtcNow.Year;
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -1701,7 +1726,6 @@ public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
     public long ExpectedConcurrencyVersion { get; set; }
     public string ExpectedInventoryStateToken { get; set; } = "";
     public string ExpectedPositiveTrueUpStateToken { get; set; } = "";
-    public string OperationKey { get; set; } = Guid.NewGuid().ToString("N");
     public string Reason { get; set; } = "";
     public bool ConfirmInventoryChange { get; set; }
     public bool AcknowledgeNegativeInventory { get; set; }
@@ -1716,6 +1740,7 @@ public sealed class ReceiptInventoryTrueUpAllocationForm
 
 public sealed class ReceiptInventoryOverridePreviewViewModel
 {
+    public string? CanonicalBlocker { get; set; }
     public long ReceiptId { get; set; }
     public long ConcurrencyVersion { get; set; }
     public string InventoryStateToken { get; set; } = "";
@@ -1809,6 +1834,7 @@ public sealed record VoidedReceiptAdminViewModel(
 
 public sealed class DeleteReceiptForm
 {
+    public string ExpectedInventoryStateToken { get; set; } = "";
     public long Id { get; set; }
     public string Reason { get; set; } = "";
     public string ConfirmationValue { get; set; } = "";

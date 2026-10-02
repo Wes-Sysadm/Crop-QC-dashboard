@@ -29,7 +29,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             .Concat(e.Movements.Select(x => Ref("TreatmentLineageMovement", x.Id)))
             .Concat(e.Projections.Select(x => Ref("TreatmentLineageSegment", x.Id)))
             .Concat(e.Applications.Select(x => Ref("RoomTreatmentApplication", x.Id)))
-            .Concat(e.Receipts.Select(x => Ref("Receipt", x.Id))).Distinct().ToImmutableArray();
+            .Concat(e.Receipts.Select(x => Ref("Receipt", x.Id)))
+            .Concat(e.IdentityCorrections.IsDefault ? [] : e.IdentityCorrections).Distinct().ToImmutableArray();
         if (e.AuthoritativeQuantity < 0) Block(InventoryBlockerCode.NegativeAuthoritativeBalance, "Legacy authoritative ledger is negative; it has not been clamped or repaired.");
         if (!e.IdentityVerified || !e.Identity.IsComplete) Block(InventoryBlockerCode.ConflictingIdentity, "Immutable inventory identity is incomplete or conflicting.");
         if (!e.CustodyVerified || e.Location.Custody != requirements.AllowedCustody
@@ -55,7 +56,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         // dispatch-minus-reversal slices and never credit the source room again.
         var balanced = raw == e.AuthoritativeQuantity && !projectionConflict
             && positive.All(x => ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
-        if (pool && !projectionConflict)
+        if (pool && !projectionConflict && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
         {
             treatmentConfidence = InventoryConfidence.Proven;
             receiptConfidence = receiptIds.Length == 1 && e.Receipts.Any(x => x.Id == receiptIds[0] && x.ExactIdentity && !x.IsDeleted)
@@ -144,7 +145,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
                 receiptConfidence == InventoryConfidence.Proven ? "Exact receipt evidence is retained." : "Receipt evidence is retained without inventing a surviving per-receipt allocation."),
             history.ToImmutableArray(), new(Algorithm, "ledger-movement-application/v1", references, candidates.ToImmutableArray(),
                 "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten", BackdatedRows(e.Ledger)),
-            blockers.DistinctBy(x => x.Code).ToImmutableArray(), e.Watermark);
+            blockers.DistinctBy(x => x.Code).ToImmutableArray(), e.Watermark,
+            blockers.Count == 0 && !e.CustodyAllocations.IsDefault ? e.CustodyAllocations : []);
 
         void Block(InventoryBlockerCode code, string detail) => blockers.Add(new(code, detail));
     }
@@ -206,19 +208,37 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             }
         }
         if (e.Movements.Any(x => x.At >= start && (!x.ExactIdentity || x.Signature != "u" || x.State != "Untreated"))) return false;
-        if (e.Applications.Any(x => x.ReceiptId is long id ? ids.Contains(id) : x.AppliedAt >= start)) return false;
+        if (e.Applications.Any(x => x.ReceiptId is long id ? ids.Contains(id) : AppliesToRoom(x, e) && x.AppliedAt >= start)) return false;
         if (e.Projections.Any(x => x.Quantity > 0 && (x.Signature != "u" || x.State != "Untreated" || !x.ApplicationIds.IsEmpty))) return false;
         receiptIds = ids.Order().ToImmutableArray();
         return true;
     }
+
+    // A treatment carried in from another room belongs to that allocation. It
+    // cannot make pre-existing untreated stock in this destination treated/ambiguous.
+    // Unknown scope remains conservative for older serialized fixture evidence.
+    private static bool AppliesToRoom(InventoryApplicationEvidence application, InventoryPositionEvidence evidence) =>
+        application.RoomId == null || application.RoomId == evidence.Location.RoomId;
 
     private static bool ValidTreatment(InventoryProjectionEvidence p, InventoryPositionEvidence e)
     {
         if (p.State == "Untreated")
         {
             var earliestArrival = e.Ledger.Where(x => x.Quantity > 0).Select(x => x.At).DefaultIfEmpty(p.CreatedAt).Min();
+            // An exact incoming allocation proves when THIS stock entered the room.
+            // Later receipts do not inherit a room treatment applied before arrival.
+            var arrivals = e.Movements.Where(x => x.Incoming && x.DestinationProjectionId == p.Id).ToArray();
+            var exactArrival = p.ReceiptId is long receipt && e.Receipts.Any(x => x.Id == receipt && x.ExactIdentity && !x.IsDeleted)
+                && arrivals.Length > 0 && arrivals.All(x => x.ExactIdentity && x.ReceiptId == receipt && x.Signature == "u" && x.State == "Untreated")
+                && arrivals.Sum(x => x.Quantity) - e.Movements.Where(x => x.Outgoing && x.SourceProjectionId == p.Id).Sum(x => x.Quantity) == p.Quantity;
+            if (exactArrival) earliestArrival = arrivals.Min(x => x.At);
+            var receiptLedger = e.Ledger.Where(x => x.ReceiptId == p.ReceiptId).ToArray();
+            var exactReceiptAllocation = exactArrival || p.ReceiptId is long receiptId
+                && e.Receipts.Any(x => x.Id == receiptId && x.ExactIdentity && !x.IsDeleted)
+                && receiptLedger.Length > 0 && receiptLedger.All(x => x.ExactIdentity) && receiptLedger.Sum(x => x.Quantity) == p.Quantity;
             return p.Signature == "u" && p.ApplicationIds.IsEmpty
-                && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId != null || x.AppliedAt >= earliestArrival));
+                && !e.Applications.Any(x => x.ReversedAt is null && (x.ReceiptId is long id
+                    ? !exactReceiptAllocation || id == p.ReceiptId : AppliesToRoom(x, e) && x.AppliedAt >= earliestArrival));
         }
         if (p.State != "Confirmed" || p.ApplicationIds.IsEmpty || !p.Signature.StartsWith("u|a:", StringComparison.Ordinal)) return false;
         var suffix = p.Signature[4..].Split(',');

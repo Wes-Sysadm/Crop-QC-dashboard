@@ -24,7 +24,7 @@ public sealed record TreatmentSegmentSelection(
     long? SegmentId = null,
     bool IsAvailable = true,
     string? UnavailableReason = null,
-    int? ExplicitBins = null);
+    int? ExplicitBins = null, string CanonicalFingerprint = "");
 
 public sealed record ActualRunTreatmentRestorationSource(
     long BinsRunEntryId,
@@ -179,13 +179,14 @@ public interface IReceivingTreatmentService
     Task<string?> ReverseReceiptAsync(ReverseRoomTreatmentApplicationForm form, CancellationToken cancellationToken);
 }
 
-public sealed class RoomTreatmentService(
+public sealed partial class RoomTreatmentService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
-    ILogger<RoomTreatmentService> logger) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService, IOutsideWarehouseTreatmentLineageService, IInterCrewTreatmentLineageService
+    ILogger<RoomTreatmentService> logger,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IRoomTreatmentService, IReceivingTreatmentService, IProcessorTreatmentLineageService, IOutsideWarehouseTreatmentLineageService, IInterCrewTreatmentLineageService
 {
     private const string SourceApplication = "CropQc.Web room treatment workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -209,6 +210,13 @@ public sealed class RoomTreatmentService(
         }
 
         var snapshotResult = await ResolveApplicationSnapshotAsync(room.Id, form.AppliedAt, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled)
+        {
+            var canonical = await CanonicalRoomAsync(room.Id, cancellationToken);
+            form.CanonicalSnapshot = TreatmentWatermark(canonical);
+            if (canonical.Positions.Any(x => !x.IsOperable)) snapshotResult = ([], "Treatment identity cannot be proven for every occupied position.");
+            else snapshotResult = (snapshotResult.Snapshots.Select(s => s with { CurrentBins = canonical.Positions.Single(x => CanonicalTreatmentSelections.Identity(s).Key == x.Identity.Key).AvailableQuantity }).ToArray(), snapshotResult.Error);
+        }
         var fruit = snapshotResult.Snapshots.Select(ToFruitView).ToList();
         var crop = ResolveWholeRoomCrop(snapshotResult.Snapshots);
         var chemicals = crop is null
@@ -254,6 +262,7 @@ public sealed class RoomTreatmentService(
         bool review,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await GetCanonicalReceiptTreatmentPageAsync(form, review, cancellationToken);
         var resolved = await ResolveReceiptApplicationSnapshotAsync(form.ReceiptId, form.AppliedAt, cancellationToken);
         if (resolved.Receipt is null)
         {
@@ -327,6 +336,8 @@ public sealed class RoomTreatmentService(
         {
             return ("The active user record could not be resolved.", null);
         }
+
+        if (dbContext.CanonicalInventoryEnabled) return await ApplyCanonicalRoomAsync(form, actor.Id, cancellationToken);
 
         await using var transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
@@ -488,6 +499,8 @@ public sealed class RoomTreatmentService(
         if (form.Notes?.Trim().Length > 1000) return ("Notes cannot exceed 1000 characters.", null);
         var actor = await CurrentUserAsync(cancellationToken);
         if (actor is null) return ("The active user record could not be resolved.", null);
+
+        if (dbContext.CanonicalInventoryEnabled) return await ApplyCanonicalReceiptTreatmentAsync(form, actor.Id, cancellationToken);
 
         await using var transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
@@ -663,6 +676,8 @@ public sealed class RoomTreatmentService(
         var actor = await CurrentUserAsync(cancellationToken);
         if (actor is null) return "The active administrator could not be resolved.";
 
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalTreatmentAsync(form, applicationLevel, actor.Id, cancellationToken);
+
         await using var transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
             : null;
@@ -757,6 +772,8 @@ public sealed class RoomTreatmentService(
 
     public async Task<IReadOnlyList<TreatmentSegmentSelection>> GetSelectionsAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return (await CanonicalTreatmentSelections.LoadAsync(dbContext, [snapshot], cancellationToken))[SelectionLookupKey(snapshot)];
         var projected = (await ProjectSelectionsBatchAsync([snapshot], cancellationToken))[SelectionLookupKey(snapshot)];
         return projected.Select(ToSelection).ToList();
     }
@@ -765,6 +782,8 @@ public sealed class RoomTreatmentService(
         IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled)
+            return await CanonicalTreatmentSelections.LoadAsync(dbContext, snapshots, cancellationToken);
         var active = snapshots.Where(x => x.CurrentBins > 0).ToList();
         var projected = await ProjectSelectionsBatchAsync(active, cancellationToken);
         return projected.ToDictionary(
@@ -2459,6 +2478,7 @@ public sealed class RoomTreatmentService(
         IReadOnlyList<RoomInventoryLedgerSnapshot> snapshots,
         CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await ProjectCanonicalTreatmentsAsync(snapshots, cancellationToken);
         var authoritative = snapshots
             .Where(x => x.CurrentBins > 0)
             .GroupBy(SelectionLookupKey, StringComparer.OrdinalIgnoreCase)

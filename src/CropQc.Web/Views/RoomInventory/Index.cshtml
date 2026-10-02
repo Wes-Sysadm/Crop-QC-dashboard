@@ -46,6 +46,20 @@
 {
     <section class="panel">
         <h2>Import Preview</h2>
+        @if (Model.ImportPreview.CanonicalError is not null)
+        {
+            <div class="alert alert-warning">@Model.ImportPreview.CanonicalError</div>
+        }
+        @if (Model.ImportPreview.CanonicalReview is { } review)
+        {
+            <p>Current inventory after this import, including every affected lot in the room. Any additional bins will require treatment review.</p>
+            <div class="table-wrap"><table><thead><tr><th>Room</th><th>Crop</th><th>Lot</th><th>Variety</th><th>Current bins</th><th>After import</th></tr></thead><tbody>
+            @foreach (var position in review.Positions)
+            {
+                <tr><td>@(Model.ImportPreview.Rows.FirstOrDefault(x => x.RoomId == position.RoomId)?.CropQcRoomName)</td><td>@position.Identity.CropYear</td><td>@position.Identity.Lot</td><td>@position.Identity.Variety</td><td>@position.Before</td><td>@position.After</td></tr>
+            }
+            </tbody></table></div>
+        }
         <div class="metric-grid">
             <div><strong>@Model.ImportPreview.AddCount</strong><span>Add</span></div>
             <div><strong>@Model.ImportPreview.UpdateCount</strong><span>Update</span></div>
@@ -152,6 +166,8 @@
         }
         <form method="post" action="/Admin/RoomInventory/Apply" class="action-bar">
             <input type="hidden" name="CsvText" value="@Model.ImportPreview.CsvText" />
+            <input type="hidden" name="OperationKey" value="@Model.ImportPreview.OperationKey" />
+            <input type="hidden" name="ExpectedFingerprint" value="@Model.ImportPreview.ExpectedFingerprint" />
             <input type="hidden" name="UseBuiltInSeed" value="@(Model.ImportPreview.IsBuiltInSeed ? "true" : "false")" />
             @if (Model.ImportPreview.RequiresReplaceConfirmation)
             {

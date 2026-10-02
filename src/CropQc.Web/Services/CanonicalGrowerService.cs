@@ -150,6 +150,7 @@ public sealed partial class CanonicalGrowerService(
 
     public async Task<CanonicalGrowerResolutionSet> LoadResolutionSetAsync(CancellationToken cancellationToken)
     {
+        if (dbContext.CanonicalInventoryEnabled) return await BuildResolutionSetAsync(cancellationToken);
         if (resolutionCache is null)
         {
             await EnsureSeedMappingsAsync(cancellationToken);
