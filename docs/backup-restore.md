@@ -4,6 +4,8 @@ Crop QC production changes are blocked until a full backup has been created, upl
 
 ## Architecture
 
+See [bounded snapshots, progress and guarded recovery](bounded-backup-snapshot.md) for the fixed database/photo cutoff, worker ownership, and legacy Running-attempt handling. A long-running backup is pending verification, not failed merely because an observer disconnects. Fresh backup verification gates production mutation/deployment; it does not by itself block engineering review.
+
 The configured Google Shared Drive backup root contains:
 
 ```text
@@ -19,13 +21,13 @@ Crop QC Backups/
 
 Every run creates one ZIP package containing:
 
-- a consistent `pg_dump` plain-SQL dump compressed with gzip;
+- a consistent `pg_dump --snapshot` plain-SQL dump compressed with gzip;
 - applied and pending EF migration state, provider, connection result, and key row counts;
 - a redacted configuration manifest with secret values omitted;
-- the production photo/file relationship inventory and Google Drive accessibility result;
+- the photo/file references frozen from that same database snapshot, with bounded Google Drive metadata verification; unavailable required objects fail the new backup;
 - an internal manifest with the size and SHA-256 of every component.
 
-The uploaded package is downloaded from Google Drive and its byte count, SHA-256, ZIP structure, component checksums, manifest, and database-dump header are revalidated. A small sidecar manifest records the verified package checksum. Only then is the run marked `Succeeded`.
+The uploaded package is downloaded from Google Drive and its byte count, SHA-256, ZIP structure, component checksums, manifest, and complete database dump are revalidated. A small sidecar manifest records the verified package checksum. Only then is the run marked `Succeeded`. Version 2 retains the existing package layout and adds capture/revision/frozen-count metadata; legacy verified packages remain readable and unchanged.
 
 ## Standard Commands
 

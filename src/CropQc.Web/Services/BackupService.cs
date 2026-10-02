@@ -163,7 +163,13 @@ public sealed class BackupService(
 
         var now = businessTime.UtcNow;
         backupType = NormalizeBackupType(backupType, now, effective.BusinessTimeZone);
-        var leaseId = Guid.NewGuid();
+        await using var worker = await BackupWorkerSession.TryOpenAsync(dbContext.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("Database connection is not configured for backup."), cancellationToken);
+        if (worker is null) return BackupRunResult.Failed("Another backup worker owns the database session lock.");
+        try { await worker.RecoverOrphansAsync(cancellationToken); }
+        catch (InvalidOperationException ex) { return BackupRunResult.Failed(ex.Message); }
+        cancellationToken = worker.Token;
+        var leaseId = worker.WorkerId;
         if (!await TryAcquireLeaseAsync(leaseId, now, cancellationToken))
         {
             return BackupRunResult.Failed("Another backup is already running.");
@@ -180,6 +186,7 @@ public sealed class BackupService(
             {
                 BackupType = backupType,
                 Status = BackupRunStatuses.Running,
+                WorkerId = worker.WorkerId,
                 EnvironmentName = appEnvironment.DisplayName,
                 DatabaseProvider = dbContext.Database.ProviderName ?? configuration["DATABASE_PROVIDER"] ?? "Unknown",
                 DeployedCommit = configuration["RENDER_GIT_COMMIT"] ?? configuration["SourceVersion"],
@@ -194,16 +201,19 @@ public sealed class BackupService(
             await dbContext.SaveChangesAsync(cancellationToken);
             await AddAuditAsync("BackupStarted", run.Id.ToString(CultureInfo.InvariantCulture), new { run.BackupType, run.RequestedBy }, cancellationToken);
 
+            await worker.StartAsync(run.Id, cancellationToken);
             failureStage = "Package creation";
             var storage = CreateBackupStorage(effective);
-            var package = await BuildPackageAsync(run, effective, cancellationToken);
+            var package = await BuildPackageAsync(run, effective, worker, cancellationToken);
             await using var packageStream = package.Content;
             var targetPath = $"Crop QC Backups/Production/{BackupFolder(run.BackupType)}";
             package.Content.Position = 0;
             failureStage = "Google Drive package upload";
+            await worker.CheckpointAsync(failureStage);
             var uploaded = await storage.SaveAsync(new FileStorageSaveRequest(package.Content, targetPath, package.FileName, "application/zip", package.Size), cancellationToken);
             incompleteObjectCreated = true;
             failureStage = "Uploaded package read-back verification";
+            await worker.CheckpointAsync(failureStage);
             await VerifyUploadedPackageAsync(storage, uploaded, package, cancellationToken);
 
             var sidecar = JsonSerializer.SerializeToUtf8Bytes(new
@@ -220,8 +230,10 @@ public sealed class BackupService(
             var manifestFileName = Path.ChangeExtension(package.FileName, ".manifest.json");
             await using var sidecarStream = new MemoryStream(sidecar);
             failureStage = "Manifest upload";
+            await worker.CheckpointAsync(failureStage);
             var manifestRef = await storage.SaveAsync(new FileStorageSaveRequest(sidecarStream, "Crop QC Backups/Production/Manifests", manifestFileName, "application/json", sidecar.Length), cancellationToken);
             failureStage = "Manifest read-back verification";
+            await worker.CheckpointAsync(failureStage);
             await VerifyUploadedBytesAsync(storage, manifestRef, sidecar, cancellationToken);
 
             var verified = businessTime.UtcNow;
@@ -235,11 +247,14 @@ public sealed class BackupService(
             run.VerifiedAt = verified;
             await dbContext.SaveChangesAsync(cancellationToken);
             failureStage = "Retention processing";
+            await worker.CheckpointAsync(failureStage);
             await ApplyRetentionAsync(storage, effective, verified, run.Id, cancellationToken);
             run.RetentionProcessedAt = businessTime.UtcNow;
             await SetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupAt, verified.ToString("O"), cancellationToken);
             await SetConfigValueAsync(BackupStatusKeys.LastDatabaseBackupFileName, package.FileName, cancellationToken);
             await SetConfigValueAsync(BackupStatusKeys.LastError, "", cancellationToken);
+            worker.Report("Completed");
+            await worker.FinishAsync();
             run.Status = BackupRunStatuses.Succeeded;
             notificationType = BackupNotificationTypes.Success;
             result = BackupRunResult.Succeeded($"Verified {run.BackupType} backup completed: {package.FileName} ({package.Size} bytes, SHA-256 {package.Sha256}).", [uploaded], run.Id);
@@ -256,9 +271,9 @@ public sealed class BackupService(
                     run.FailureStage = failureStage;
                     run.IncompleteObjectCreated = incompleteObjectCreated;
                     run.ErrorSummary = safeError;
-                    await SetConfigValueAsync(BackupStatusKeys.LastError, safeError, cancellationToken);
-                    await dbContext.SaveChangesAsync(cancellationToken);
-                    await AddAuditAsync("BackupFailed", run.Id.ToString(CultureInfo.InvariantCulture), new { error = safeError }, cancellationToken);
+                    await SetConfigValueAsync(BackupStatusKeys.LastError, safeError, CancellationToken.None);
+                    await dbContext.SaveChangesAsync(CancellationToken.None);
+                    await AddAuditAsync("BackupFailed", run.Id.ToString(CultureInfo.InvariantCulture), new { error = safeError }, CancellationToken.None);
                     notificationType = BackupNotificationTypes.Failure;
                 }
             }
@@ -354,20 +369,41 @@ public sealed class BackupService(
         }
     }
 
-    private async Task<BackupPackage> BuildPackageAsync(BackupRunRecord run, BackupOptions effective, CancellationToken cancellationToken)
+    private async Task<BackupPackage> BuildPackageAsync(BackupRunRecord run, BackupOptions effective, BackupWorkerSession worker, CancellationToken cancellationToken)
     {
         if (!effective.DatabaseBackupEnabled) throw new InvalidOperationException("Database backup is mandatory for a full production backup.");
         var timestamp = run.StartedAt;
         var components = new List<BackupComponent>();
-        var database = await CreateDatabaseDumpAsync(cancellationToken);
+        byte[] database;
+        object schema;
+        IReadOnlyList<QcPhoto> photos;
+        await worker.CheckpointAsync("Database snapshot");
+        await using (var snapshot = await BackupSnapshot.OpenAsync(dbContext.Database.GetConnectionString()!, cancellationToken))
+        {
+            run.SnapshotCapturedAt = snapshot.CapturedAt;
+            run.SnapshotRevision = snapshot.Revision;
+            schema = await BuildCapturedSchemaManifestAsync(snapshot.Database, cancellationToken);
+            photos = await snapshot.FreezePhotosAsync(cancellationToken);
+            run.FrozenObjectCount = photos.Count;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await worker.CheckpointAsync("Database dump", total: photos.Count);
+            database = await CreateDatabaseDumpAsync(snapshot.SnapshotId, cancellationToken);
+        } // Release the read snapshot before slow remote metadata work. The list cannot expand.
         components.Add(new BackupComponent(BackupFileNames.Database(timestamp), database));
         components.Add(JsonComponent(BackupFileNames.Config(timestamp), BuildSafeConfigurationSnapshot(effective)));
-        components.Add(JsonComponent(BackupFileNames.Schema(timestamp), await BuildSchemaManifestAsync(cancellationToken)));
-        components.Add(JsonComponent(BackupFileNames.PhotoManifest(timestamp), await BuildPhotoManifestAsync(cancellationToken)));
+        components.Add(JsonComponent(BackupFileNames.Schema(timestamp), schema));
+        await worker.CheckpointAsync("Photo metadata", total: photos.Count);
+        components.Add(JsonComponent(BackupFileNames.PhotoManifest(timestamp), await BuildPhotoManifestAsync(photos, worker, cancellationToken)));
+        await worker.CheckpointAsync("Packaging");
 
         var componentManifest = components.Select(x => new { name = x.Name, sizeBytes = x.Bytes.LongLength, sha256 = Hash(x.Bytes) }).ToList();
         components.Add(JsonComponent("backup-manifest.json", new
         {
+            formatVersion = 2,
+            snapshotCapturedAt = run.SnapshotCapturedAt,
+            snapshotRevision = run.SnapshotRevision,
+            frozenPhotoCount = run.FrozenObjectCount,
+            fileVerification = "Frozen database references; bounded remote metadata verification; photo binaries remain in existing storage",
             backupRunId = run.Id,
             backupType = run.BackupType,
             startedAt = run.StartedAt,
@@ -396,27 +432,34 @@ public sealed class BackupService(
         return new BackupPackage(BackupFileNames.Package(run.BackupType, timestamp), new MemoryStream(bytes), bytes.LongLength, Hash(bytes));
     }
 
-    private async Task<byte[]> CreateDatabaseDumpAsync(CancellationToken cancellationToken)
+    private async Task<byte[]> CreateDatabaseDumpAsync(string snapshotId, CancellationToken cancellationToken)
     {
         var connectionString = dbContext.Database.GetConnectionString();
         if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException("Database connection is not configured for backup.");
-        using var process = StartPgDump(connectionString) ?? throw new InvalidOperationException("pg_dump is not installed in the backup runtime.");
+        using var process = StartPgDump(connectionString, snapshotId) ?? throw new InvalidOperationException("pg_dump is not installed in the backup runtime.");
         await using var compressed = new MemoryStream();
         await using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
         {
             var copy = process.StandardOutput.BaseStream.CopyToAsync(gzip, cancellationToken);
             var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+            try { await process.WaitForExitAsync(cancellationToken); }
+            catch
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                try { await Task.WhenAll(copy, stderr); } catch { }
+                throw;
+            }
             await copy;
             _ = await stderr;
             if (process.ExitCode != 0) throw new InvalidOperationException("pg_dump failed. Review restricted server logs for the provider error.");
         }
         var bytes = compressed.ToArray();
-        ValidateDatabaseDump(bytes);
+        ValidateDatabaseDump(bytes, requireCompletion: true);
         return bytes;
     }
 
-    private static Process? StartPgDump(string connectionString)
+    private static Process? StartPgDump(string connectionString, string snapshotId)
     {
         var connection = ParsePostgreSqlConnection(connectionString);
         var info = new ProcessStartInfo("pg_dump")
@@ -428,7 +471,7 @@ public sealed class BackupService(
         };
         info.ArgumentList.Add("--no-owner");
         info.ArgumentList.Add("--no-privileges");
-        info.ArgumentList.Add("--serializable-deferrable");
+        info.ArgumentList.Add($"--snapshot={snapshotId}");
         info.ArgumentList.Add("--format=plain");
         info.ArgumentList.Add($"--host={connection.Host}");
         info.ArgumentList.Add($"--port={connection.Port}");
@@ -509,74 +552,30 @@ public sealed class BackupService(
         backups = new { effective.Provider, effective.DailyRetentionDays, effective.WeeklyRetentionWeeks, effective.BusinessTimeZone, effective.NightlyPacificHour }
     };
 
-    private async Task<object> BuildSchemaManifestAsync(CancellationToken cancellationToken) => new
+    private async Task<object> BuildSchemaManifestAsync(CancellationToken cancellationToken) =>
+        await BuildCapturedSchemaManifestAsync(dbContext, cancellationToken);
+
+    private async Task<object> BuildCapturedSchemaManifestAsync(CropQcDbContext captured, CancellationToken cancellationToken) => new
     {
         createdAt = businessTime.UtcNow,
-        provider = dbContext.Database.ProviderName,
-        canConnect = await dbContext.Database.CanConnectAsync(cancellationToken),
-        appliedMigrations = await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken),
-        pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(cancellationToken),
+        provider = captured.Database.ProviderName,
+        canConnect = await captured.Database.CanConnectAsync(cancellationToken),
+        appliedMigrations = await captured.Database.GetAppliedMigrationsAsync(cancellationToken),
+        pendingMigrations = await captured.Database.GetPendingMigrationsAsync(cancellationToken),
         rowCounts = new
         {
-            receipts = await dbContext.Receipts.CountAsync(cancellationToken),
-            samples = await dbContext.QcSamples.CountAsync(cancellationToken),
-            fruitReadings = await dbContext.QcFruitReadings.CountAsync(cancellationToken),
-            photos = await dbContext.QcPhotos.CountAsync(cancellationToken),
-            auditLogs = await dbContext.AuditLogs.CountAsync(cancellationToken)
+            receipts = await captured.Receipts.CountAsync(cancellationToken),
+            samples = await captured.QcSamples.CountAsync(cancellationToken),
+            fruitReadings = await captured.QcFruitReadings.CountAsync(cancellationToken),
+            photos = await captured.QcPhotos.CountAsync(cancellationToken),
+            auditLogs = await captured.AuditLogs.CountAsync(cancellationToken)
         }
     };
 
-    private async Task<IReadOnlyList<object>> BuildPhotoManifestAsync(CancellationToken cancellationToken)
-    {
-        var photos = await dbContext.QcPhotos.AsNoTracking().OrderBy(x => x.Id).Select(x => new
-        {
-            x.Id,
-            x.QcSampleId,
-            x.ReceiptId,
-            x.PhotoType,
-            x.StorageProvider,
-            x.DriveId,
-            x.FileId,
-            x.FolderId,
-            x.FileName,
-            x.ContentType,
-            x.FileSizeBytes,
-            x.CapturedAt,
-            x.UploadedAt
-        }).ToListAsync(cancellationToken);
-        var photoStorage = new GoogleDriveStorageService(googleDriveOptions);
-        var result = new List<object>(photos.Count);
-        foreach (var photo in photos)
-        {
-            FileStorageReference? remote = null;
-            if (string.Equals(photo.StorageProvider, FileStorageProviders.GoogleDrive, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(photo.FileId))
-            {
-                remote = await photoStorage.GetMetadataAsync(photo.FileId, cancellationToken);
-            }
-            result.Add(new
-            {
-                photoId = photo.Id,
-                photo.QcSampleId,
-                photo.ReceiptId,
-                photo.PhotoType,
-                photo.StorageProvider,
-                photo.DriveId,
-                photo.FileId,
-                photo.FolderId,
-                photo.FileName,
-                photo.ContentType,
-                photo.FileSizeBytes,
-                photo.CapturedAt,
-                photo.UploadedAt,
-                objectAccessible = remote is not null,
-                remoteSizeBytes = remote?.FileSizeBytes,
-                remoteChecksum = remote?.Checksum,
-                remoteCreatedAt = remote?.CreatedAt,
-                remoteModifiedAt = remote?.ModifiedAt
-            });
-        }
-        return result;
-    }
+    // FileId, ReceiptId and PhotoType come only from the frozen database snapshot.
+    private Task<IReadOnlyList<object>> BuildPhotoManifestAsync(IReadOnlyList<QcPhoto> photos, BackupWorkerSession worker, CancellationToken cancellationToken) =>
+        BackupPhotoManifest.BuildAsync(photos, new GoogleDriveStorageService(googleDriveOptions),
+            (completed, bytes) => worker.Report("Photo metadata", completed, photos.Count, bytes), cancellationToken);
 
     private async Task VerifyUploadedPackageAsync(IFileStorageService storage, FileStorageReference reference, BackupPackage package, CancellationToken cancellationToken)
     {
@@ -629,17 +628,30 @@ public sealed class BackupService(
             if (bytes.LongLength != expectedSize || !string.Equals(Hash(bytes), expectedHash, StringComparison.Ordinal))
                 throw new InvalidDataException($"Backup component {name} failed checksum verification.");
         }
+        var version2 = manifest.RootElement.TryGetProperty("formatVersion", out var version) && version.GetInt32() >= 2;
+        if (version2)
+        {
+            var names = components.EnumerateArray().Select(x => x.GetProperty("name").GetString()!).ToArray();
+            if (names.Distinct(StringComparer.Ordinal).Count() != 4 || archive.Entries.Count != 5
+                || archive.Entries.Select(x => x.FullName).Distinct(StringComparer.Ordinal).Count() != 5
+                || names.Any(x => x.Contains('/') || x.Contains('\\')))
+                throw new InvalidDataException("Snapshot backup has duplicate or unexpected components.");
+            using var photos = JsonDocument.Parse(archive.GetEntry(names.Single(x => x.Contains("-photo-manifest-")))!.Open());
+            using var schema = JsonDocument.Parse(archive.GetEntry(names.Single(x => x.Contains("-schema-")))!.Open());
+            var frozen = manifest.RootElement.GetProperty("frozenPhotoCount").GetInt32();
+            if (photos.RootElement.GetArrayLength() != frozen || schema.RootElement.GetProperty("rowCounts").GetProperty("photos").GetInt32() != frozen
+                || photos.RootElement.EnumerateArray().Select(x => x.GetProperty("photoId").GetInt64()).Distinct().Count() != frozen
+                || photos.RootElement.EnumerateArray().Any(x => !x.GetProperty("objectAccessible").GetBoolean()))
+                throw new InvalidDataException("Frozen photo manifest is inconsistent or contains unavailable objects.");
+        }
         var dbEntry = archive.Entries.Single(x => x.Name.EndsWith(".sql.gz", StringComparison.OrdinalIgnoreCase));
         using var dbStream = dbEntry.Open();
-        using var gzip = new GZipStream(dbStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzip, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
-        var prefix = new char[256];
-        var read = reader.Read(prefix, 0, prefix.Length);
-        if (read == 0 || !new string(prefix, 0, read).Contains("PostgreSQL database dump", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Database dump header validation failed.");
+        using var dump = new MemoryStream();
+        dbStream.CopyTo(dump);
+        ValidateDatabaseDump(dump.ToArray(), version2);
     }
 
-    private static void ValidateDatabaseDump(byte[] bytes)
+    private static void ValidateDatabaseDump(byte[] bytes, bool requireCompletion = false)
     {
         using var stream = new MemoryStream(bytes);
         using var gzip = new GZipStream(stream, CompressionMode.Decompress);
@@ -648,6 +660,15 @@ public sealed class BackupService(
         var read = reader.Read(header, 0, header.Length);
         if (read == 0 || !new string(header, 0, read).Contains("PostgreSQL database dump", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("pg_dump output was empty or unreadable.");
+        var tail = new string(header, 0, read);
+        var buffer = new char[8192];
+        while ((read = reader.Read(buffer)) > 0)
+        {
+            tail += new string(buffer, 0, read);
+            if (tail.Length > 1024) tail = tail[^1024..];
+        }
+        if (requireCompletion && !tail.Contains("PostgreSQL database dump complete", StringComparison.Ordinal))
+            throw new InvalidDataException("PostgreSQL dump completion marker is missing.");
     }
 
     private async Task ApplyRetentionAsync(IFileStorageService storage, BackupOptions effective, DateTimeOffset now, long currentRunId, CancellationToken cancellationToken)
@@ -730,11 +751,13 @@ public sealed class BackupService(
         }
     }
 
-    private static BackupRunListItem ToListItem(BackupRunRecord x) => new(x.Id, x.BackupType, x.Status, x.StartedAt, x.CompletedAt, x.DurationMilliseconds, x.DatabaseProvider, x.DeployedCommit, x.RetentionCategory, x.PackageFileName, x.FileSizeBytes, x.Sha256, x.VerifiedAt, x.ErrorSummary, x.PackageWebUrl);
+    private static BackupRunListItem ToListItem(BackupRunRecord x) => new(x.Id, x.BackupType, x.Status, x.StartedAt, x.CompletedAt, x.DurationMilliseconds, x.DatabaseProvider, x.DeployedCommit, x.RetentionCategory, x.PackageFileName, x.FileSizeBytes, x.Sha256, x.VerifiedAt, x.ErrorSummary, x.PackageWebUrl, x.CurrentStage, x.HeartbeatAt, x.ObjectsCompleted, x.FrozenObjectCount, x.BytesProcessed);
     private static BackupComponent JsonComponent(string name, object value) => new(name, JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions));
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     private static string MaskFolderId(string? folderId) => string.IsNullOrWhiteSpace(folderId) ? "Missing" : folderId.Length <= 8 ? "Configured" : $"{folderId[..4]}...{folderId[^4..]}";
-    private static string SafeError(Exception ex) => ex is InvalidDataException ? "Backup verification failed; the uploaded artifact was not accepted." : ex.Message.Contains("Google Drive", StringComparison.OrdinalIgnoreCase) ? "Google Drive backup upload or verification failed." : ex.Message.Contains("pg_dump", StringComparison.OrdinalIgnoreCase) ? "PostgreSQL dump creation failed." : "Backup failed. Review restricted server logs for details.";
+    private static string SafeError(Exception ex) => ex is InvalidDataException && ex.Message.StartsWith("Frozen photo ", StringComparison.Ordinal)
+        ? ex.Message // Our own bounded messages contain only the database photo id and failure category.
+        : ex is InvalidDataException ? "Backup verification failed; the artifact was not accepted." : ex.Message.Contains("Google Drive", StringComparison.OrdinalIgnoreCase) ? "Google Drive backup upload or verification failed." : ex.Message.Contains("pg_dump", StringComparison.OrdinalIgnoreCase) ? "PostgreSQL dump creation failed." : "Backup failed. Review restricted server logs for details.";
     private static string BackupFolder(string type) => type switch { BackupRunTypes.Weekly => "Weekly", BackupRunTypes.PreDeployment => "PreDeployment", BackupRunTypes.Manual => "Manual", _ => "Daily" };
     private static string NormalizeBackupType(string type, DateTimeOffset now, string timeZone) => type.Equals(BackupRunTypes.Daily, StringComparison.OrdinalIgnoreCase) && LocalDate(now, timeZone).DayOfWeek == DayOfWeek.Sunday ? BackupRunTypes.Weekly : type switch { BackupRunTypes.Manual => BackupRunTypes.Manual, BackupRunTypes.PreDeployment => BackupRunTypes.PreDeployment, BackupRunTypes.Weekly => BackupRunTypes.Weekly, _ => BackupRunTypes.Daily };
     private static DateTime LocalDate(DateTimeOffset value, string timeZone)

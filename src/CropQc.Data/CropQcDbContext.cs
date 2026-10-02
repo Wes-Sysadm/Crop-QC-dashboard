@@ -809,7 +809,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         modelBuilder.Entity<BackupRunRecord>(entity =>
         {
             entity.Property(x => x.BackupType).HasMaxLength(30).IsRequired();
-            entity.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(30).IsRequired().IsConcurrencyToken();
             entity.Property(x => x.EnvironmentName).HasMaxLength(100).IsRequired();
             entity.Property(x => x.DatabaseProvider).HasMaxLength(100).IsRequired();
             entity.Property(x => x.DeployedCommit).HasMaxLength(64);
@@ -823,6 +823,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
             entity.Property(x => x.Sha256).HasMaxLength(64);
             entity.Property(x => x.ErrorSummary).HasMaxLength(2000);
             entity.Property(x => x.FailureStage).HasMaxLength(100);
+            entity.Property(x => x.CurrentStage).HasMaxLength(100);
             entity.Property(x => x.ScheduledPacificDate).HasMaxLength(10);
             entity.HasIndex(x => new { x.Status, x.StartedAt });
             entity.HasIndex(x => new { x.RetentionCategory, x.StartedAt });
@@ -839,7 +840,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
         {
             entity.HasKey(x => x.PacificDate);
             entity.Property(x => x.PacificDate).HasMaxLength(10);
-            entity.Property(x => x.Result).HasMaxLength(100);
+            entity.Property(x => x.Result).HasMaxLength(100).IsConcurrencyToken();
             entity.HasIndex(x => x.BackupRunId);
         });
 

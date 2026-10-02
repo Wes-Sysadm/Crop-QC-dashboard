@@ -1058,6 +1058,24 @@ if (args.Contains(July28ActualRunExpectationBackfillConstants.CommandName, Strin
 
 await DatabaseStartupDiagnostics.InspectAsync(app.Services, app.Configuration, app.Environment);
 
+var abandonBackupCommand = args.FirstOrDefault(x => x.StartsWith("--abandon-backup=", StringComparison.OrdinalIgnoreCase));
+if (abandonBackupCommand is not null)
+{
+    string? RecoveryValue(string name) => args.FirstOrDefault(x => x.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1];
+    if (!long.TryParse(RecoveryValue("--abandon-backup"), out var id)
+        || !DateTimeOffset.TryParse(RecoveryValue("--expected-start"), out var expectedStart)
+        || !args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase))
+        throw new InvalidOperationException("Backup recovery requires exact run/start guards and --confirm-production; use --apply only after worker termination is independently confirmed.");
+    using var recoveryScope = app.Services.CreateScope();
+    var recoveryDb = recoveryScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
+    var result = await BackupLegacyRecovery.AbandonAsync(recoveryDb, id, expectedStart,
+        RecoveryValue("--requested-by") ?? "", RecoveryValue("--termination-evidence") ?? "",
+        args.Contains("--worker-stopped", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--apply", StringComparer.OrdinalIgnoreCase), CancellationToken.None);
+    recoveryScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("BackupRecovery").LogInformation("{RecoveryResult}", result);
+    return;
+}
+
 var backupCommand = args.FirstOrDefault(x => x.StartsWith("--run-backup=", StringComparison.OrdinalIgnoreCase));
 if (backupCommand is not null)
 {
