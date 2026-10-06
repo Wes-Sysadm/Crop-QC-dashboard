@@ -42,6 +42,28 @@ public sealed class InventoryAvailabilityTests
         Assert.Contains(receipt.Blockers, x => x.Code == InventoryBlockerCode.MissingReceiptProvenance);
     }
 
+    [Theory]
+    [InlineData(904, false)]
+    [InlineData(905, true)]
+    [InlineData(null, false)]
+    public void Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock(int? treatmentRoom, bool expectedOperable)
+    {
+        var e = InventoryEvidenceCorpus.Treated();
+        e = e with
+        {
+            Projections = [e.Projections[0] with { Signature = "u", State = "Untreated", ApplicationIds = [] }, e.Projections[1]],
+            Applications = [e.Applications[1] with { RoomId = treatmentRoom }]
+        };
+        var result = InventoryAvailabilityResolver.Resolve(e, new());
+        Assert.Equal(expectedOperable, result.IsOperable);
+        if (expectedOperable)
+        {
+            Assert.Equal(20, result.AvailableQuantity);
+            Assert.Equal(10, Assert.Single(result.TreatmentSlices, x => x.Signature == "u").Quantity);
+            Assert.Equal(10, Assert.Single(result.TreatmentSlices, x => x.Signature == "u|a:2").Quantity);
+        }
+    }
+
     [Fact]
     public void Negative_authority_is_not_clamped_or_treated_as_valid()
     {

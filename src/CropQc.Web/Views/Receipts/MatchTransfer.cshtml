@@ -92,7 +92,7 @@
         <form method="post" action="/BinsRun/InterCrewTransfers/@transfer.Id/EditTransit" class="subpanel">
             @Html.AntiForgeryToken()
             <input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="DispatchMovementId" value="@allocation.Movement.Id" />
-            <p>@source.GrowerNameSnapshot / @source.LotNumberSnapshot / @source.VarietyCodeSnapshot / @source.TreatmentState — @allocation.Bins bins</p>
+            <p>@(allocation.CurrentGrowerName ?? source.GrowerNameSnapshot) / @(allocation.Canonical?.Identity.Lot ?? source.LotNumberSnapshot) / @(allocation.Canonical?.Identity.Variety ?? source.VarietyCodeSnapshot) / @(allocation.Canonical?.TreatmentState ?? source.TreatmentState) — @allocation.Bins bins</p>
             <label>Bins to return<input type="number" name="Bins" min="1" max="@allocation.Bins" required /></label><label>Reason<input name="Reason" required maxlength="1000" /></label><button type="submit">Return selected bins to source</button>
         </form>
     }

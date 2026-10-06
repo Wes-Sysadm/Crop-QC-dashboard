@@ -19,7 +19,8 @@ public sealed class TruckReceiptGrandfatheringTests
         var legacy = await f.DispatchAsync(10);
         Assert.False(legacy.RequiresTruckReceipt);
         // Existing destination inventory is unrelated to subsequent feature activation.
-        Assert.True((await f.Dashboard.CreateReceiptAsync(f.ReceiptForm(17, false), default)).Succeeded);
+        var ordinaryReceipt = await f.Dashboard.CreateReceiptAsync(f.ReceiptForm(17, false), default);
+        Assert.True(ordinaryReceipt.Succeeded, ordinaryReceipt.Error);
         Assert.True(await TruckReceiptReleaseSafety.CanUsePreFeatureApplicationAsync(f.Db, default));
         SetEnabled(true);
         var current = await f.DispatchAsync(70);

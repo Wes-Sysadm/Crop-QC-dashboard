@@ -1,0 +1,550 @@
+[
+  {
+    "Id": 1,
+    "Workflow": "Room move / same-company warehouse move",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "RoomMove",
+      "WarehouseTransfer"
+    ],
+    "Reversal": "ReverseRoomMove",
+    "Evidence": "Current room authority; treatment; route; seal; fingerprint",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 2,
+    "Workflow": "Room transfer reversal",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "ReverseRoomMove"
+    ],
+    "Reversal": "Preserve original forward",
+    "Evidence": "Exact unreversed paired movement and surviving destination",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 3,
+    "Workflow": "Cross-company / inter-crew dispatch",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/InterCrewTransferService.cs",
+    "OperationIntents": [
+      "InterCompanyDispatch"
+    ],
+    "Reversal": "Return",
+    "Evidence": "Room availability plus authorized crew route",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalInterCrewWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 4,
+    "Workflow": "Legacy/internal inter-crew receive",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/InterCrewTransferService.cs",
+    "OperationIntents": [
+      "ReceiveTransfer"
+    ],
+    "Reversal": "ReopenTransfer Return",
+    "Evidence": "Exact custody parent and persistent receipt policy",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalInterCrewWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 5,
+    "Workflow": "Truck Receipt match / variety edit",
+    "ReadPath": "Canonical",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
+    "OperationIntents": [],
+    "Reversal": "Unlink pending match",
+    "Evidence": "Serializable receipt/transfer versions; canonical transit comparison",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 6,
+    "Workflow": "Truck Receipt completion",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
+    "OperationIntents": [
+      "ReceiveTransfer"
+    ],
+    "Reversal": "ReopenTransfer",
+    "Evidence": "Dispatch remainder; exact variety reconciliation",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 7,
+    "Workflow": "Truck Receipt transfer edit / return",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
+    "OperationIntents": [
+      "TransferEdit",
+      "ReturnTransitAllocation"
+    ],
+    "Reversal": "ReturnTransitAllocation",
+    "Evidence": "Current source fingerprint or exact original dispatch allocation",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 8,
+    "Workflow": "Truck Receipt admin reopen",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
+    "OperationIntents": [
+      "ReopenTransfer"
+    ],
+    "Reversal": "ReceiveTransfer",
+    "Evidence": "Exact surviving receive; no dependent movement",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 9,
+    "Workflow": "Processor Sale",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/ProcessorShipmentService.cs",
+    "OperationIntents": [
+      "ProcessorSale"
+    ],
+    "Reversal": "Return",
+    "Evidence": "Canonical source; processor and pricing terms",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalProcessorWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 10,
+    "Workflow": "Processor Sale reversal",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/ProcessorShipmentService.cs",
+    "OperationIntents": [
+      "Return"
+    ],
+    "Reversal": "Preserve shipment history",
+    "Evidence": "Exact unreversed custody; current identity/treatment",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalProcessorWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 11,
+    "Workflow": "Tree Top / Outside Warehouse",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/OutsideWarehouseTransferService.cs",
+    "OperationIntents": [
+      "OutsideWarehouseTransfer"
+    ],
+    "Reversal": "Return",
+    "Evidence": "Canonical source and outside destination",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalOutsideWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 12,
+    "Workflow": "Outside Warehouse reversal",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/OutsideWarehouseTransferService.cs",
+    "OperationIntents": [
+      "Return"
+    ],
+    "Reversal": "Preserve transfer history",
+    "Evidence": "Exact unreversed custody; current identity/treatment",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalOutsideWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 13,
+    "Workflow": "Actual Run / dump / packline consumption",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/BinsRunService.cs",
+    "OperationIntents": [
+      "Dump",
+      "ReviseRun",
+      "CancelRun"
+    ],
+    "Reversal": "CancelRun ReverseRunEntry",
+    "Evidence": "Own current-revision restoration only; facility attribution",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalActualRunWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 14,
+    "Workflow": "Legacy Bins Run create/edit/reverse",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/BinsRunService.cs",
+    "OperationIntents": [
+      "LegacyDump",
+      "ReviseLegacyDump",
+      "ReverseRunEntry"
+    ],
+    "Reversal": "ReverseRunEntry",
+    "Evidence": "Own exact-entry restoration only",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalLegacyRunWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 15,
+    "Workflow": "Packout result / finalization / reopen",
+    "ReadPath": "Canonical",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/PackoutReconciliationService.cs",
+    "OperationIntents": [],
+    "Reversal": "Reporting reopen only",
+    "Evidence": "Consumed revision is reporting evidence; never consumes twice",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/PackoutReconciliationTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 16,
+    "Workflow": "Repack",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/BinsRunService.cs",
+    "OperationIntents": [
+      "Dump",
+      "ReviseRun"
+    ],
+    "Reversal": "CancelRun",
+    "Evidence": "No dedicated repack writer; normal run consumes. Packed-product recreation unsupported",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalActualRunWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 17,
+    "Workflow": "Ordinary receiving (web)",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "ReceiveStock"
+    ],
+    "Reversal": "VoidReceipt",
+    "Evidence": "Exact active receiving identity; audited operator; no inherited treatment",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalReceivingWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 18,
+    "Workflow": "Ordinary receiving edits (web)",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "UpdateReceiptMetadata",
+      "ActivateReceiptInventory"
+    ],
+    "Reversal": "VoidReceipt",
+    "Evidence": "Version/date guard; posting requires no inventory history",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalReceiptMetadataTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 19,
+    "Workflow": "Receiving API create/edit",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Api/Services/ReceiptService.cs",
+    "OperationIntents": [
+      "ReceiveStock",
+      "UpdateReceiptMetadata"
+    ],
+    "Reversal": "Web admin VoidReceipt",
+    "Evidence": "Shared Web Google session and antiforgery; shared engine; same-day metadata policy",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalOperatorSessionTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 20,
+    "Workflow": "Room fill / manual positive true-up",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "ManualStockAddition"
+    ],
+    "Reversal": "Reviewed attributed correction",
+    "Evidence": "Explicit positive Unknown stock; no invented receipt ownership",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalManualStockWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 21,
+    "Workflow": "Room fill report / email",
+    "ReadPath": "Canonical",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/EndOfDayFillAdminService.cs",
+    "OperationIntents": [],
+    "Reversal": "Not applicable",
+    "Evidence": "Authoritative ledger report only; mail reservations are not inventory",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/EndOfDayFillAntiforgeryHttpTests.cs",
+      "tests/CropQc.Api.Tests/EndOfDayFillProductionRestoreBenchmarkTests.cs",
+      "tests/CropQc.Api.Tests/EndOfDayFillTests.cs",
+      "tests/CropQc.Api.Tests/EndOfDayFillWarehouseConfigurationTests.cs",
+      "tests/CropQc.Api.Tests/EndOfDayFillWarehousePostgreSqlHttpTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 22,
+    "Workflow": "Dropped bins",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/RoomInventoryLossService.cs",
+    "OperationIntents": [
+      "Loss"
+    ],
+    "Reversal": "ReverseLoss",
+    "Evidence": "Canonical availability; exact loss history",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalLossWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 23,
+    "Workflow": "Legacy room depletion / reversal",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [
+      "ReceiptDepletion",
+      "ReverseDepletion"
+    ],
+    "Reversal": "ReverseDepletion",
+    "Evidence": "Exact receipt provenance; no overdraw/clamping",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalDepletionWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 24,
+    "Workflow": "Treatment assignment (room / receipt)",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/RoomTreatmentService.cs",
+    "OperationIntents": [
+      "TreatmentAssignment",
+      "ReceiptTreatmentAssignment"
+    ],
+    "Reversal": "TreatmentReversal",
+    "Evidence": "Treatment proof; receipt assignment also exact ownership",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTreatmentReversalWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 25,
+    "Workflow": "Treatment reversal",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/RoomTreatmentService.cs",
+    "OperationIntents": [
+      "TreatmentReversal"
+    ],
+    "Reversal": "New authorized assignment",
+    "Evidence": "Current custody/room state; historical application sources retained",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalTreatmentReversalWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 26,
+    "Workflow": "Receipt admin quantity/void/location/identity",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
+    "OperationIntents": [
+      "CorrectReceiptQuantity",
+      "VoidReceipt",
+      "CorrectReceiptLocation",
+      "CorrectReceiptIdentity"
+    ],
+    "Reversal": "Compensating correction",
+    "Evidence": "Exact receipt/version/fingerprint; surviving physical ownership",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 27,
+    "Workflow": "Identity correction / legacy identity reconciliation",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
+    "OperationIntents": [
+      "CorrectReceiptIdentity"
+    ],
+    "Reversal": "Preserve historical identity",
+    "Evidence": "Ordinary receipt identity correction canonical; whole-lot legacy reconciliation CLI only",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 28,
+    "Workflow": "Baseline import / replacement",
+    "ReadPath": "Canonical",
+    "WritePath": "Canonical",
+    "Source": "src/CropQc.Web/Services/RoomInventoryImportService.cs",
+    "OperationIntents": [
+      "ImportBaseline"
+    ],
+    "Reversal": "Later reviewed baseline",
+    "Evidence": "Whole-preview fingerprint; exact identity; omitted-position preservation; no reduction",
+    "TransactionOwner": "InventoryCommandExecutor (Serializable)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalBaselineWorkflowTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 29,
+    "Workflow": "Inventory summaries / room dashboard",
+    "ReadPath": "Canonical",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
+    "OperationIntents": [],
+    "Reversal": "Not applicable",
+    "Evidence": "Shared authoritative ledger; canonical treatment and source options",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalSelectorCoverageTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 30,
+    "Workflow": "Traceback / receipt provenance",
+    "ReadPath": "Historical/report-only",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/RoomReceiptProvenanceResolver.cs",
+    "OperationIntents": [],
+    "Reversal": "Not applicable",
+    "Evidence": "Historical provenance read only; cannot authorize commands",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/RoomReceiptProvenanceResolverTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 31,
+    "Workflow": "Admin reconciliation / readiness / conservation",
+    "ReadPath": "Historical/report-only",
+    "WritePath": "Non-mutating",
+    "Source": "src/CropQc.Web/Services/InventoryIdentityCorrectionOperations.cs",
+    "OperationIntents": [],
+    "Reversal": "Not applicable",
+    "Evidence": "Read-only diagnostics; cannot authorize commands",
+    "TransactionOwner": "Nonphysical coordinator",
+    "Tests": [
+      "tests/CropQc.Api.Tests/InventoryIdentityServiceTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  },
+  {
+    "Id": 32,
+    "Workflow": "Background/API/one-time writers",
+    "ReadPath": "Historical/report-only (maintenance); API canonical receiving is row 19",
+    "WritePath": "Maintenance",
+    "Source": "src/CropQc.Web/Program.cs",
+    "OperationIntents": [],
+    "Reversal": "CLI maintenance only",
+    "Evidence": "Explicit maintenance CLI/configuration modes only, protected by the canonical write boundary; ordinary API receiving is separately migrated; no automatic backfill",
+    "TransactionOwner": "Explicit exceptional maintenance (not ordinary traffic)",
+    "Tests": [
+      "tests/CropQc.Api.Tests/CanonicalInventoryActivationTests.cs"
+    ],
+    "Readiness": "Implementation covered; final exit gates pending"
+  }
+]

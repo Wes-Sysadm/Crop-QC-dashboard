@@ -23,7 +23,7 @@ public interface IInterCrewTransferService
     Task<InterCrewTransferDetailViewModel?> GetDetailsAsync(long id, CancellationToken cancellationToken);
 }
 
-public sealed class InterCrewTransferService(
+public sealed partial class InterCrewTransferService(
     CropQcDbContext dbContext,
     IOutsideWarehouseTransferService inventoryProvider,
     IRoomInventoryLedgerQueryService ledger,
@@ -34,7 +34,8 @@ public sealed class InterCrewTransferService(
     IHttpContextAccessor httpContextAccessor,
     IBusinessTimeService businessTime,
     TruckReceiptReconciliationService? truckReceipts = null,
-    TruckReceiptOptions? truckReceiptOptions = null) : IInterCrewTransferService
+    TruckReceiptOptions? truckReceiptOptions = null,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IInterCrewTransferService
 {
     private const string AuditSource = "CropQc.Web inter-crew transfer workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -51,16 +52,25 @@ public sealed class InterCrewTransferService(
         var all = await dbContext.InterCrewTransfers.AsNoTracking()
             .Include(x => x.SourceWarehouse).Include(x => x.SourceRoom)
             .OrderByDescending(x => x.LoadedAt).Take(500).ToListAsync(cancellationToken);
+        var canonicalAllocations = dbContext.CanonicalInventoryEnabled
+            ? await TruckReceiptReconciliationService.ReadCanonicalTransitAllocationsAsync(dbContext, businessTime,
+                all.Where(x => x.Status == InterCrewTransferStatuses.InTransit).Select(x => x.Id).ToArray(), cancellationToken) : null;
+        var matchedReceiptIds = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit && x.ReceivingReceiptId != null)
+            .Select(x => x.ReceivingReceiptId!.Value).Distinct().ToArray();
+        var canonicalReceipts = canonicalAllocations == null ? null
+            : await dbContext.Receipts.AsNoTracking().Include(x => x.VarietyLines).Where(x => matchedReceiptIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var queue = new List<InterCrewTransferListItemViewModel>();
         foreach (var transfer in all.Where(x => x.Status == InterCrewTransferStatuses.InTransit
                      && CanAccessGroup(group, canAdmin, x.DestinationCustodyGroup)))
         {
             InventoryIdentityResolution? currentIdentity = null;
-            if (transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null)
+            if (canonicalAllocations == null && transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null)
                 currentIdentity = await identityService.ResolveAsync(new InventoryIdentityKey(
                     transfer.CropYear.Value, transfer.GrowerLotId.Value, transfer.FruitProfileId.Value), cancellationToken);
-            var item = ListItem(transfer, true, currentIdentity);
-            item.ReconciliationStatus = await ReconciliationStatusAsync(transfer, cancellationToken);
+            var item = canonicalAllocations == null ? ListItem(transfer, true, currentIdentity)
+                : CurrentTransitListItem(transfer, canonicalAllocations.GetValueOrDefault(transfer.Id, []));
+            item.ReconciliationStatus = canonicalAllocations == null ? await ReconciliationStatusAsync(transfer, cancellationToken)
+                : CanonicalReconciliationStatus(transfer, canonicalAllocations.GetValueOrDefault(transfer.Id, []), canonicalReceipts!);
             queue.Add(item);
         }
         var inventory = new List<OutsideWarehouseInventoryOptionViewModel>();
@@ -98,7 +108,8 @@ public sealed class InterCrewTransferService(
         }
         var history = all.Select(x => ListItem(x, false)).ToList();
         foreach (var item in history)
-            item.ReconciliationStatus = await ReconciliationStatusAsync(all.Single(x => x.Id == item.Id), cancellationToken);
+            item.ReconciliationStatus = canonicalAllocations == null ? await ReconciliationStatusAsync(all.Single(x => x.Id == item.Id), cancellationToken)
+                : CanonicalReconciliationStatus(all.Single(x => x.Id == item.Id), canonicalAllocations.GetValueOrDefault(item.Id, []), canonicalReceipts!);
         return new InterCrewTransferPageViewModel
         {
             Form = new()
@@ -134,6 +145,7 @@ public sealed class InterCrewTransferService(
         if (form.LoadedAt == default) return Fail("Loaded date and time are required.");
         var key = Normalize(form.OperationKey);
         if (key is null || key.Length > 150) return Fail("The transfer operation key is invalid. Refresh and retry.");
+        if (dbContext.CanonicalInventoryEnabled) return await DispatchCanonicalAsync(form, cancellationToken);
         var existing = await dbContext.InterCrewTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == key, cancellationToken);
         if (existing is not null) return new(true, true, existing.Id, null);
         var actor = await GetActorAsync(cancellationToken);
@@ -223,6 +235,7 @@ public sealed class InterCrewTransferService(
         var actor = await GetActorAsync(cancellationToken);
         if (actor is null) return Fail("The current active user could not be resolved.");
         var canAdmin = await CanAdminAsync(principal, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) return await ReceiveCanonicalAsync(form, actor, canAdmin, cancellationToken);
 
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
@@ -311,6 +324,7 @@ public sealed class InterCrewTransferService(
         var actor = await GetActorAsync(cancellationToken);
         var key = Normalize(form.OperationKey);
         if (actor is null || key is null) return "The reversal request is invalid.";
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalAsync(form, actor.Id, cancellationToken);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
@@ -409,6 +423,32 @@ public sealed class InterCrewTransferService(
             DestinationRooms = rooms.Where(r => TransferCustodyGroups.ContainsWarehouse(x.DestinationCustodyGroup, r.Warehouse.Code))
                 .Select(r => new InterCrewDestinationRoomViewModel(r.Id, r.Warehouse.Code, RoomLabel(r))).ToList()
         };
+    }
+
+    private static InterCrewTransferListItemViewModel CurrentTransitListItem(InterCrewTransfer transfer, IReadOnlyList<TransitAllocation> allocations)
+    {
+        var item = ListItem(transfer, true);
+        var identities = allocations.Where(x => x.Canonical != null).Select(x => x.Canonical!.Identity).Distinct().ToArray();
+        return identities.Length == 0 ? item with { CanReceive = false } : item with
+        {
+            Lot = string.Join(", ", identities.Select(x => x.Lot).Distinct()),
+            Variety = string.Join(", ", identities.Select(x => x.Variety).Distinct()),
+            Grower = string.Join(", ", allocations.Select(x => x.CurrentGrowerName).Distinct()),
+            Treatment = string.Join(", ", allocations.Select(x => x.Canonical!.TreatmentState).Distinct())
+        };
+    }
+
+    private static string? CanonicalReconciliationStatus(InterCrewTransfer transfer, IReadOnlyList<TransitAllocation> allocations,
+        IReadOnlyDictionary<long, Receipt> receipts)
+    {
+        if (transfer.Status != InterCrewTransferStatuses.InTransit) return null;
+        if (allocations.Count == 0) return "Inventory custody requires review";
+        if (!transfer.RequiresTruckReceipt && transfer.ReceivingReceiptId == null) return null;
+        if (!TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)) return null;
+        if (transfer.ReceivingReceiptId == null) return "Awaiting Receipt";
+        if (!receipts.TryGetValue(transfer.ReceivingReceiptId.Value, out var receipt)) return "Matched receipt requires review";
+        var rows = TruckReceiptReconciliationService.Compare(allocations, receipt.VarietyLines, []);
+        return rows.Count > 0 && rows.All(x => x.Difference == 0) ? "Reconciled — ready to complete" : "Reconciliation Required";
     }
 
     private async Task<string?> ReconciliationStatusAsync(InterCrewTransfer transfer, CancellationToken ct)

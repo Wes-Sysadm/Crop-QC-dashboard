@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,12 +18,13 @@ public interface IRoomInventoryImportService
     string GetCsvExample();
 }
 
-public sealed class RoomInventoryImportService(
+public sealed partial class RoomInventoryImportService(
     CropQcDbContext dbContext,
     IWebHostEnvironment environment,
     ICropYearService cropYearService,
     IRoomInventoryLedgerQueryService? roomInventoryLedgerQueryService = null,
-    ICanonicalGrowerService? canonicalGrowerService = null) : IRoomInventoryImportService
+    ICanonicalGrowerService? canonicalGrowerService = null,
+    IInventoryCommandExecutor? canonicalCommands = null) : IRoomInventoryImportService
 {
     public const string BuiltInEbsSeedFileName = "ebs-starting-room-inventory.csv";
     public const string StartingInventoryAdjustmentType = "StartingInventoryImport";
@@ -59,12 +61,15 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
     public async Task<RoomInventoryImportPreviewViewModel> PreviewAsync(RoomInventoryImportForm form, CancellationToken cancellationToken)
     {
         var csvText = await ReadCsvTextAsync(form, cancellationToken);
-        return await BuildPreviewAsync(csvText, form.UseBuiltInSeed, cancellationToken);
+        var preview = await BuildPreviewAsync(csvText, form.UseBuiltInSeed, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) await AddCanonicalPreviewAsync(preview, cancellationToken);
+        return preview;
     }
 
     public async Task<(RoomInventoryImportPreviewViewModel Preview, string? Error)> ApplyAsync(RoomInventoryImportForm form, string changedByEmail, CancellationToken cancellationToken)
     {
         var csvText = await ReadCsvTextAsync(form, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled) return await ApplyCanonicalBaselineAsync(form, csvText, changedByEmail, cancellationToken);
         var preview = await BuildPreviewAsync(csvText, form.UseBuiltInSeed, cancellationToken);
         if (!form.ConfirmImport)
         {
@@ -382,9 +387,15 @@ CropYear,Warehouse,RoomCode,Grower,Lot,Variety,Bins,Status,EffectiveDate,Notes
                     messages.Add($"Multiple Grower Lots use Lot # {lotNumber}; import will keep the lot number but not link automatically.");
                 }
             }
-            var fruitProfile = fruitProfiles.FirstOrDefault(x =>
+            var profileMatches = fruitProfiles.Where(x =>
                 string.Equals(x.VarietyCode, row.Variety, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(x.Name, variety, StringComparison.OrdinalIgnoreCase));
+                || string.Equals(x.Name, variety, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (dbContext.CanonicalInventoryEnabled && (row.GrowerLotId == null || profileMatches.Length != 1))
+            {
+                previewRows.Add(Invalid(row, "Lot / Variety", "Select an exact Master Data lot and unambiguous fruit profile before importing."));
+                continue;
+            }
+            var fruitProfile = profileMatches.FirstOrDefault();
             if (fruitProfile is null)
             {
                 row.IsWarning = true;

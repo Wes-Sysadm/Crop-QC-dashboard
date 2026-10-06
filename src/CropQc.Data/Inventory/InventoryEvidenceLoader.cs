@@ -123,7 +123,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             var projectionEvidence = matchingSegments.Select(x => Projection(x, identity, snapshot.WarehouseId)).ToImmutableArray();
             var movementEvidence = matchingMovements.Select(x => Movement(x, identity, snapshot.RoomId)).ToImmutableArray();
             var receiptEvidence = matchingReceipts.Select(x => Receipt(x, identity)).ToImmutableArray();
-            var appEvidence = matchingApps.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId)).ToImmutableArray();
+            var appEvidence = matchingApps.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
             profiles.TryGetValue(snapshot.FruitProfileId ?? -1, out var profile);
             var identityVerified = identity.IsComplete && profile != null && N(profile.VarietyCode) == N(identity.Variety)
                 && N(profile.ProductionType) == N(identity.ProductionType) && profile.IsOrganic == identity.IsOrganic;
@@ -159,7 +159,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + applications.Count + profiles.Count + runParents.Count);
     }
 
-    private static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
+    internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Lot, x.GrowerNumber, x.Variety, x.ProductionType, x.IsOrganic, x.InventoryStatus);
     private static InventoryIdentity Identity(TreatmentLineageSegment x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.LotNumberSnapshot, x.GrowerNumberSnapshot, x.VarietyCodeSnapshot, x.ProductionTypeSnapshot, x.IsOrganicSnapshot, x.InventoryStatusSnapshot ?? "");

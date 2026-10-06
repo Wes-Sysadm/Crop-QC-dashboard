@@ -3,8 +3,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CropQc.Data;
 
-public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) : DbContext(options)
+public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, Inventory.CanonicalInventoryMode? canonicalMode = null) : DbContext(options)
 {
+    public bool CanonicalInventoryEnabled => canonicalMode?.Enabled == true;
+    internal bool CanonicalCommandTransaction { get; set; }
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        optionsBuilder.AddInterceptors(new Inventory.CanonicalInventorySqlGuard());
+        base.OnConfiguring(optionsBuilder);
+    }
     public DbSet<InventoryCommandRecord> InventoryCommands => Set<InventoryCommandRecord>();
     private bool synchronizingDefectInspectionStatus;
     public DbSet<User> Users => Set<User>();
@@ -118,6 +125,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        Inventory.CanonicalInventoryWriteGuard.Check(this);
         if (synchronizingDefectInspectionStatus)
         {
             return base.SaveChanges(acceptAllChangesOnSuccess);
@@ -133,6 +141,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        Inventory.CanonicalInventoryWriteGuard.Check(this);
         if (synchronizingDefectInspectionStatus)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
@@ -1595,21 +1604,25 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options) :
                 ? "\"InventoryOperationKey\" IS NOT NULL"
                 : "[InventoryOperationKey] IS NOT NULL");
             var transferSideIndex = entity.HasIndex(x => new { x.RoomTransferId, x.AdjustmentType }).IsUnique();
+            // Legacy writers have one row per parent/side. Canonical reversals may
+            // restore multiple current identities after an audited receipt correction.
+            // Their immutable command journal and unique InventoryOperationKey own
+            // idempotency; keep the original side constraint for all legacy rows.
             transferSideIndex.HasFilter(isPostgreSqlProvider
-                ? "\"RoomTransferId\" IS NOT NULL"
-                : "[RoomTransferId] IS NOT NULL");
+                ? "\"RoomTransferId\" IS NOT NULL AND \"InventoryInvariantVersion\" < 3"
+                : "[RoomTransferId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
             var lossSideIndex = entity.HasIndex(x => new { x.RoomInventoryLossId, x.AdjustmentType }).IsUnique();
             lossSideIndex.HasFilter(isPostgreSqlProvider
-                ? "\"RoomInventoryLossId\" IS NOT NULL"
-                : "[RoomInventoryLossId] IS NOT NULL");
+                ? "\"RoomInventoryLossId\" IS NOT NULL AND \"InventoryInvariantVersion\" < 3"
+                : "[RoomInventoryLossId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
             var processorSideIndex = entity.HasIndex(x => new { x.ProcessorShipmentLineId, x.AdjustmentType }).IsUnique();
             processorSideIndex.HasFilter(isPostgreSqlProvider
-                ? "\"ProcessorShipmentLineId\" IS NOT NULL"
-                : "[ProcessorShipmentLineId] IS NOT NULL");
+                ? "\"ProcessorShipmentLineId\" IS NOT NULL AND \"InventoryInvariantVersion\" < 3"
+                : "[ProcessorShipmentLineId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
             var outsideTransferSideIndex = entity.HasIndex(x => new { x.OutsideWarehouseTransferId, x.AdjustmentType }).IsUnique();
             outsideTransferSideIndex.HasFilter(isPostgreSqlProvider
-                ? "\"OutsideWarehouseTransferId\" IS NOT NULL"
-                : "[OutsideWarehouseTransferId] IS NOT NULL");
+                ? "\"OutsideWarehouseTransferId\" IS NOT NULL AND \"InventoryInvariantVersion\" < 3"
+                : "[OutsideWarehouseTransferId] IS NOT NULL AND [InventoryInvariantVersion] < 3");
             var interCrewTransferSideIndex = entity.HasIndex(x => new { x.InterCrewTransferId, x.AdjustmentType });
             interCrewTransferSideIndex.HasFilter(isPostgreSqlProvider
                 ? "\"InterCrewTransferId\" IS NOT NULL"

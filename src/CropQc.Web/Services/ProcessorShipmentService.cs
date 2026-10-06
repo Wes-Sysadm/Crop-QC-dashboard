@@ -24,7 +24,7 @@ public interface IProcessorShipmentService
     Task<string?> ReverseAsync(ProcessorShipmentReversalForm form, CancellationToken cancellationToken);
 }
 
-public sealed class ProcessorShipmentService(
+public sealed partial class ProcessorShipmentService(
     CropQcDbContext dbContext,
     IRoomInventoryLedgerQueryService ledger,
     IRoomTreatmentService roomTreatments,
@@ -32,7 +32,8 @@ public sealed class ProcessorShipmentService(
     IInventoryDeductionInvariantService invariant,
     IUserAccessService access,
     IHttpContextAccessor httpContextAccessor,
-    IBusinessTimeService businessTime) : IProcessorShipmentService
+    IBusinessTimeService businessTime,
+    CropQc.Shared.Inventory.IInventoryCommandExecutor? canonicalCommands = null) : IProcessorShipmentService
 {
     private const string AuditSource = "CropQc.Web processor shipment workflow";
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
@@ -102,6 +103,7 @@ public sealed class ProcessorShipmentService(
         if (headerError is not null) return new(false, false, null, headerError);
         var operationKey = Normalize(form.OperationKey);
         if (operationKey is null || operationKey.Length > 150) return new(false, false, null, "The shipment operation key is invalid. Refresh and retry.");
+        if (dbContext.CanonicalInventoryEnabled) return await CreateCanonicalAsync(form, cancellationToken);
         var existing = await dbContext.ProcessorShipments.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == operationKey, cancellationToken);
         if (existing is not null) return new(true, true, existing.Id, null);
         var actor = await GetActorAsync(cancellationToken);
@@ -310,6 +312,7 @@ public sealed class ProcessorShipmentService(
         if (string.IsNullOrWhiteSpace(form.Reason)) return "A physical-reversal reason is required.";
         var actor = await GetActorAsync(cancellationToken);
         if (actor is null) return "The current active user could not be resolved.";
+        if (dbContext.CanonicalInventoryEnabled) return await ReverseCanonicalAsync(form, actor.Id, cancellationToken);
         await using var transaction = await BeginTransactionAsync(cancellationToken);
         try
         {
@@ -401,6 +404,7 @@ public sealed class ProcessorShipmentService(
             .Where(x => x.Key == RunProjectionSettings.ApplePoundsPerBinKey || x.Key == RunProjectionSettings.PearPoundsPerBinKey)
             .ToDictionaryAsync(x => x.Key, x => x.Value, cancellationToken);
         var result = new List<ProcessorInventoryOptionViewModel>();
+        var canonical = dbContext.CanonicalInventoryEnabled ? await CanonicalTreatmentSelections.LoadAsync(dbContext, snapshots, cancellationToken) : null;
         var roomIds = snapshots.Select(x => x.RoomId).Distinct().ToList();
         var sealedRoomIds = await dbContext.Rooms.AsNoTracking()
             .Where(x => roomIds.Contains(x.Id) && x.IsSealed && (x.SealedAt == null || x.SealedAt <= businessTime.UtcNow))
@@ -408,14 +412,15 @@ public sealed class ProcessorShipmentService(
             .ToHashSetAsync(cancellationToken);
         foreach (var snapshot in snapshots)
         {
-            var selections = (await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
+            var selections = (canonical != null ? canonical[RoomTreatmentService.SelectionLookupKey(snapshot)] : await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
                 .Where(x => x.CurrentBins > 0)
                 .ToList();
             var pounds = PoundsPerBin(snapshot.FruitType, weightConfig);
             foreach (var selection in selections)
             {
-                var receiptId = selection.ReceiptId ?? receiptIds.GetValueOrDefault(snapshot.LatestAdjustmentId);
-                var key = SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature, receiptId, selection.SegmentId);
+                var receiptId = canonical != null ? selection.ReceiptId : selection.ReceiptId ?? receiptIds.GetValueOrDefault(snapshot.LatestAdjustmentId);
+                var key = SourceKey(snapshot, selection.IdentityKey, selection.TreatmentSignature, receiptId, selection.SegmentId)
+                    + (canonical == null ? "" : ":" + selection.CanonicalFingerprint);
                 result.Add(new ProcessorInventoryOptionViewModel(
                     key, snapshot.WarehouseId, snapshot.Facility, snapshot.RoomId, snapshot.Room,
                     snapshot.CropYear, snapshot.GrowerLotId, snapshot.FruitProfileId, snapshot.Grower,

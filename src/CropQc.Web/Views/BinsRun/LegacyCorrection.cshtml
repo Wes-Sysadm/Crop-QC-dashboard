@@ -1,0 +1,40 @@
+@model BinsRunPageViewModel
+@{
+    ViewData["Title"] = "Correct legacy Bins Run";
+    var entryId = Model.Filter.EditBinsRunEntryId!.Value;
+}
+<h1>Correct legacy Bins Run #@entryId</h1>
+<p>The original @Model.Form.BinsRun bins remain in history. Saving reverses that entry and records its replacement together. Available quantities include only this entry's own restoration.</p>
+@foreach (var option in Model.AvailableInventory)
+{
+    <section class="panel">
+        <h2>@option.Label</h2>
+        <p>@option.TreatmentLabel</p>
+        @if (!option.IsAvailable || option.IsRoomSealed)
+        {
+            <p class="notice warning">@(option.IsRoomSealed ? "This room is sealed." : option.UnavailableReason)</p>
+        }
+        else
+        {
+            <form method="post" action="/BinsRun/@entryId/Edit">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+                <input type="hidden" name="WarehouseId" value="@option.WarehouseId" />
+                <input type="hidden" name="RoomId" value="@option.RoomId" />
+                <input type="hidden" name="InventoryKey" value="@option.InventoryKey" />
+                <input type="hidden" name="TreatmentSignature" value="@option.TreatmentSignature" />
+                <input type="hidden" name="CanonicalFingerprint" value="@option.CanonicalFingerprint" />
+                <input type="hidden" name="ExpectedAvailableBins" value="@option.CurrentBins" />
+                <input type="hidden" name="RunAt" value="@Model.Form.RunAt.ToString("O")" />
+                <label>Replacement bins <input type="number" name="BinsRun" min="1" max="@option.CurrentBins" value="@Math.Min(Model.Form.BinsRun, option.CurrentBins)" required /></label>
+                <label>Notes <textarea name="Notes">@Model.Form.Notes</textarea></label>
+                <button type="submit">Save correction with reversal</button>
+            </form>
+        }
+    </section>
+}
+@if (Model.AvailableInventory.Count == 0)
+{
+    <p class="notice warning">This entry's inventory cannot currently be proven. Review its inventory history before correcting.</p>
+}
+<a href="/BinsRun?Section=Actual">Back to runs</a>

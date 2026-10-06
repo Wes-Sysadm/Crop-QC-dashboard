@@ -402,6 +402,7 @@ public sealed class ReceiptsController(
             model.ConcurrencyVersion = preview.ConcurrencyVersion;
             model.CurrentBalances = preview.Balances;
             model.Form.ExpectedConcurrencyVersion = preview.ConcurrencyVersion;
+            model.Form.ExpectedInventoryStateToken = preview.InventoryStateToken;
         }
         return model is null ? NotFound() : View(model);
     }

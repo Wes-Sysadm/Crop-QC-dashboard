@@ -1469,6 +1469,7 @@ else
                                         <input type="hidden" name="Lines.Index" value="@i" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].InventoryKey" value="@option.InventoryKey" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].TreatmentSignature" value="@option.TreatmentSignature" data-actual-line-field disabled="@(!isSelected)" />
+                                        <input type="hidden" name="Lines[@i].CanonicalFingerprint" value="@option.CanonicalFingerprint" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].TreatmentSegmentId" value="@option.TreatmentSegmentId" data-actual-line-field disabled="@(!isSelected)" />
                                         <input type="hidden" name="Lines[@i].ExpectedAvailableBins" value="@effectiveAvailable" data-actual-line-field disabled="@(!isSelected)" />
                                     </td>
@@ -1778,14 +1779,15 @@ else
             else
             {
                 <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                    <input type="hidden" name="CanonicalFingerprint" />
                     <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />
                     <label class="field wide">Current receipt-backed lot
-                        <select name="ReceiptId" required>
+                        <select name="ReceiptId" required onchange="this.form.elements['CanonicalFingerprint'].value=this.selectedOptions[0]?.dataset.fingerprint||'';">
                             <option value="">Select current lot</option>
                             @foreach (var option in Model.TrueUpReceiptOptions)
                             {
-                                <option value="@option.ReceiptId">@option.Label</option>
+                                <option value="@option.ReceiptId" data-fingerprint="@option.CanonicalFingerprint">@option.Label</option>
                             }
                         </select>
                     </label>
@@ -1878,7 +1880,12 @@ else
                             <tr id="bins-run-@item.Id">
                                 <td>@BusinessTime.FormatPacific(item.RunAt)</td><td>@item.Room</td><td>@item.Inventory</td>
                                 <td>@item.PreviousAvailableBins</td><td>@item.BinsRun</td><td>@item.NewAvailableBins</td>
-                                <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")</td>
+                                <td>@item.CreatedBy</td><td>@(item.IsReversed ? "Reversed" : "Active")
+                                    @if (item.CanCorrectLegacy && Model.CanRecord)
+                                    {
+                                        <a href="/BinsRun/@item.Id/Edit">Correct with reversal</a>
+                                    }
+                                </td>
                             </tr>
                         }
                         </tbody>
