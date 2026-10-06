@@ -1577,17 +1577,25 @@ public sealed class AdminManagementService(
         if (entity is null) return "Fruit profile not found.";
         // FindAsync may return an earlier tracked version. Never evaluate the guard against it.
         if (form.Id is not null) await dbContext.Entry(entity).ReloadAsync(ct);
+        if (CropQc.Data.Inventory.OrasProductDefinition.Applies(form.Code))
+        {
+            form.FruitType = "Pear";
+            form.ProductionType = "Organic";
+        }
         var productionType = NormalizeProductionType(form.ProductionType);
         // Preserve existing legacy combinations on cosmetic-only edits; do not silently clean
         // a historical IsOrganic flag. A production-type change still derives the organic flag.
         var organic = form.Id is not null && productionType == entity.ProductionType
             ? entity.IsOrganic : productionType == "Organic";
+        if (CropQc.Data.Inventory.OrasProductDefinition.Applies(form.Code)) organic = true;
         if (form.Id is not null && FruitProfileIdentityGuard.ChangesIdentity(
             entity, form.Code.Trim(), form.FruitType.Trim(), productionType, organic))
         {
             await FruitProfileIdentityGuard.LockReferencesAsync(dbContext, ct);
             if (await FruitProfileIdentityGuard.IsInUseAsync(dbContext, entity.Id, ct))
-                return FruitProfileIdentityGuard.InUseMessage;
+                return CropQc.Data.Inventory.OrasProductDefinition.Applies(entity.VarietyCode)
+                    ? "Use the audited ORAS correction linked on this page to correct current and historical classification together."
+                    : FruitProfileIdentityGuard.InUseMessage;
         }
         var action = form.Id is null ? "create" : "update";
         var before = form.Id is null ? null : FruitProfileAuditSnapshot(entity);

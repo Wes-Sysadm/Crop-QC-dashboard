@@ -33,13 +33,13 @@
     "Path": "src/CropQc.Api/Services/ReceiptService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "34396E233E31B2769DF6B904284FF2C53A95854035CFE5B46FF6E80987234348"
+    "Sha256": "E11156E7F10C35A62B76E95CE524299A1A9E4B39DF92D76ACC2B14F26082D674"
   },
   {
     "Path": "src/CropQc.Data/CropQcDbContext.cs",
     "Classification": "Physical write boundary",
     "Reason": "Tracked field guard and raw SQL interceptor; command-transaction capability internal to Data assembly.",
-    "Sha256": "C9D3E2209EA71F7895FA942562194A3137B6971685AFC62073063A1AE63E2131"
+    "Sha256": "F1ACC8D4C1CD52828644B8A9BC606C77ECEE23192763A867D8D5668A87207741"
   },
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalBaselinePreview.cs",
@@ -75,7 +75,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "3A09B3CE62DB005EC69C932F92A1D3533B92CF3CB0FDC38ADEBD06E66C26B21D"
+    "Sha256": "C1DD11383CB9304263037AC2AFCB9EEDACB25DEFB238F51085E924D61F6257B6"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -88,6 +88,12 @@
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
     "Sha256": "0B3AC4CF8F11933DE17476B5559381D8ECF66745B2274CE3E35CA527D72FA76E"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandOrasDefinition.cs",
+    "Classification": "Canonical executor",
+    "Reason": "ORAS classification correction: physical amounts and links preserved; plan changes are applied only by the canonical Serializable executor.",
+    "Sha256": "882FC08115192D803F5B72D518406D56F19219C7C82AFD14C9E37CD1895C6E04"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
@@ -117,7 +123,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "8017E8949E2B5B4B7026DD456398E17682708137B42F4AA9322D3380BD7A086D"
+    "Sha256": "8F9668CECD4E3BE67C912BAAD50E95DD0B20D8799667B4E0CC777BD773EB7304"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandRestoration.cs",
@@ -168,6 +174,12 @@
     "Sha256": "5D9BC090891A517B51315C0C540EC0C97D600DF4294942BEE7DBEBD5F6D80B94"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/OrasDefinitionCorrection.cs",
+    "Classification": "Read-only plan",
+    "Reason": "ORAS classification correction: physical amounts and links preserved; plan changes are applied only by the canonical Serializable executor.",
+    "Sha256": "A5FB3F170E783B7511B76C1980755ADE213BBF39D0B08191A68B8CE952CC6581"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
@@ -213,7 +225,7 @@
     "Path": "src/CropQc.Web/Services/AdminManagementService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "FD2037B0F1F530AA854111F5E591F333D1460ED9E3603F07F581D73C83EDFBC2"
+    "Sha256": "6A145702D6A41D09EC8E9945CC786B72ED8F3403BE123BDF4840FD43CB1B9CD2"
   },
   {
     "Path": "src/CropQc.Web/Services/BackupService.cs",
@@ -261,19 +273,19 @@
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "FD1F383B0E321DA401CD806F1C6B9F1642F75DA2DF85982A1429EC5197AE8689"
-  },
-  {
-    "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
-    "Classification": "Nonphysical or read-only",
-    "Reason": "Schema existence inspection only; matching UpdatedAt/Add strings are descriptions or local collection construction, not row repair.",
-    "Sha256": "47C4FD72B09F7C33187CAD5CCFE3FB74FB71A65E2B64BCD0C96C3F70F8DE2A88"
+    "Sha256": "6663C4D36AD35FB822C4ADA560C43094AF328C6CB3AFF29EB0598357CD3EC2FD"
   },
   {
     "Path": "src/CropQc.Web/Services/DataCleanupService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
     "Sha256": "94C2F8FA083EBCC64D427EB40B7521BB40EB7295A87E94223E41B173C6A03F64"
+  },
+  {
+    "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Schema existence inspection only; matching UpdatedAt/Add strings are descriptions or local collection construction, not row repair.",
+    "Sha256": "47C4FD72B09F7C33187CAD5CCFE3FB74FB71A65E2B64BCD0C96C3F70F8DE2A88"
   },
   {
     "Path": "src/CropQc.Web/Services/EmailOptions.cs",

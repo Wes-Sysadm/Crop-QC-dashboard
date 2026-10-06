@@ -21,6 +21,8 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
     public async Task<(ReceiptDto? Receipt, string? Error)> CreateAsync(CreateReceiptRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateCreate(request);
+        var profile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.FruitProfileId, cancellationToken);
+        if (profile != null && !CropQc.Data.Inventory.OrasProductDefinition.IsValid(profile)) return (null, CropQc.Data.Inventory.OrasProductDefinition.Error);
         if (validation is not null)
         {
             return (null, validation);
@@ -121,6 +123,8 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
 
     public async Task<(ReceiptDto? Receipt, string? Error)> UpdateSameDayAsync(long id, UpdateReceiptRequest request, CancellationToken cancellationToken)
     {
+        var profile = await dbContext.FruitProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.FruitProfileId, cancellationToken);
+        if (profile != null && !CropQc.Data.Inventory.OrasProductDefinition.IsValid(profile)) return (null, CropQc.Data.Inventory.OrasProductDefinition.Error);
         if (string.IsNullOrWhiteSpace(request.Reason))
         {
             return (null, "A reason is required for receipt updates.");

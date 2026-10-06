@@ -126,6 +126,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         Inventory.CanonicalInventoryWriteGuard.Check(this);
+        Inventory.OrasReceivingGuard.Check(this);
         if (synchronizingDefectInspectionStatus)
         {
             return base.SaveChanges(acceptAllChangesOnSuccess);
@@ -142,6 +143,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         Inventory.CanonicalInventoryWriteGuard.Check(this);
+        await Inventory.OrasReceivingGuard.CheckAsync(this, cancellationToken);
         if (synchronizingDefectInspectionStatus)
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);

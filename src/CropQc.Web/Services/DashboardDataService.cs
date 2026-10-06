@@ -1738,6 +1738,8 @@ public sealed partial class DashboardDataService(
             return new(null, null, "Selected variety was not found.");
         }
 
+        if (!CropQc.Data.Inventory.OrasProductDefinition.IsValid(fruitProfile)) return new(null, null, CropQc.Data.Inventory.OrasProductDefinition.Error);
+
         if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
         {
             var candidates = string.Join(", ", cropYearService.GetCandidateCropYears(form.ReceivedAt));
@@ -1846,6 +1848,9 @@ public sealed partial class DashboardDataService(
         {
             return "Selected variety was not found.";
         }
+
+        var selectedProfile = await dbContext.FruitProfiles.AsNoTracking().SingleAsync(x => x.Id == form.FruitProfileId, cancellationToken);
+        if (!CropQc.Data.Inventory.OrasProductDefinition.IsValid(selectedProfile)) return CropQc.Data.Inventory.OrasProductDefinition.Error;
 
         if (cropYearService.RequiresConfirmation(form.ReceivedAt, form.CropYear) && !form.ConfirmCropYear)
         {
