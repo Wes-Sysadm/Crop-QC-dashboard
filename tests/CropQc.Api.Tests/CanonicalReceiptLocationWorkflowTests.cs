@@ -9,7 +9,7 @@ namespace CropQc.Api.Tests;
 public sealed class CanonicalReceiptLocationWorkflowTests
 {
     [InventoryPostgresFact]
-    public async Task Receipt_corrections_after_baseline_use_current_effective_dates_and_location_correction_preserves_later_movement()
+    public async Task Receipt_corrections_after_baseline_use_current_effective_dates_and_location_correction_moves_only_selected_remaining_inventory()
     {
         await using var f = await Fixture.Create(2);
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
@@ -30,6 +30,7 @@ public sealed class CanonicalReceiptLocationWorkflowTests
         location.RoomId = 9003;
         Assert.Null((await service.ApplyEditAsync(location, actor.HttpContext!.User, default)).Error);
         Assert.Equal(19, await f.Physical()); Assert.Equal(18, await f.Physical(9003));
+        Assert.NotNull(await service.GetAuditDetailAsync((await db.ReceiptInventoryOverrides.OrderByDescending(x => x.CreatedAt).FirstAsync()).Id, default));
         var saved = await f.Snapshot();
         Assert.True((await service.ApplyEditAsync(location, actor.HttpContext!.User, default)).WasIdempotent);
         Assert.Equal(saved, await f.Snapshot());
@@ -50,10 +51,11 @@ public sealed class CanonicalReceiptLocationWorkflowTests
         var movementCount = await db.TreatmentLineageMovements.CountAsync();
         var provenance = await CanonicalReceiptCorrectionWorkflowTests.Form(db, service, 100000, 18);
         provenance.RoomId = 9002;
+        provenance.CorrectionSourceRoomId = 9003;
         Assert.Null((await service.ApplyEditAsync(provenance, actor.HttpContext!.User, default)).Error);
-        Assert.Equal(23, await f.Physical()); Assert.Equal(14, await f.Physical(9003));
-        Assert.Equal(ledgerCount, await db.RoomInventoryAdjustments.CountAsync());
-        Assert.Equal(movementCount, await db.TreatmentLineageMovements.CountAsync());
+        Assert.Equal(37, await f.Physical()); Assert.Equal(0, await f.Physical(9003));
+        Assert.Equal(ledgerCount + 2, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(movementCount + 1, await db.TreatmentLineageMovements.CountAsync());
         var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100000);
         Assert.Equal(9002, receipt.RoomId); Assert.Equal(18, receipt.BinCount);
         Assert.Equal(19, (await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100001)).BinCount);
@@ -63,7 +65,7 @@ public sealed class CanonicalReceiptLocationWorkflowTests
     }
 
     [InventoryPostgresFact]
-    public async Task Correcting_receiving_provenance_does_not_move_external_custody_and_return_still_uses_original_source()
+    public async Task Depleted_source_blocks_location_correction_and_external_custody_return_uses_original_source()
     {
         await using var f = await Fixture.Create();
         await using (var seed = f.CreateDbContext())
@@ -92,13 +94,13 @@ public sealed class CanonicalReceiptLocationWorkflowTests
         form.RoomId = 9003;
         var ledgerCount = await db.RoomInventoryAdjustments.CountAsync();
         var movementCount = await db.TreatmentLineageMovements.CountAsync();
-        Assert.Null((await service.ApplyEditAsync(form, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
+        Assert.Contains("No current receipt inventory", (await service.ApplyEditAsync(form, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
         Assert.Equal(0, await f.Physical()); Assert.Equal(0, await f.Physical(9003));
         Assert.Equal(ledgerCount, await db.RoomInventoryAdjustments.CountAsync());
         Assert.Equal(movementCount, await db.TreatmentLineageMovements.CountAsync());
         Assert.Null(await outside.ReverseAsync(new() { TransferId = sent.TransferId!.Value, Reason = "Local return" }, default));
         Assert.Equal(19, await f.Physical()); Assert.Equal(0, await f.Physical(9003));
-        Assert.Equal(9003, (await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100000)).RoomId);
+        Assert.Equal(9002, (await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100000)).RoomId);
     }
 
     [InventoryPostgresFact]

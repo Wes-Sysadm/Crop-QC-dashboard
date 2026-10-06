@@ -140,7 +140,15 @@ public sealed partial class ReceiptInventoryOverrideService(
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationKey, form.Reason, form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
-        if (dbContext.CanonicalInventoryEnabled) return await CanonicalEditAsync(form, principal, cancellationToken);
+        if (dbContext.CanonicalInventoryEnabled)
+        {
+            try { return await CanonicalEditAsync(form, principal, cancellationToken); }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError(ex, "Canonical receipt correction could not be confirmed for receipt {ReceiptId} / {OperationKey}.", form.Id, form.OperationKey);
+                return Failed("Receipt correction could not be confirmed. Refresh the receipt history before retrying, or contact an administrator.");
+            }
+        }
 
         var duplicate = await FindDuplicateAsync(form.OperationKey, cancellationToken);
         if (duplicate is not null)

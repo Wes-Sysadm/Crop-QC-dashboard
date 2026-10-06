@@ -6,6 +6,7 @@ using System.Text.Json;
 using CropQc.Data.Entities;
 using CropQc.Shared.Inventory;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace CropQc.Data.Inventory;
@@ -18,7 +19,7 @@ public interface IInventoryCommandObserver
 
 /// <summary>Dormant engine: no Web/API operational caller is registered or migrated in Phase 2.</summary>
 public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbContext> contexts,
-    IInventoryCommandObserver? observer = null, ICanonicalRunExpectationWriter? runExpectations = null) : IInventoryCommandExecutor
+    IInventoryCommandObserver? observer = null, ICanonicalRunExpectationWriter? runExpectations = null, ILogger<InventoryCommandExecutor>? logger = null) : IInventoryCommandExecutor
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private sealed class Rejection(InventoryCommandStatus status, string message) : Exception(message)
@@ -162,7 +163,13 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 }
                 if (ex is Rejection rejection) return new(rejection.Status, key, rejection.Message, [], attempt);
                 if (ex is DbUpdateConcurrencyException) return new(InventoryCommandStatus.Stale, key, "Entity version changed.", [], attempt);
-                if (ex is InvalidOperationException) return new(InventoryCommandStatus.Blocked, key, ex.Message, [], attempt);
+                if (ex is InvalidOperationException)
+                {
+                    if (command.Kind != InventoryCommandKind.CorrectReceiptLocation)
+                        return new(InventoryCommandStatus.Blocked, key, ex.Message, [], attempt);
+                    logger?.LogError(ex, "Receipt location correction {OperationKey} failed for receipt {ReceiptId}; transaction rolled back.", key, command.ReceiptLocation?.ReceiptId);
+                    return new(InventoryCommandStatus.Blocked, key, "Receipt inventory could not be verified. No changes were saved. Refresh and contact an administrator if this continues.", [], attempt);
+                }
                 throw;
             }
         }

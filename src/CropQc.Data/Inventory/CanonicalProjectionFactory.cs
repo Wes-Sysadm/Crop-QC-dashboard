@@ -7,11 +7,28 @@ namespace CropQc.Data.Inventory;
 // Only the executor calls this factory. It never derives physical quantity from a gap.
 internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
 {
+    private readonly Dictionary<(int Room, long Receipt), List<TreatmentLineageSegment>> prepared = [];
+    private readonly Dictionary<int, string> growers = [];
+
+    // Receipt location correction writes many treatment slices in one operation.
+    // Load its bounded destination once, rather than querying for every slice.
+    public async Task PrepareReceiptDestinationAsync(InventoryIdentity identity, int room, long receipt, CancellationToken ct)
+    {
+        var rows = await db.TreatmentLineageSegments.Include(x => x.Applications)
+            .Where(x => x.RoomId == room && x.ReceiptId == receipt && x.Disposition == "Current")
+            .Take(InventoryEvidenceLoader.MaximumEvidenceRowsPerTable + 1).ToListAsync(ct);
+        if (rows.Count > InventoryEvidenceLoader.MaximumEvidenceRowsPerTable)
+            throw new InvalidOperationException("Destination receipt evidence exceeds the safe limit.");
+        prepared[(room, receipt)] = rows;
+        growers[identity.GrowerLotId!.Value] = await db.GrowerLots.Where(x => x.Id == identity.GrowerLotId).Select(x => x.Grower).SingleAsync(ct);
+    }
+
     public async Task<TreatmentLineageSegment> CurrentAsync(InventoryIdentity identity, int warehouse, int room,
         string signature, string state, long? receiptId, IEnumerable<long> applications, DateTimeOffset now, CancellationToken ct)
     {
         var applicationIds = applications.Distinct().Order().ToArray();
-        var rows = await db.TreatmentLineageSegments.Include(x => x.Applications)
+        var rows = receiptId is long sourceReceiptId && prepared.TryGetValue((room, sourceReceiptId), out var cached) ? cached
+            : await db.TreatmentLineageSegments.Include(x => x.Applications)
             .Where(x => x.RoomId == room && x.Disposition == "Current" && x.TreatmentSignature == signature && x.ReceiptId == receiptId)
             .ToListAsync(ct);
         var matches = rows.Concat(db.TreatmentLineageSegments.Local)
@@ -29,7 +46,8 @@ internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
             CropYear = identity.CropYear,
             GrowerLotId = identity.GrowerLotId,
             FruitProfileId = identity.FruitProfileId,
-            GrowerNameSnapshot = (await db.GrowerLots.Where(x => x.Id == identity.GrowerLotId).Select(x => x.Grower).SingleAsync(ct)),
+            GrowerNameSnapshot = growers.TryGetValue(identity.GrowerLotId!.Value, out var grower) ? grower
+                : await db.GrowerLots.Where(x => x.Id == identity.GrowerLotId).Select(x => x.Grower).SingleAsync(ct),
             GrowerNumberSnapshot = identity.GrowerNumber,
             LotNumberSnapshot = identity.Lot,
             VarietyCodeSnapshot = identity.Variety,

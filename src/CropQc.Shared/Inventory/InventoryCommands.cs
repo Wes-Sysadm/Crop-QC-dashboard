@@ -33,7 +33,8 @@ public sealed record InventoryProductDefinitionChange(int FruitProfileId, string
 public sealed record InventoryReceiptIdentityChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
     InventoryReceiptIntent ExpectedReceipt, InventoryIdentity Target);
 public sealed record InventoryReceiptLocationChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
-    InventoryReceiptIntent ExpectedReceipt, InventoryCommandDestination Destination);
+    InventoryReceiptIntent ExpectedReceipt, InventoryCommandDestination Destination,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? SourceRoomId = null);
 public sealed record InventoryBaselineImport(ImmutableArray<InventoryBaselineRow> Rows, string ExpectedFingerprint, bool ConfirmReplacement);
 public sealed record InventoryBaselineRow(int CropYear, int WarehouseId, int RoomId, int GrowerLotId, int FruitProfileId,
     string Lot, string Variety, string Status, int Quantity, DateTimeOffset EffectiveAt, string Source, string Notes,
