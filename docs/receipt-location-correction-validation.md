@@ -4,7 +4,7 @@
 
 Branch: `codex/receipt-location-correction`, based on current main `07db7c0405fd947f17d2897b32d1b751b3f62cbc`.
 
-This change fixes the confirmed canonical receipt-location behavior defect. The separately reported production EF translation exception has **not been reproduced**. Keep the PR draft pending identification of the reported receipt/room pair or exception. Do not describe this change as a verified fix for that exception. No production deployment or mutation is authorized or performed.
+This change fixes receipt-location correction of current remaining stock after earlier inventory activity. The user clarified that the actual error was "The Receipt's current bins cannot be attributed exactly to its original room. No location correction was made." The earlier EF translation interpretation and its reproduction requirement are withdrawn; they are not release blockers. The remaining-stock regression and safety cases are covered, making this PR ready for human review. No production deployment or mutation is authorized or performed.
 
 Affected area: receipt administrator location correction, canonical command transaction, its projection factory reads, receipt edit UI, correction evidence and error reporting. Affected writes remain executor-owned: receipt current location/version, paired inventory adjustments, current treatment segments, new lineage movements, override record, audit and command journal. Original received time, quantity and fruit identity, old ledger/movements/runs, treatment applications, Truck Receipt records and earlier audits must remain intact.
 
@@ -14,10 +14,11 @@ The full suite is explicitly requested by the user. Focused tests cover the chan
 
 - Entry point: `ReceiptsController.AdminInventoryOverride` from `/Receipts/{id}/Edit`, guarded by the existing Receipts Admin policy and antiforgery.
 - `ReceiptInventoryOverrideService.CanonicalEditAsync` builds `CorrectReceiptLocation`; `InventoryReceiptAvailability.ReadAsync` supplies canonical receipt-attribution evidence and fingerprints.
+- Exact message origin: the legacy branch of `ReceiptInventoryOverrideService.ApplyEditAsync`, under `locationChanged` and `counts.Transfers == 0 && counts.BinsRuns == 0 && counts.ActualRuns == 0`, rejects when `state.Balances.Count != 1 || state.Balances[0].CurrentBins <= 0 || state.Balances[0].WarehouseId != receipt.WarehouseId || state.Balances[0].RoomId != receipt.RoomId`. That guard conflates an original-room-only shape with safe current receipt attribution. Canonical mode dispatches before that legacy branch; this identifies the message's code origin without claiming the legacy branch executed with canonical mode ON.
 - The old `InventoryCommandExecutor.CorrectReceiptLocationAsync` used three activity queries (lineage movement, run entry, depletion) to choose whether to relocate. Any subsequent activity selected a metadata-only fallback, even when authoritative stock remained. Thus a successful edit could move **zero** remaining bins. Existing baseline tests explicitly expected this behavior; those expectations are replaced.
-- Transfer uses the current canonical position and selected quantity without this receipt-history fallback. This explains its different relocation behavior, but does not establish the cause of the unobserved EF exception.
+- The old canonical relocation guard also required every allocation to belong to the original receiving room/warehouse. PR #263 replaces that whole-receipt/original-room restriction and the history-based fallback with exact surviving attribution at one selected current source. Transfer already uses current canonical positions and selected quantities without this receipt-history fallback.
 - The canonical command was introduced by `142d15d` during Phase 3. A legacy metadata-only fallback also exists in the flag-OFF service. The production-ON fix does not reactivate that legacy writer.
-- No untranslatable expression has been established. Existing canonical PostgreSQL tests on unmodified main passed (3/3); adding audit-detail SQL read-back on main also passed. Current availability's treatment GroupBy runs over resolved in-memory arrays, not IQueryable. The new command keeps scalar SQL filters, bounded receipt/room evidence and canonical resolver semantics; it does not materialize unbounded history to suppress a translation error.
+- The new command keeps scalar SQL filters, bounded receipt/room evidence and canonical resolver semantics. No query-translation investigation is required for the clarified business error.
 
 ## Corrected behavior
 
@@ -32,6 +33,8 @@ The full suite is explicitly requested by the user. Focused tests cover the chan
 
 The 100-bin acceptance case is exercised through normal depletion/transfer/correction services: receive 100 in A, consume 30, transfer 20 to C, select A, relocate 50 to B. Final A=0, B=50, C=20; 30 stay consumed. Historical movement/run/transfer/depletion records compare identically before and after correction.
 
+The exact regression is `ReceiptLocationCorrectionTests.Partial_consumption_and_transfer_move_only_selected_fifty_and_preserve_all_history`. It first proves a split receipt blocks without explicit source selection, then selects A and asserts successful correction, 70 authoritative bins before/after, the 50-bin correction audit, unchanged historical records and idempotent retry. Companion tests retain genuine ambiguous-provenance blocking, fully depleted no-write behavior, stale preview rejection and transaction-time concurrency rollback. Attribution errors in the canonical path remain for genuinely unprovable ownership; historical activity alone no longer prevents correction.
+
 ## UI and error handling
 
 The existing administrator review now distinguishes location correction from fruit identity correction, offers an explicit current-source selection, shows remaining receipt bins and treatment states, labels the destination and states the quantity relocating. A dedicated button opens this review even when the desired destination is the receipt's existing metadata room. Split allocations cannot silently collapse. Zero-current stock blocks.
@@ -41,7 +44,9 @@ Stale submissions receive a refresh instruction. Unexpected InvalidOperationExce
 ## Regression evidence
 
 - Focused suite: **79 passed, 0 failed, 0 skipped**.
+- Final business-guard verification: **16 receipt-location tests passed, 0 failed, 0 skipped**, including the reported remaining-stock scenario and all retained safety cases. No application or test code changed during this clarification.
 - Final candidate full suite: **2,228 passed, 1 failed, 0 skipped (2,229 total)** in the sandbox. The sole failure was the unchanged backup snapshot test being unable to launch `pg_dump`; it reproduced in the sandbox, then passed unchanged in the host environment (**1 passed, 0 failed, 0 skipped**). All 2,229 tests have passing evidence across the full run and isolated rerun, but the full invocation itself was not a clean pass. The earlier implementation full run passed 2,228/2,228 before the final read-back regression was added.
+- Evidence acceptance: `AGENTS.md` and `docs/change-scoped-testing-standard.md` require affected-area validation and disclosure of missing disposable tools; they do not require every result to come from one clean full-suite invocation. The unchanged provider test's separately passing local-host run resolves the sandbox launch limitation. It is not a receipt-location correctness failure. This clarification changes documentation only, so existing build/model/format and full-suite evidence remains applicable without another broad run.
 - Restore and build: passed. Final candidate solution build: 0 errors and 58 existing repository warnings.
 - EF model: no pending changes; no migration/schema change.
 - Changed-file formatting and diff checks: passed.
@@ -49,11 +54,11 @@ Stale submissions receive a refresh instruction. Unexpected InvalidOperationExce
 
 Coverage includes full/partial receipt quantity; partial transfers; depleted and split cases; untreated, treated and mixed slices; exact ownership and ambiguous pools; stale preview and transaction-time concurrency; audits and conservation; historical movement preservation; completed Truck Receipt linkage; selectors; direct-writer guard; 100 versus 100,000 bins with constant query count; transfer/reversal regressions; and rollback at Movement, OperationAudit and BeforeCommit boundaries.
 
-**Outstanding requested coverage:** the original production EF exception and its exact failing expression, before/after. No fabricated exception is counted as a reproduction. A local browser check of actual fixture-rendered HTML verified opening the review, selecting the destination, source/quantity display and layout, with no client console warnings/errors. This static preview did not submit; real PostgreSQL HTTP tests covered POST/read-back. Mobile/responsive variants were not tested.
+A local browser check of actual fixture-rendered HTML verified opening the review, selecting the destination, source/quantity display and layout, with no client console warnings/errors. This static preview did not submit; real PostgreSQL HTTP tests covered POST/read-back. Mobile/responsive variants were not tested. The withdrawn EF-exception reproduction requirement is not outstanding acceptance coverage.
 
 ## Read-only production investigation
 
-Checked production Render app/request logs from October 3 onward for translation errors and receipt-edit/admin-override routes; no matching recent receipt-location exception was found. A wider September 7 onward text search timed out. Absence of matching retained logs does not prove the error did not occur.
+Earlier read-only production log searches followed the now-corrected EF interpretation and found no matching exception; a wider search timed out. These searches do not establish a query defect. No further EF investigation is needed for this acceptance requirement.
 
 Read-only production audit queries found no `CanonicalReceiptLocationCorrected` entries since October 3. The latest `ReceiptInventoryOverrides` location corrections are receipts 1614 (September 8, two adjustments), 1581 (September 7, two adjustments), 1484, 1443, 1421 and 1386 (September 2–4, no inventory adjustments under the legacy policy). These historical metadata-only records are not proof of corruption and are not repair targets. No production repair was identified or performed; the specific reported receipt is still needed to determine whether it needs further investigation.
 
