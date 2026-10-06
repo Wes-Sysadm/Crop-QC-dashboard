@@ -39,6 +39,7 @@ public sealed partial class InventoryCommandExecutor
         var grower = await db.GrowerLots.SingleOrDefaultAsync(x => x.Id == p.GrowerLotId && x.IsActive, ct);
         var profile = await db.FruitProfiles.SingleOrDefaultAsync(x => x.Id == p.FruitProfileId && x.IsActive, ct);
         Require(grower != null && profile != null, "Select active, reviewed grower and fruit identities.");
+        Require(OrasProductDefinition.IsValid(profile!), OrasProductDefinition.Error);
         Require(!await db.InventoryIdentityCorrections.AnyAsync(x => x.IsActive && x.IsComplete && x.CorrectedReceiptId == null
             && x.SourceCropYear == p.CropYear && x.SourceGrowerLotId == p.GrowerLotId && x.SourceFruitProfileId == p.FruitProfileId, ct),
             "Receiving identity is superseded; select its reviewed replacement.");

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 
 namespace CropQc.Shared.Inventory;
 
@@ -7,7 +8,7 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -26,7 +27,9 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     InventoryDispatchMetadata? Dispatch = null, InventoryReceiptIntent? Receipt = null, long? PhysicalParentId = null, long? ExpectedParentVersion = null,
     long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
     InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null, InventoryReceiptLocationChange? ReceiptLocation = null,
-    InventoryReceiptIdentityChange? ReceiptIdentity = null);
+    InventoryReceiptIdentityChange? ReceiptIdentity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null);
+public sealed record InventoryProductDefinitionChange(int FruitProfileId, string ExpectedFingerprint);
 public sealed record InventoryReceiptIdentityChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
     InventoryReceiptIntent ExpectedReceipt, InventoryIdentity Target);
 public sealed record InventoryReceiptLocationChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,

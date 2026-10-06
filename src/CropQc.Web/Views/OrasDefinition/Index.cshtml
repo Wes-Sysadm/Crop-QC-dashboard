@@ -1,0 +1,30 @@
+@model CropQc.Web.Controllers.OrasDefinitionForm
+@{ ViewData["Title"] = "Correct ORAS classification"; }
+<h1>Correct ORAS classification</h1>
+<div asp-validation-summary="All" class="notice warning"></div>
+<p>ORAS means Organic Asian Pear. This corrects the existing product and its current and historical references to Organic, including already consumed inventory. It does not move, add or consume bins.</p>
+<p>Original values remain in the correction audit. Existing audit records remain unchanged.</p>
+@if (Model.Preview is { } preview)
+{
+    <p>@preview.Receipts receipts; @preview.ReceivedBins bins received; @preview.LedgerNetBins net ledger bins. Review every proposed field change below.</p>
+    <table class="data-table">
+        <thead><tr><th>Record</th><th>ID</th><th>Field</th><th>Before</th><th>After</th></tr></thead>
+        <tbody>
+        @foreach (var change in preview.Changes)
+        {
+            <tr><td>@change.Entity</td><td>@change.Id</td><td>@change.Field</td><td>@change.Before</td><td>@change.After</td></tr>
+        }
+        </tbody>
+    </table>
+    <form method="post" action="/MasterData/fruit-profiles/OrasCorrection/@Model.Id">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="Fingerprint" />
+        <input type="hidden" asp-for="OperationKey" />
+        <input type="hidden" name="EffectiveAt" value="@Model.EffectiveAt.ToString("O")" />
+        <label>Correction reason <textarea asp-for="Reason" required maxlength="1000"></textarea></label>
+        <label><input asp-for="ConfirmHistory" required /> Correct both current and historical ORAS classification to Organic.</label>
+        <button type="submit">Apply audited ORAS correction</button>
+    </form>
+}
+<a href="/MasterData/fruit-profiles/Edit/@Model.Id">Back to product definition</a>

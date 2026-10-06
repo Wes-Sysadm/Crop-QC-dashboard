@@ -4,6 +4,14 @@
 }
 
 <h1>Edit Master Data</h1>
+@if (TempData["Success"] is not null)
+{
+    <p class="notice">@TempData["Success"]</p>
+}
+@if (Model.Type == "fruit-profiles" && CropQc.Data.Inventory.OrasProductDefinition.Applies(Model.Code))
+{
+    <p>ORAS always means Organic Asian Pear. To correct an existing Conventional definition and its historical references, an administrator can <a href="/MasterData/fruit-profiles/OrasCorrection/@Model.Id">review the audited ORAS correction</a>.</p>
+}
 @if (TempData["Error"] is not null)
 {
     <p class="notice warning">@TempData["Error"]</p>
