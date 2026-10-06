@@ -1723,6 +1723,8 @@ public class UpdateReceiptForm : CreateReceiptForm
 
 public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? CorrectionSourceRoomId { get; set; }
     public long ExpectedConcurrencyVersion { get; set; }
     public string ExpectedInventoryStateToken { get; set; } = "";
     public string ExpectedPositiveTrueUpStateToken { get; set; } = "";

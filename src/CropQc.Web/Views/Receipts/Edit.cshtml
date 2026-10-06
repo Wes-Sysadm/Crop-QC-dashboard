@@ -93,6 +93,10 @@
                 <p class="notice warning">@preview.CanonicalBlocker</p>
             }
             <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review Bin Count Override</button>
+            @if (CanonicalMode.Enabled)
+            {
+                <button id="reviewLocationCorrection" type="button" class="wide">Correct current inventory location</button>
+            }
             <section id="adminInventoryOverride" class="panel danger-zone wide receipt-bin-override-review" hidden
                      data-original-bins="@form.BinCount" data-original-warehouse="@form.WarehouseId"
                      data-original-room="@form.RoomId" data-original-crop-year="@form.CropYear"
@@ -104,6 +108,33 @@
                 @if (preview.HistoricalIdentityCorrectionIsZeroCurrent)
                 {
                     <p class="notice">The original receipt position is already at zero. An identity correction will update the Receipt only and will not create, move, or restore inventory.</p>
+                }
+                @if (CanonicalMode.Enabled)
+                {
+                    var locations = preview.Balances.Where(x => x.RoomId > 0).GroupBy(x => new { x.WarehouseId, x.Warehouse, x.RoomId, x.Room }).ToArray();
+                    <section id="receiptLocationReview" hidden>
+                        <h3>Correct current inventory location</h3>
+                        <p>Only the remaining bins at the selected source will move. Consumed bins, other rooms and external custody stay unchanged. Original receipt and movement evidence remains in the correction history.</p>
+                        @if (locations.Length == 0)
+                        {
+                            <p class="notice warning">No current receipt inventory remains in a room. A location correction cannot create or recall inventory.</p>
+                        }
+                        else
+                        {
+                            <label for="correctionSourceRoom">Current receipt inventory to relocate</label>
+                            <select id="correctionSourceRoom" name="CorrectionSourceRoomId" disabled>
+                                @if (locations.Length > 1)
+                                {
+                                    <option value="">Select the current inventory location to correct</option>
+                                }
+                                @foreach (var location in locations)
+                                {
+                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room — @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
+                                }
+                            </select>
+                        }
+                        <p><strong>Quantity to relocate:</strong> <span id="locationRelocatedBins">Select a source</span>. The Room field above is the destination.</p>
+                    </section>
                 }
                 <p class="notice warning">This is an audited inventory operation, not a normal receipt edit. Historical runs and transfers will not be rewritten.</p>
                 <dl class="summary-list">
@@ -266,28 +297,41 @@
         const overrideSection = document.getElementById("adminInventoryOverride");
         const reviewOverrideButton = document.getElementById("reviewBinCountOverride");
         let overrideReviewRequested = false;
+        let locationReviewRequested = false;
         if (overrideSection) {
-            const watched = ["BinCount", "WarehouseId", "RoomId", "CropYear", "GrowerLotId", "GrowerNumber", "FruitProfileId"];
+            const watched = ["CorrectionSourceRoomId", "BinCount", "WarehouseId", "RoomId", "CropYear", "GrowerLotId", "GrowerNumber", "FruitProfileId"];
             const currentValue = name => document.querySelector(`[name='${name}']`)?.value ?? "";
             const normalize = value => (value || "").trim().toLowerCase();
             function updateOverrideVisibility() {
                 const proposed = Number(currentValue("BinCount"));
                 const original = Number(overrideSection.dataset.originalBins);
                 const binCountChanged = proposed !== original;
-                const identityChanged = Number(currentValue("WarehouseId")) !== Number(overrideSection.dataset.originalWarehouse)
-                    || Number(currentValue("RoomId")) !== Number(overrideSection.dataset.originalRoom)
-                    || Number(currentValue("CropYear")) !== Number(overrideSection.dataset.originalCropYear)
+                const locationChanged = locationReviewRequested || Number(currentValue("WarehouseId")) !== Number(overrideSection.dataset.originalWarehouse)
+                    || Number(currentValue("RoomId")) !== Number(overrideSection.dataset.originalRoom);
+                const identityChanged = Number(currentValue("CropYear")) !== Number(overrideSection.dataset.originalCropYear)
                     || normalize(currentValue("GrowerLotId")) !== normalize(overrideSection.dataset.originalGrowerLot)
                     || normalize(currentValue("GrowerNumber")) !== normalize(overrideSection.dataset.originalGrowerNumber)
                     || Number(currentValue("FruitProfileId")) !== Number(overrideSection.dataset.originalFruitProfile);
                 reviewOverrideButton.hidden = !binCountChanged;
-                saveReceiptButton.hidden = binCountChanged || identityChanged;
-                overrideSection.hidden = binCountChanged ? !overrideReviewRequested : !identityChanged;
+                saveReceiptButton.hidden = binCountChanged || identityChanged || locationChanged;
+                overrideSection.hidden = binCountChanged ? !overrideReviewRequested : !(identityChanged || locationChanged);
                 document.getElementById("overrideReviewTitle").textContent = binCountChanged
                     ? "Bin Count Override Review"
-                    : identityChanged ? "Receipt Identity Correction Review" : "Receipt Correction Review";
+                    : locationChanged ? "Receipt Location Correction Review" : identityChanged ? "Receipt Identity Correction Review" : "Receipt Correction Review";
                 document.getElementById("savedReceiptBinCountWarning").hidden = !binCountChanged;
                 document.getElementById("savedReceiptIdentityWarning").hidden = !identityChanged;
+                const locationReview = document.getElementById("receiptLocationReview");
+                const source = document.getElementById("correctionSourceRoom");
+                if (locationReview) {
+                    locationReview.hidden = !locationChanged;
+                    if (source) {
+                        source.disabled = !locationChanged;
+                        source.required = locationChanged;
+                    }
+                    document.getElementById("locationRelocatedBins").textContent = source?.selectedOptions[0]?.dataset.bins
+                        ? `${source.selectedOptions[0].dataset.bins} bins` : "Select a source";
+                    document.getElementById("applyBinCountOverride").disabled = locationChanged && (!source?.value || @JsonSerializer.Serialize(Model.AdminOverridePreview?.CanonicalBlocker is not null));
+                }
                 document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
                 const delta = Number.isFinite(proposed) ? proposed - original : null;
                 document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
@@ -318,6 +362,11 @@
             reviewOverrideButton?.addEventListener("click", () => {
                 if (!binCountInput?.reportValidity()) return;
                 overrideReviewRequested = true;
+                updateOverrideVisibility();
+                overrideSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            });
+            document.getElementById("reviewLocationCorrection")?.addEventListener("click", () => {
+                locationReviewRequested = true;
                 updateOverrideVisibility();
                 overrideSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
             });

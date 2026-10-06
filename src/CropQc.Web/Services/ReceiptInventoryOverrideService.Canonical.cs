@@ -85,7 +85,8 @@ public sealed partial class ReceiptInventoryOverrideService
             return Failed("Submit quantity correction separately from receiving identity, location or metadata changes.");
         if (form.GrowerNumber.Trim() != (r.GrowerNumber ?? r.LotCode) || form.LotCode.Trim() != r.LotCode)
             return Failed("A receipt identity change requires an explicit identity correction.");
-        if (form.WarehouseId != r.WarehouseId || form.RoomId != r.RoomId)
+        if (form.WarehouseId != r.WarehouseId || form.RoomId != r.RoomId
+            || form.CorrectionSourceRoomId is not null)
         {
             if (form.BinCount != r.BinCount || form.TrueUpAllocations.Any(x => x.Bins != 0))
                 return Failed("Submit quantity and location corrections as separate administrator operations.");
@@ -93,7 +94,7 @@ public sealed partial class ReceiptInventoryOverrideService
                 form.Reason.Trim(), [], ApplicationIntent: submission,
                 ReceiptLocation: new(form.Id, form.ExpectedConcurrencyVersion, form.ExpectedInventoryStateToken,
                     new(r.CropYear, r.WarehouseId, r.RoomId, r.GrowerLotId ?? 0, r.FruitProfileId, r.CompuTechReceiptId, r.BinCount, r.ReceiptType),
-                    new(form.WarehouseId, form.RoomId)));
+                    new(form.WarehouseId, form.RoomId), form.CorrectionSourceRoomId));
             return await CanonicalResultAsync(await canonicalCommands.ExecuteAsync(locationCommand, ct), ct);
         }
         var allocations = form.TrueUpAllocations.Where(x => x.Bins != 0).Select(x => new InventoryReceiptQuantityAllocation(x.TargetKey, x.Bins)).ToImmutableArray();

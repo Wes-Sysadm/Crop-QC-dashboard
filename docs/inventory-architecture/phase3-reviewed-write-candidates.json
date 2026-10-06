@@ -57,7 +57,7 @@
     "Path": "src/CropQc.Data/Inventory/CanonicalProjectionFactory.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "5F293F17EA6A8FF4FBF2165F084752AC50DC549F28E81229179F373F6CFF88C6"
+    "Sha256": "8D9E313A23C5D0C2611F45D7FE229E1C4F65B1E49AD8470E9989EC3B18D533CE"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandBaseline.cs",
@@ -75,7 +75,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "C1DD11383CB9304263037AC2AFCB9EEDACB25DEFB238F51085E924D61F6257B6"
+    "Sha256": "A685DD8C89571E02F5357726ECEEF138D256B7FD20681E15943EE74F1EA93331"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -111,7 +111,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptLocation.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "CBD3F1178D6CB97504162BA474BD2A0F5A75B2D7014126D0BDC6443B7542F083"
+    "Sha256": "31CC3D496CF3A03612DA89082E643D279E3419143DC42E084F96F15E5010D424"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptMetadata.cs",
@@ -423,7 +423,7 @@
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "E9B49537FC6B90A26B4B7D9BD709D3505F6719B1F000A978907BB50FC6016939"
+    "Sha256": "BB7CB03F3D381EA46FB67BD556CAFF9B0FE2A049E46892BCD74A3A9F370E6B15"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptPurgeService.cs",
