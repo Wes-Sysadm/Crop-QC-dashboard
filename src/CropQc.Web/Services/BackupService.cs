@@ -399,11 +399,12 @@ public sealed class BackupService(
         var componentManifest = components.Select(x => new { name = x.Name, sizeBytes = x.Bytes.LongLength, sha256 = Hash(x.Bytes) }).ToList();
         components.Add(JsonComponent("backup-manifest.json", new
         {
-            formatVersion = 2,
+            formatVersion = 3,
+            photoReferenceScope = "ActivePhotos",
             snapshotCapturedAt = run.SnapshotCapturedAt,
             snapshotRevision = run.SnapshotRevision,
             frozenPhotoCount = run.FrozenObjectCount,
-            fileVerification = "Frozen database references; bounded remote metadata verification; photo binaries remain in existing storage",
+            fileVerification = "Frozen active photo references; bounded remote metadata verification; all photo rows and deletion history remain in the database dump; photo binaries remain in existing storage",
             backupRunId = run.Id,
             backupType = run.BackupType,
             startedAt = run.StartedAt,
@@ -568,6 +569,8 @@ public sealed class BackupService(
             samples = await captured.QcSamples.CountAsync(cancellationToken),
             fruitReadings = await captured.QcFruitReadings.CountAsync(cancellationToken),
             photos = await captured.QcPhotos.CountAsync(cancellationToken),
+            activePhotos = await captured.QcPhotos.CountAsync(x => !x.IsDeleted, cancellationToken),
+            deletedPhotos = await captured.QcPhotos.CountAsync(x => x.IsDeleted, cancellationToken),
             auditLogs = await captured.AuditLogs.CountAsync(cancellationToken)
         }
     };
@@ -639,7 +642,19 @@ public sealed class BackupService(
             using var photos = JsonDocument.Parse(archive.GetEntry(names.Single(x => x.Contains("-photo-manifest-")))!.Open());
             using var schema = JsonDocument.Parse(archive.GetEntry(names.Single(x => x.Contains("-schema-")))!.Open());
             var frozen = manifest.RootElement.GetProperty("frozenPhotoCount").GetInt32();
-            if (photos.RootElement.GetArrayLength() != frozen || schema.RootElement.GetProperty("rowCounts").GetProperty("photos").GetInt32() != frozen
+            var counts = schema.RootElement.GetProperty("rowCounts");
+            var totalPhotos = counts.GetProperty("photos").GetInt32();
+            var requiredPhotos = totalPhotos; // Existing v2 archives verified every historical reference.
+            if (version.GetInt32() >= 3)
+            {
+                if (!manifest.RootElement.TryGetProperty("photoReferenceScope", out var scope) || scope.GetString() != "ActivePhotos"
+                    || !counts.TryGetProperty("activePhotos", out var active) || !counts.TryGetProperty("deletedPhotos", out var deleted)
+                    || active.GetInt32() < 0 || deleted.GetInt32() < 0
+                    || (long)active.GetInt32() + deleted.GetInt32() != totalPhotos)
+                    throw new InvalidDataException("Active-photo backup scope or database photo counts are inconsistent.");
+                requiredPhotos = active.GetInt32();
+            }
+            if (photos.RootElement.GetArrayLength() != frozen || requiredPhotos != frozen
                 || photos.RootElement.EnumerateArray().Select(x => x.GetProperty("photoId").GetInt64()).Distinct().Count() != frozen
                 || photos.RootElement.EnumerateArray().Any(x => !x.GetProperty("objectAccessible").GetBoolean()))
                 throw new InvalidDataException("Frozen photo manifest is inconsistent or contains unavailable objects.");

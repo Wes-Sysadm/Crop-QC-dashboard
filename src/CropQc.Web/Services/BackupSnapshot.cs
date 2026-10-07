@@ -50,9 +50,10 @@ public sealed class BackupSnapshot : IAsyncDisposable
         catch { await connection.DisposeAsync(); throw; }
     }
 
+    // Only active photos require remote objects. pg_dump still preserves every row and deletion audit.
     // One materialization, no OFFSET or live refresh. No lazy enumerator survives the snapshot.
     public async Task<IReadOnlyList<QcPhoto>> FreezePhotosAsync(CancellationToken ct) =>
-        Array.AsReadOnly(await Database.QcPhotos.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(ct));
+        Array.AsReadOnly(await Database.QcPhotos.AsNoTracking().Where(x => !x.IsDeleted).OrderBy(x => x.Id).ToArrayAsync(ct));
 
     public async ValueTask DisposeAsync()
     {
