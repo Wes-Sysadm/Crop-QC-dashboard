@@ -105,11 +105,20 @@ public sealed class BoundedBackupTests
         await using var next = await BackupSnapshot.OpenAsync(f.Connection, default);
         Assert.Equal(10100, (await next.FreezePhotosAsync(default)).Count);
         await using var restored = await Database.Create(initialize: false);
+        await RestoreDumpAsync(dump, restored.Connection);
+        await using var restoredDb = restored.Context();
+        Assert.Equal(10000, await restoredDb.QcPhotos.CountAsync());
+        Assert.Equal("1", (await restoredDb.QcPhotos.FindAsync(1L))!.FileId);
+        Assert.Empty(await restoredDb.InventoryCommands.ToListAsync());
+    }
+
+    private static async Task RestoreDumpAsync(byte[] dump, string connection)
+    {
         using var compressed = new MemoryStream(dump);
         using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
         using var sql = new StreamReader(gzip);
         var info = new ProcessStartInfo("psql") { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        var target = new NpgsqlConnectionStringBuilder(restored.Connection);
+        var target = new NpgsqlConnectionStringBuilder(connection);
         foreach (var arg in new[] { "-X", "--single-transaction", "-v", "ON_ERROR_STOP=1", "-h", target.Host!, "-p", target.Port.ToString(), "-U", target.Username!, "-d", target.Database! }) info.ArgumentList.Add(arg);
         using var process = Process.Start(info)!;
         var output = process.StandardOutput.ReadToEndAsync();
@@ -119,10 +128,120 @@ public sealed class BoundedBackupTests
         await process.WaitForExitAsync();
         Assert.True(process.ExitCode == 0, await errors);
         await output;
+    }
+
+    [BackupPostgresFact]
+    public async Task Deleted_6997_shape_is_excluded_from_remote_verification_but_restored_with_all_history()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        db.Receipts.Add(new Receipt
+        {
+            Id = 1473,
+            CompuTechReceiptId = "TR109421",
+            CropYear = 2026,
+            GrowerName = "Backup fixture",
+            LotCode = "fixture",
+            WarehouseId = 1,
+            Room = new Room { Id = 9999, WarehouseId = 1, Code = "BACKUP", Name = "Backup fixture" },
+            FruitProfile = new FruitProfile { Id = 9999, VarietyCode = "TEST", Name = "Backup fixture", FruitType = "Apple", ProductionType = "Conventional" },
+            BinCount = 19,
+            ReceivedAt = DateTimeOffset.Parse("2026-09-04T20:00:00Z")
+        });
+        var deleted = Photo(6997);
+        deleted.QcSampleId = null; deleted.ReceiptId = 1473; deleted.PhotoType = "TopOfTruck";
+        deleted.FileName = "TR109421_TopOfTruck_2026-09-04_202224.jpg";
+        deleted.FileId = "deleted-original-6997"; deleted.PresentationStorageKey = "deleted-presentation-6997";
+        deleted.IsDeleted = true; deleted.DeletedAt = DateTimeOffset.Parse("2026-09-04T20:40:55.657371Z");
+        deleted.DeleteReason = "Removed from sample detail"; deleted.PresentationRevision = 1;
+        deleted.OriginalExifOrientation = 6;
+        var active = Photo(7000); active.QcSampleId = null; active.ReceiptId = 1473;
+        active.PresentationStorageKey = "active-presentation"; active.PresentationFileSizeBytes = 4;
+        foreach (var photo in new[] { deleted, active })
+        {
+            photo.PresentationRevision = 1;
+            photo.PresentationFileName = photo.FileName + "-presentation.jpg";
+            photo.PresentationContentType = "image/jpeg";
+            photo.PresentationFileSizeBytes = 4;
+            photo.PresentationUpdatedAt = DateTimeOffset.Parse("2026-09-04T20:22:24.377647Z");
+        }
+        db.QcPhotos.AddRange(deleted, active);
+        db.AuditLogs.AddRange(
+            new AuditLog { Id = 108863, Action = "add-photo", EntityName = "QcPhoto", EntityKey = "6997", AfterValuesJson = "{\"Id\":6997,\"ReceiptId\":1473}", CreatedAt = DateTimeOffset.Parse("2026-09-04T20:22:34.839944Z") },
+            new AuditLog { Id = 108876, Action = "remove-photo", EntityName = "QcPhoto", EntityKey = "6997", BeforeValuesJson = "{\"Id\":6997,\"IsDeleted\":false}", AfterValuesJson = JsonSerializer.Serialize(new { deleted.Id, deleted.IsDeleted, deleted.DeletedAt, deleted.DeleteReason }), CreatedAt = deleted.DeletedAt.Value });
+        await db.SaveChangesAsync();
+        // EnsureCreated fixtures need the history table that migrated production databases already have.
+        await db.Database.ExecuteSqlRawAsync(db.GetService<IHistoryRepository>().GetCreateScript());
+        db.ChangeTracker.Clear(); // Compare provider-round-tripped timestamp precision.
+        var deletedBefore = JsonSerializer.Serialize(await db.QcPhotos.AsNoTracking().SingleAsync(x => x.Id == 6997));
+        var allTablesBefore = await Fingerprints(f.Connection);
+        byte[] dump;
+        await using (var snapshot = await BackupSnapshot.OpenAsync(f.Connection, default))
+        {
+            var frozen = await snapshot.FreezePhotosAsync(default);
+            Assert.Equal(7000, Assert.Single(frozen).Id); // Required FrozenObjectCount excludes deleted history.
+            var service = new BackupService(db, null!, null!, null!, null!, new CropQc.Shared.Time.PacificBusinessTimeService(new Clock()), null!, null!);
+            var schema = await (Task<object>)typeof(BackupService).GetMethod("BuildCapturedSchemaManifestAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(service, [snapshot.Database, CancellationToken.None])!;
+            using var counts = JsonDocument.Parse(JsonSerializer.Serialize(schema));
+            var rows = counts.RootElement.GetProperty("rowCounts");
+            Assert.Equal(2, rows.GetProperty("photos").GetInt32());
+            Assert.Equal(1, rows.GetProperty("activePhotos").GetInt32());
+            Assert.Equal(1, rows.GetProperty("deletedPhotos").GetInt32());
+            // Both original and presentation are unavailable, as legitimate deletion permits.
+            foreach (var missing in new[] { new[] { deleted.FileId! }, new[] { deleted.PresentationStorageKey! }, new[] { deleted.FileId!, deleted.PresentationStorageKey! } })
+            {
+                var storage = new MetadataStorage { MissingKeys = missing };
+                var progress = new List<int>();
+                Assert.Single(await BackupPhotoManifest.BuildAsync(frozen, storage, (done, _) => progress.Add(done), default));
+                Assert.Equal(new[] { "7000", "active-presentation" }, storage.Keys);
+                Assert.Equal(new[] { 1 }, progress);
+            }
+            dump = await (Task<byte[]>)typeof(BackupService).GetMethod("CreateDatabaseDumpAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(service, [snapshot.SnapshotId, CancellationToken.None])!;
+        }
+        Assert.Equal(allTablesBefore, await Fingerprints(f.Connection)); // Capture does not mutate even local inventory/history.
+        await using var restored = await Database.Create(initialize: false);
+        await RestoreDumpAsync(dump, restored.Connection);
+        Assert.Equal(allTablesBefore, await Fingerprints(restored.Connection)); // All rows, audits and inventory survive pg_dump.
         await using var restoredDb = restored.Context();
-        Assert.Equal(10000, await restoredDb.QcPhotos.CountAsync());
-        Assert.Equal("1", (await restoredDb.QcPhotos.FindAsync(1L))!.FileId);
-        Assert.Empty(await restoredDb.InventoryCommands.ToListAsync());
+        var restoredDeleted = await restoredDb.QcPhotos.AsNoTracking().SingleAsync(x => x.Id == 6997);
+        Assert.Equal(deletedBefore, JsonSerializer.Serialize(restoredDeleted));
+        Assert.True(restoredDeleted.IsDeleted);
+        Assert.Equal("Removed from sample detail", restoredDeleted.DeleteReason);
+        Assert.Equal(deleted.DeletedAt, restoredDeleted.DeletedAt);
+        Assert.Equal(2, await restoredDb.AuditLogs.CountAsync(x => x.EntityName == "QcPhoto" && x.EntityKey == "6997"));
+        // Same active-photo predicate used by receipt detail; deleted history is not resurrected.
+        Assert.Equal(7000, (await restoredDb.QcPhotos.SingleAsync(x => x.ReceiptId == 1473 && !x.IsDeleted)).Id);
+        await using var restoredSnapshot = await BackupSnapshot.OpenAsync(restored.Connection, default);
+        var restoredFrozen = await restoredSnapshot.FreezePhotosAsync(default);
+        Assert.Equal(7000, Assert.Single(restoredFrozen).Id);
+        Assert.Single(await BackupPhotoManifest.BuildAsync(restoredFrozen,
+            new MetadataStorage { MissingKeys = [deleted.FileId!, deleted.PresentationStorageKey!] }, (_, _) => { }, default));
+    }
+
+    [Theory]
+    [InlineData("missing-original")]
+    [InlineData("missing-presentation")]
+    [InlineData("original-size")]
+    [InlineData("presentation-size")]
+    [InlineData("missing-file-id")]
+    [InlineData("unsupported-provider")]
+    public async Task Active_photo_verification_remains_strict(string defect)
+    {
+        var photo = Photo(1); photo.PresentationStorageKey = "presentation"; photo.PresentationFileSizeBytes = 4;
+        var storage = new MetadataStorage { MissingKeys = defect switch { "missing-original" => ["1"], "missing-presentation" => ["presentation"], _ => [] } };
+        if (defect == "original-size") photo.FileSizeBytes = 5;
+        if (defect == "presentation-size") photo.PresentationFileSizeBytes = 5;
+        if (defect == "missing-file-id") photo.FileId = null;
+        if (defect == "unsupported-provider") photo.StorageProvider = "Unsupported";
+        var completed = 0;
+        await Assert.ThrowsAsync<InvalidDataException>(() => BackupPhotoManifest.BuildAsync([photo], storage,
+            (done, _) => completed = done, default, retryDelay: TimeSpan.Zero));
+        Assert.Equal(0, completed);
+        if (defect == "missing-original") Assert.Equal(new[] { "1", "1", "1" }, storage.Keys);
+        if (defect == "missing-presentation") Assert.Equal(new[] { "1", "presentation", "presentation", "presentation" }, storage.Keys);
+        if (defect is "missing-file-id" or "unsupported-provider") Assert.Empty(storage.Keys);
     }
 
     [Fact]
@@ -253,6 +372,54 @@ public sealed class BoundedBackupTests
         if (wrongCount || inaccessible || incompleteDump)
             Assert.Throws<InvalidDataException>(() => BackupService.VerifyPackage(package.ToArray()));
         else BackupService.VerifyPackage(package.ToArray());
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("all-deleted")]
+    [InlineData("missing-count")]
+    [InlineData("missing-scope")]
+    [InlineData("wrong-scope")]
+    [InlineData("wrong-total")]
+    [InlineData("negative-deleted")]
+    [InlineData("negative-active")]
+    [InlineData("wrong-frozen")]
+    [InlineData("unavailable-active")]
+    [InlineData("omitted-active")]
+    public void Version3_package_reconciles_active_remote_references_and_all_database_photo_rows(string scenario)
+    {
+        var active = scenario == "all-deleted" ? 0 : 1;
+        var counts = new Dictionary<string, int> { ["photos"] = active + 1, ["activePhotos"] = active, ["deletedPhotos"] = 1 };
+        if (scenario == "missing-count") counts.Remove("activePhotos");
+        if (scenario == "wrong-total") counts["photos"]++;
+        if (scenario == "negative-deleted") { counts["deletedPhotos"] = -1; counts["photos"] = active - 1; }
+        if (scenario == "negative-active") { counts["activePhotos"] = -1; counts["photos"] = 0; }
+        var files = new Dictionary<string, byte[]>();
+        using (var compressed = new MemoryStream())
+        {
+            using (var gzip = new GZipStream(compressed, CompressionMode.Compress, true))
+            using (var text = new StreamWriter(gzip))
+                text.Write("-- PostgreSQL database dump\n-- PostgreSQL database dump complete\n");
+            files.Add("db.sql.gz", compressed.ToArray());
+        }
+        files.Add("cropqc-config-test.json", JsonSerializer.SerializeToUtf8Bytes(new { }));
+        files.Add("cropqc-schema-test.json", JsonSerializer.SerializeToUtf8Bytes(new { rowCounts = counts }));
+        files.Add("cropqc-photo-manifest-test.json", JsonSerializer.SerializeToUtf8Bytes(
+            Enumerable.Range(0, scenario == "omitted-active" ? 0 : active).Select(x => new { photoId = x + 1L, objectAccessible = scenario != "unavailable-active" })));
+        var manifest = new Dictionary<string, object>
+        {
+            ["formatVersion"] = 3,
+            ["photoReferenceScope"] = scenario == "wrong-scope" ? "AllPhotos" : "ActivePhotos",
+            ["frozenPhotoCount"] = scenario == "wrong-frozen" ? active + 1 : active,
+            ["components"] = files.Select(x => new { name = x.Key, sizeBytes = x.Value.Length, sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(x.Value)).ToLowerInvariant() }).ToArray()
+        };
+        if (scenario == "missing-scope") manifest.Remove("photoReferenceScope");
+        files.Add("backup-manifest.json", JsonSerializer.SerializeToUtf8Bytes(manifest));
+        using var package = new MemoryStream();
+        using (var zip = new ZipArchive(package, ZipArchiveMode.Create, true))
+            foreach (var file in files) { using var entry = zip.CreateEntry(file.Key).Open(); entry.Write(file.Value); }
+        if (scenario is "valid" or "all-deleted") BackupService.VerifyPackage(package.ToArray());
+        else Assert.Throws<InvalidDataException>(() => BackupService.VerifyPackage(package.ToArray()));
     }
 
     [BackupPostgresFact]
@@ -479,12 +646,13 @@ public sealed class BoundedBackupTests
     {
         public List<string> Keys { get; } = [];
         public bool Missing { get; init; }
+        public IReadOnlyList<string> MissingKeys { get; init; } = [];
         public bool Hang { get; init; }
         public async Task<FileStorageReference?> GetMetadataAsync(string key, CancellationToken cancellationToken = default)
         {
             Keys.Add(key);
             if (Hang) await Task.Delay(Timeout.Infinite, cancellationToken);
-            return Missing ? null : new(FileStorageProviders.GoogleDrive, key, "", key + ".jpg", "image/jpeg", 4, Checksum: "captured-md5");
+            return Missing || MissingKeys.Contains(key) ? null : new(FileStorageProviders.GoogleDrive, key, "", key + ".jpg", "image/jpeg", 4, Checksum: "captured-md5");
         }
         public string GenerateTargetPath(FileStorageTargetContext context) => throw new NotSupportedException();
         public Task<FileStorageReference> SaveAsync(FileStorageSaveRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

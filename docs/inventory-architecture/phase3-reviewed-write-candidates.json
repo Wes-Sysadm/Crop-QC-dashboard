@@ -231,7 +231,7 @@
     "Path": "src/CropQc.Web/Services/BackupService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "FB2942727E4DD6E997EBAEAAC00C40F2494B9DF3C7A89E86DFAB206E3FAB67AC"
+    "Sha256": "5E6EF2CB8E66127EAC746C700B128C5302FB7152BF2DF27EB7187C65F869A8C8"
   },
   {
     "Path": "src/CropQc.Web/Services/BinsRunReversal1820CorrectionService.cs",
