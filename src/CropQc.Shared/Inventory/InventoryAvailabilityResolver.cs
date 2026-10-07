@@ -270,7 +270,12 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
                 && arrivals.Sum(x => x.Quantity) - e.Movements.Where(x => x.Outgoing && x.SourceProjectionId == p.Id).Sum(x => x.Quantity) == p.Quantity;
             if (exactArrival) earliestArrival = arrivals.Min(x => x.At);
             var receiptLedger = e.Ledger.Where(x => x.ReceiptId == p.ReceiptId).ToArray();
-            var exactReceiptAllocation = exactArrival || p.ReceiptId is long receiptId
+            // Legacy receiving can have a receipt-scoped projection and ledger,
+            // but no lineage movement. Prove THIS intact arrival before using
+            // its clock; the oldest fruit in the room is not its treatment scope.
+            var legacyArrival = ExactLegacyReceiptArrival(p, e, receiptLedger);
+            if (!exactArrival && legacyArrival != null) earliestArrival = legacyArrival.At;
+            var exactReceiptAllocation = exactArrival || legacyArrival != null || p.ReceiptId is long receiptId
                 && e.Receipts.Any(x => x.Id == receiptId && x.ExactIdentity && !x.IsDeleted)
                 && receiptLedger.Length > 0 && receiptLedger.All(x => x.ExactIdentity) && receiptLedger.Sum(x => x.Quantity) == p.Quantity;
             return p.Signature == "u" && p.ApplicationIds.IsEmpty
@@ -281,6 +286,36 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         var suffix = p.Signature[4..].Split(',');
         return suffix.Length == p.ApplicationIds.Length && suffix.All(x => long.TryParse(x, out var id) && p.ApplicationIds.Contains(id))
             && p.ApplicationIds.All(id => e.Applications.Any(x => x.Id == id && x.ReversedAt is null));
+    }
+
+    private static InventoryLedgerEvidence? ExactLegacyReceiptArrival(InventoryProjectionEvidence p,
+        InventoryPositionEvidence e, InventoryLedgerEvidence[] receiptLedger)
+    {
+        if (p.ReceiptId is not long receiptId) return null;
+        var arrivals = receiptLedger.Where(x => x.Quantity > 0).ToArray();
+        if (arrivals.Length != 1) return null;
+        var arrival = arrivals[0];
+        if (arrival.Kind != "ReceiptAdd" || !arrival.ExactIdentity || p.Quantity <= 0
+            || receiptLedger.Any(x => !x.ExactIdentity)
+            || !e.Receipts.Any(x => x.Id == receiptId && x.ExactIdentity && !x.IsDeleted && !x.IsTransferReceipt && x.Quantity == arrival.Quantity)
+            || e.Projections.Count(x => x.Disposition == "Current" && x.Quantity > 0 && x.ReceiptId == receiptId) != 1)
+            return null;
+        // An unassigned depletion or transfer could have consumed this receipt.
+        // Neither balanced totals nor a projection alone proves which bins survived.
+        var recorded = arrival.RecordedAt ?? arrival.At;
+        var debits = e.Ledger.Where(x => x.Quantity < 0 && (x.At >= arrival.At || (x.RecordedAt ?? x.At) >= recorded)).ToArray();
+        var outgoing = e.Movements.Where(x => x.Outgoing && (x.At >= arrival.At || x.CreatedAt >= recorded)).ToArray();
+        if (e.Movements.Any(x => x.Incoming && x.DestinationProjectionId == p.Id)
+            || debits.Select(x => x.MovementParent).Distinct().Count() != debits.Length
+            || outgoing.Any(x => !x.ExactIdentity || x.Quantity <= 0 || x.SourceProjectionId == null || x.ReceiptId == null
+                || (x.SourceProjectionId == p.Id) != (x.ReceiptId == receiptId)
+                || x.SourceProjectionId == p.Id && (x.Signature != "u" || x.State != "Untreated")
+                || x.Parent == null || !debits.Any(d => d.MovementParent == x.Parent))
+            || debits.Any(x => !x.ExactIdentity || x.MovementParent == null
+                || outgoing.Where(m => m.Parent == x.MovementParent).Sum(m => m.Quantity) != -x.Quantity)
+            || arrival.Quantity - outgoing.Where(x => x.SourceProjectionId == p.Id).Sum(x => x.Quantity) != p.Quantity)
+            return null;
+        return arrival;
     }
 
     private static bool IsAliasDuplicate(InventoryProjectionEvidence p, InventoryPositionEvidence e)
