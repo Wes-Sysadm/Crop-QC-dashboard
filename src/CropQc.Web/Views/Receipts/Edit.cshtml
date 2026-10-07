@@ -144,8 +144,10 @@
                     <dt>Current bin count</dt><dd>@preview.ReceiptBinCount bins</dd>
                     <dt>New bin count</dt><dd><span id="overrideProposedBins">@preview.ReceiptBinCount</span> bins</dd>
                     <dt>Inventory adjustment</dt><dd><span id="overrideBinDelta">0</span> bins</dd>
+                    <dt>Removed from selected current inventory</dt><dd><span id="overrideRemovedBins">0</span> bins</dd>
                     <dt>Current attributable inventory</dt><dd>@preview.CurrentInventory bins</dd>
                     <dt>Net already run or consumed</dt><dd>@preview.ConsumedBins bins</dd>
+                    <dt>Current receipt inventory in other rooms/custody (already moved, not consumed)</dt><dd>@preview.Balances.Where(x => x.RoomId != form.RoomId).Sum(x => x.CurrentBins) bins</dd>
                     <dt>Operational history</dt><dd>@preview.BinsRunCount Bins Run line(s), @preview.ActualRunCount Actual Run(s), @preview.TransferCount transfer(s)</dd>
                 </dl>
                 @if (preview.Balances.Count > 0)
@@ -177,10 +179,10 @@
                         }
                         else if (eligiblePositions.Count > 0)
                         {
-                            <p class="notice warning">Inventory is split across current positions or treatment segments. Allocate the full positive change below.</p>
+                            <p class="notice warning">Inventory is split across current positions or treatment segments. Select the current allocations to correct and allocate the full absolute difference below. Previously moved stock stays in its current location unless explicitly selected.</p>
                         }
                         <table class="data-table">
-                            <thead><tr><th>Custody</th><th>Facility</th><th>Location</th><th>Current bins</th><th>Treatment</th><th>Added bins</th></tr></thead>
+                            <thead><tr><th>Custody</th><th>Facility</th><th>Location</th><th>Current bins</th><th>Treatment</th><th>Bins to correct</th></tr></thead>
                             <tbody>
                             @for (var index = 0; index < preview.TrueUpPositions.Count; index++)
                             {
@@ -196,7 +198,7 @@
                                         {
                                             var bindingIndex = allocationIndex++;
                                             <input type="hidden" name="TrueUpAllocations[@bindingIndex].TargetKey" value="@position.TargetKey" />
-                                            <input class="true-up-allocation" name="TrueUpAllocations[@bindingIndex].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Additional bins at @position.Facility @position.Location @position.Treatment" />
+                                            <input class="true-up-allocation" name="TrueUpAllocations[@bindingIndex].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Bins to correct at @position.Facility @position.Location @position.Treatment" />
                                         }
                                         else
                                         {
@@ -213,7 +215,7 @@
                 <input type="hidden" name="ExpectedInventoryStateToken" value="@preview.InventoryStateToken" />
                 <input type="hidden" name="ExpectedPositiveTrueUpStateToken" value="@preview.PositiveTrueUpStateToken" />
                 <input type="hidden" name="OperationKey" value="@preview.OperationKey" />
-                <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000"></textarea></div>
+                <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000" placeholder="Incorrect original bin count / buffer bins included"></textarea><p class="muted">Buffer bins included in error are a receipt quantity correction, not fruit loss, a dump or a transfer. The original entered count remains in the audit history.</p></div>
                 <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm this audited Receipt correction and its durable Receipt Admin Override record.</label>
                 <input type="hidden" name="ConfirmInventoryChange" value="false" />
                 <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
@@ -330,11 +332,12 @@
                     }
                     document.getElementById("locationRelocatedBins").textContent = source?.selectedOptions[0]?.dataset.bins
                         ? `${source.selectedOptions[0].dataset.bins} bins` : "Select a source";
-                    document.getElementById("applyBinCountOverride").disabled = locationChanged && (!source?.value || @JsonSerializer.Serialize(Model.AdminOverridePreview?.CanonicalBlocker is not null));
+                    document.getElementById("applyBinCountOverride").disabled = (locationChanged && !source?.value) || @JsonSerializer.Serialize(Model.AdminOverridePreview?.CanonicalBlocker is not null);
                 }
                 document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
                 const delta = Number.isFinite(proposed) ? proposed - original : null;
                 document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
+                document.getElementById("overrideRemovedBins").textContent = delta === null ? "n/a" : Math.max(0, -delta);
                 const positiveTrueUp = document.getElementById("positiveTrueUpAllocation");
                 const allocateReduction = @JsonSerializer.Serialize(CanonicalMode.Enabled);
                 if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0 || allocateReduction && delta < 0);

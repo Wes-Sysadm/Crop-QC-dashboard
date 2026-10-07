@@ -99,7 +99,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "95239FF50B3F8AA95EC613F06F1999BCA4C4381156AB761CBB5D03F855FBDAC9"
+    "Sha256": "8D6A659CEB04CC196CB551766444202C24B10E42E780B4D800562B370C1716F7"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptIdentity.cs",
@@ -165,7 +165,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "E68194AC3599EDD1CDB3FFC2C594C42DDFF1BF1D6A3372F81E7430A90C2C1DD8"
+    "Sha256": "CF26B03154C749503D5E7750E9271823CD8C304227BAE0140A975A46A02AF061"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryRunCorrectionAvailability.cs",
@@ -195,7 +195,7 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "D56CCEBC292B39054BB48C843D7D1C850C0E75E1D01510FA78761F40F2DD14A4"
+    "Sha256": "B1BD7A8946EF199F73989D17A1DF7E485811C38B2458A12CB4E02CE71AA36276"
   },
   {
     "Path": "src/CropQc.Shared/Storage/GoogleDriveStorageService.cs",

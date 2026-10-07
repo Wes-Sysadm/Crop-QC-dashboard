@@ -10,14 +10,19 @@ public sealed partial class DashboardDataService
 {
     private async Task<IReadOnlyList<RoomReceiptOptionViewModel>> CanonicalDepletionOptionsAsync(int room, CancellationToken ct)
     {
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, [room]), new(RequireExactReceipt: true), BusinessTime.UtcNow, ct);
-        var ids = batch.Positions.Where(x => x.IsOperable).SelectMany(x => x.TreatmentSlices).SelectMany(x => x.ReceiptEvidenceIds).Distinct().ToArray();
+        var evidence = await new InventoryEvidenceLoader(dbContext).LoadAsync(new(null, [room]), BusinessTime.UtcNow, ct);
+        // Enumerate receipt candidates, then ask the same canonical proof used by
+        // submission. A different receipt's unassigned pool must not hide exact stock.
+        var positions = evidence.Positions.SelectMany(p => p.Receipts.Select(x => x.Id).Distinct()
+            .Select(id => (Id: id, Position: InventoryAvailabilityResolver.Resolve(p, new(RequireExactReceipt: true, ReceiptId: id)))))
+            .Where(x => x.Position.IsOperable).ToArray();
+        var ids = positions.Select(x => x.Id).Distinct().ToArray();
         var receipts = await dbContext.Receipts.AsNoTracking().Where(x => ids.Contains(x.Id) && x.RoomId == room && !x.IsDeleted && !x.IsTransferReceipt)
             .ToDictionaryAsync(x => x.Id, ct);
-        return batch.Positions.Where(x => x.IsOperable).SelectMany(p => p.TreatmentSlices.Where(s => s.ReceiptEvidenceIds.Length == 1 && s.Quantity > 0)
+        return positions.SelectMany(item => item.Position.TreatmentSlices.Where(s => s.ReceiptEvidenceIds.Length == 1 && s.ReceiptEvidenceIds[0] == item.Id && s.Quantity > 0)
             .Where(s => receipts.ContainsKey(s.ReceiptEvidenceIds[0])).Select(s => new RoomReceiptOptionViewModel(s.ReceiptEvidenceIds[0],
-                $"{receipts[s.ReceiptEvidenceIds[0]].CompuTechReceiptId} - {p.Identity.Lot} {p.Identity.Variety} - {s.State} ({s.Quantity} bins current)",
-                s.Quantity, s.Signature, p.Watermark.Fingerprint))).ToArray();
+                $"{receipts[s.ReceiptEvidenceIds[0]].CompuTechReceiptId} - {item.Position.Identity.Lot} {item.Position.Identity.Variety} - {s.State} ({s.Quantity} bins current)",
+                s.Quantity, s.Signature, item.Position.Watermark.Fingerprint))).ToArray();
     }
 
     private async Task<string?> CreateCanonicalDepletionAsync(RoomDepletionForm form, CancellationToken ct)
