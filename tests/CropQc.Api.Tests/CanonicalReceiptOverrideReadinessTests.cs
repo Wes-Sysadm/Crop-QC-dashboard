@@ -46,6 +46,9 @@ public sealed class CanonicalReceiptOverrideReadinessTests
     [InlineData("snapshot missing identity")]
     [InlineData("snapshot ambiguous provenance")]
     [InlineData("snapshot duplicated allocation")]
+    [InlineData("snapshot conflicting position")]
+    [InlineData("snapshot conflicting treatment")]
+    [InlineData("snapshot conflicting receipt type")]
     [InlineData("target snapshot")]
     [InlineData("after receipt")]
     [InlineData("movement quantity")]
@@ -89,6 +92,11 @@ public sealed class CanonicalReceiptOverrideReadinessTests
                 case "balance": row.NewBinCount++; break;
                 case "target snapshot": correction.TargetIdentitySnapshotJson = "{}"; break;
                 case "after receipt": parent.AfterReceiptSnapshotJson = parent.BeforeReceiptSnapshotJson; break;
+                case "snapshot conflicting receipt type":
+                    var after = JsonNode.Parse(parent.AfterReceiptSnapshotJson)!;
+                    after["receiptType"] = "Transfer";
+                    parent.AfterReceiptSnapshotJson = after.ToJsonString();
+                    break;
                 case "movement quantity": move.BinCount++; break;
                 case "movement treatment": move.TreatmentSignatureSnapshot = "WRONG"; break;
                 case "movement identity": move.IdentityKey = "WRONG"; break;
@@ -98,6 +106,8 @@ public sealed class CanonicalReceiptOverrideReadinessTests
                     if (damage == "snapshot missing identity") affected[0]!["position"]!.AsObject().Remove("identity");
                     if (damage == "snapshot ambiguous provenance") affected[0]!["slice"]!["receiptEvidenceIds"] = new JsonArray(100000);
                     if (damage == "snapshot duplicated allocation") affected.Add(affected[0]!.DeepClone());
+                    if (damage == "snapshot conflicting position") affected[0]!["position"]!["rawProjectionQuantity"] = 999;
+                    if (damage == "snapshot conflicting treatment") affected[0]!["slice"]!["applicationIds"] = new JsonArray(999);
                     parent.AffectedInventorySnapshotJson = affected.ToJsonString();
                     var sourceSnapshot = JsonNode.Parse(correction.SourceIdentitySnapshotJson)!;
                     sourceSnapshot["allocations"] = affected.DeepClone();

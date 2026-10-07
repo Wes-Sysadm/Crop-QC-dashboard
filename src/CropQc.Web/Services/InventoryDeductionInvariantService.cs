@@ -990,6 +990,7 @@ public sealed class InventoryDeductionInvariantService(
             var target = JsonSerializer.Deserialize<InventoryIdentity>(correction.TargetIdentitySnapshotJson, json)!;
             var allocations = JsonSerializer.Deserialize<InventoryReceiptAllocation[]>(operation.AffectedInventorySnapshotJson, json)!;
             var sourceAllocations = sourceDoc.RootElement.GetProperty("allocations").Deserialize<InventoryReceiptAllocation[]>(json)!;
+            var sourcePositions = sourceDoc.RootElement.GetProperty("positions").Deserialize<InventoryAvailabilityResult[]>(json)!;
             var expected = change.ExpectedReceipt;
             var valid = target.IsComplete && target == change.Target
                 && target.CropYear == correction.TargetCropYear && target.GrowerLotId == correction.TargetGrowerLotId
@@ -1009,15 +1010,28 @@ public sealed class InventoryDeductionInvariantService(
                 && before.GetProperty("warehouseId").GetInt32() == expected.WarehouseId && after.GetProperty("warehouseId").GetInt32() == expected.WarehouseId
                 && before.GetProperty("roomId").GetInt32() == expected.RoomId && after.GetProperty("roomId").GetInt32() == expected.RoomId
                 && before.GetProperty("compuTechReceiptId").GetString() == expected.ReceiptNumber && after.GetProperty("compuTechReceiptId").GetString() == expected.ReceiptNumber
+                && expected.ReceiptType == "Truck receipt" && before.GetProperty("receiptType").GetString() == expected.ReceiptType
+                && after.GetProperty("receiptType").GetString() == expected.ReceiptType
+                && !before.GetProperty("isDeleted").GetBoolean() && !after.GetProperty("isDeleted").GetBoolean()
+                && after.GetProperty("lotCode").GetString() == target.Lot
+                && sourcePositions.Select(x => x.PositionKey).Distinct().Count() == sourcePositions.Length
                 && allocations.Select(x => x.Key).Distinct().Count() == allocations.Length
                 && allocations.Sum(x => x.Slice.Quantity) == operation.CurrentInventoryBefore;
             foreach (var allocation in allocations)
             {
                 var p = allocation.Position;
+                var positionEvidence = sourcePositions.Where(x => x.PositionKey == p.PositionKey).ToArray();
+                var treatmentEvidence = p.TreatmentSlices.Where(x => x.Signature == allocation.Slice.Signature
+                    && x.State == allocation.Slice.State && x.ReceiptEvidenceIds.SequenceEqual(new[] { operation.ReceiptId })).ToArray();
                 valid &= p.Identity.IsComplete && p.Identity.CropYear == correction.SourceCropYear
                     && p.Identity.GrowerLotId == correction.SourceGrowerLotId && p.Identity.FruitProfileId == correction.SourceFruitProfileId
                     && p.Identity.Lot == before.GetProperty("growerNumber").GetString()
                     && p.IsOperable && p.QuantityConfidence == InventoryConfidence.Proven && p.TreatmentConfidence == InventoryConfidence.Proven
+                    && p.ReceiptProvenance.Confidence == InventoryConfidence.Proven
+                    && positionEvidence.Length == 1 && JsonSerializer.Serialize(positionEvidence[0], json) == JsonSerializer.Serialize(p, json)
+                    && treatmentEvidence.Sum(x => x.Quantity) == allocation.Slice.Quantity
+                    && treatmentEvidence.All(x => x.ApplicationIds.Order().SequenceEqual(allocation.Slice.ApplicationIds.Order()))
+                    && treatmentEvidence.SelectMany(x => x.ProjectionIds).Distinct().Order().SequenceEqual(allocation.Slice.ProjectionIds.Order())
                     && allocation.Slice.Quantity > 0 && allocation.Slice.Quantity <= p.AuthoritativeQuantity
                     && allocation.Slice.Confidence == InventoryConfidence.Proven
                     && allocation.Slice.ReceiptEvidenceIds.SequenceEqual(new[] { operation.ReceiptId });

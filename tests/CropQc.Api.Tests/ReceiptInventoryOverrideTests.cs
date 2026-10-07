@@ -1907,6 +1907,10 @@ public sealed class ReceiptInventoryOverrideTests
         var conventional = new FruitProfile { Id = 93301, Name = "PG Gala", VarietyCode = "PG-GALA", FruitType = "Apple", ProductionType = "Conventional" };
         var organic = new FruitProfile { Id = 93302, Name = "PG Organic Gala", VarietyCode = "PG-ORG-GALA", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
         var growerLot = new GrowerLot { Id = 93310, Grower = "PostgreSQL Grower", LotNumber = "PG-LOT", IsActive = true, CreatedAt = Now, UpdatedAt = Now };
+        // Quantity/void scenarios above create receipt-specific treatment evidence.
+        // Keep the independent positive legacy reclassification case out of that
+        // consolidated pool; genuine ambiguous provenance must remain blocked.
+        var reclassGrowerLot = new GrowerLot { Id = 93311, Grower = "PostgreSQL Reclassification", LotNumber = "PG-RECLASS", IsActive = true, CreatedAt = Now, UpdatedAt = Now };
         var admin = await db.Users
             .SingleOrDefaultAsync(x => x.Email == ApplicationAreas.OwnerEmail && x.IsActive)
             ?? new User
@@ -1918,7 +1922,7 @@ public sealed class ReceiptInventoryOverrideTests
                 IsActive = true,
                 CreatedAt = Now
             };
-        db.AddRange(warehouse, roomA, roomB, conventional, organic, growerLot);
+        db.AddRange(warehouse, roomA, roomB, conventional, organic, growerLot, reclassGrowerLot);
         if (db.Entry(admin).State == EntityState.Detached)
         {
             db.Users.Add(admin);
@@ -1929,10 +1933,11 @@ public sealed class ReceiptInventoryOverrideTests
         var unresolvedReceipt = PgReceipt(93504, "PG-OVERRIDE-UNRESOLVED", warehouse, roomA, conventional);
         foreach (var receipt in new[] { quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt })
         {
-            receipt.GrowerLot = growerLot;
-            receipt.GrowerLotId = growerLot.Id;
-            receipt.GrowerNumber = growerLot.LotNumber;
-            receipt.LotCode = growerLot.LotNumber;
+            var receiptGrowerLot = receipt == reclassReceipt ? reclassGrowerLot : growerLot;
+            receipt.GrowerLot = receiptGrowerLot;
+            receipt.GrowerLotId = receiptGrowerLot.Id;
+            receipt.GrowerNumber = receiptGrowerLot.LotNumber;
+            receipt.LotCode = receiptGrowerLot.LotNumber;
         }
         db.AddRange(quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt);
         db.RoomInventoryAdjustments.AddRange(
