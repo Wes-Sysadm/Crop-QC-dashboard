@@ -41,7 +41,7 @@ dotnet CropQc.Web.dll --run-backup=scheduled
 
 Each command returns nonzero when database connectivity, `pg_dump`, packaging, manifest generation, Google Drive upload, read-back, size, checksum, or structural verification fails. Deployment or mutation must stop on a nonzero result.
 
-Render runs `--run-backup=scheduled` at `30 10 * * *` UTC. This is 02:30 PST and 03:30 PDT in `America/Los_Angeles`, deliberately within the low-activity overnight window. Sunday runs are retained as the ISO-week recovery point instead of creating a duplicate package.
+Render runs `--run-backup=scheduled` at `0 8,9 * * *` UTC. The application accepts only the candidate in the 01:00 America/Los_Angeles hour: 08:00 UTC during PDT, 09:00 UTC during PST. The other invocation intentionally exits without a backup; it is DST coverage, not a retry. The nightly date guard prevents duplicate accepted runs. Sunday runs are retained as the ISO-week recovery point instead of creating a duplicate package.
 
 ## Retention
 

@@ -213,7 +213,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "DE706CED99FDA1409D9C72201A797179A35C49522420B42ADFACFCFD669ED68E"
+    "Sha256": "51303BF0924830C491A17A82E3C61A5196A12A1AE14E5087174D5DB056F971F5"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
