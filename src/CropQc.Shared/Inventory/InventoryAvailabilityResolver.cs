@@ -56,7 +56,9 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         // dispatch-minus-reversal slices and never credit the source room again.
         var balanced = raw == e.AuthoritativeQuantity && !projectionConflict
             && positive.All(x => ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
-        if (pool && !projectionConflict && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
+        var exactRequestedReceipt = balanced && requirements.ReceiptId is long requestedReceipt
+            && ProveCurrentReceipt(e, requestedReceipt);
+        if (pool && !projectionConflict && !exactRequestedReceipt && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
         {
             treatmentConfidence = InventoryConfidence.Proven;
             receiptConfidence = receiptIds.Length == 1 && e.Receipts.Any(x => x.Id == receiptIds[0] && x.ExactIdentity && !x.IsDeleted)
@@ -79,6 +81,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             receiptIds = positive.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().Order().ToImmutableArray();
             receiptConfidence = positive.All(x => x.ReceiptId != null) && receiptIds.All(id => e.Receipts.Any(x => x.Id == id && x.ExactIdentity && !x.IsDeleted))
                 ? InventoryConfidence.Proven : InventoryConfidence.Unknown;
+            if (exactRequestedReceipt) receiptConfidence = InventoryConfidence.Proven;
         }
         else if (e.AuthoritativeQuantity == 0 && raw == 0 && !projectionConflict)
         {
@@ -149,6 +152,40 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             blockers.Count == 0 && !e.CustodyAllocations.IsDefault ? e.CustodyAllocations : []);
 
         void Block(InventoryBlockerCode code, string detail) => blockers.Add(new(code, detail));
+    }
+
+    // A newer receipt can be exactly owned inside a balanced position that also
+    // contains an older unassigned pool. Never allocate that pool to the receipt.
+    // Require both immutable movement flow and authoritative ledger attribution;
+    // an unexplained withdrawal after arrival invalidates the local proof.
+    private static bool ProveCurrentReceipt(InventoryPositionEvidence e, long receiptId)
+    {
+        if (!e.Receipts.Any(x => x.Id == receiptId && x.ExactIdentity && !x.IsDeleted && !x.IsTransferReceipt)) return false;
+        var projections = e.Projections.Where(x => x.ReceiptId == receiptId && x.Quantity > 0).ToArray();
+        var moves = e.Movements.Where(x => x.ReceiptId == receiptId).ToArray();
+        if (projections.Length == 0 || moves.Length == 0 || moves.Any(x => !x.ExactIdentity || x.Quantity <= 0)) return false;
+        if (projections.Any(p => moves.Where(x => x.DestinationProjectionId == p.Id).Sum(x => x.Quantity)
+            - moves.Where(x => x.SourceProjectionId == p.Id).Sum(x => x.Quantity) != p.Quantity)) return false;
+        var arrival = moves.Where(x => x.Incoming).Select(x => x.CreatedAt).DefaultIfEmpty(DateTimeOffset.MaxValue).Min();
+        var quantity = 0;
+        foreach (var row in e.Ledger)
+        {
+            if (row.ReceiptId == receiptId)
+            {
+                if (!row.ExactIdentity) return false;
+                quantity += row.Quantity;
+            }
+            else if (row.ReceiptId == null && (row.RecordedAt ?? row.At) >= arrival)
+            {
+                var related = e.Movements.Where(x => row.MovementParent != null && x.Parent == row.MovementParent
+                    && (row.Quantity < 0 ? x.Outgoing : x.Incoming)).ToArray();
+                if (row.Quantity < 0 && (related.Length == 0 || related.Any(x => !x.ExactIdentity || x.ReceiptId == null)
+                    || related.Sum(x => x.Quantity) != -row.Quantity)) return false;
+                quantity += related.Where(x => x.ReceiptId == receiptId).Sum(x => x.Quantity) * Math.Sign(row.Quantity);
+            }
+        }
+        return quantity == projections.Sum(x => x.Quantity)
+            && moves.Sum(x => (x.Incoming ? x.Quantity : 0) - (x.Outgoing ? x.Quantity : 0)) == quantity;
     }
 
     private static bool Replay(InventoryPositionEvidence e, out ImmutableArray<InventoryLedgerEvidence> epoch)

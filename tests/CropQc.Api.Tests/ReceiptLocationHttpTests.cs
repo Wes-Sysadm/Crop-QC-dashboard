@@ -68,7 +68,7 @@ public sealed class ReceiptLocationHttpTests
         Assert.DoesNotContain("could not be translated", await detail.Content.ReadAsStringAsync());
     }
 
-    private sealed class ReceiptHost(string connection) : WebApplicationFactory<ReceiptsController>
+    internal sealed class ReceiptHost(string connection) : WebApplicationFactory<ReceiptsController>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {

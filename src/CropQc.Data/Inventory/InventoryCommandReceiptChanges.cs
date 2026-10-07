@@ -28,9 +28,16 @@ public sealed partial class InventoryCommandExecutor
         var allocations = change.Allocations;
         if (isVoid) allocations = state.Allocations.Where(x => x.Position.Location.Custody == InventoryCustody.Room)
             .Select(x => new InventoryReceiptQuantityAllocation(x.Key, x.Slice.Quantity)).ToImmutableArray();
+        Require(isVoid || !allocations.IsEmpty, "Select which current receipt location and treatment allocations should be corrected. No current stock can be invented or recalled.");
         Require(allocations.All(x => x.Quantity > 0) && allocations.Select(x => x.Key).Distinct().Count() == allocations.Length
             && allocations.Sum(x => x.Quantity) == Math.Abs(delta), "Correction allocations must total the exact receipt quantity change.");
         var selected = allocations.Select(x => (Input: x, Evidence: state.Allocations.SingleOrDefault(y => y.Key == x.Key))).ToArray();
+        if (!isVoid && delta < 0 && selected.All(x => x.Evidence != null))
+        {
+            var available = selected.Sum(x => x.Evidence!.Slice.Quantity);
+            Require(available >= -delta,
+                $"{receipt.BinCount - available} bins from this receipt have already been consumed or moved outside the selected allocations, which exceeds the proposed corrected receipt total of {change.NewQuantity}. Review the history or select the intended current allocation.");
+        }
         Require(selected.All(x => x.Evidence != null && x.Evidence.Position.Location.Custody == InventoryCustody.Room
             && (delta > 0 || x.Input.Quantity <= x.Evidence.Slice.Quantity)), "Only exact current receipt allocations may be corrected; custody cannot be rewritten.");
         foreach (var p in selected.Select(x => x.Evidence!.Position).DistinctBy(x => x.PositionKey))

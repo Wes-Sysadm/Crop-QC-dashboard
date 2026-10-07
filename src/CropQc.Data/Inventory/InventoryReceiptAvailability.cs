@@ -33,15 +33,18 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
             .Select(x => x.RoomId).Distinct().ToListAsync(ct);
         roomIds.AddRange(await db.TreatmentLineageSegments.Where(x => x.ReceiptId == receiptId).Select(x => x.RoomId).Distinct().ToListAsync(ct));
         roomIds.Add(receipt.RoomId);
-        var resolver = new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db));
+        var loader = new InventoryEvidenceLoader(db);
         var positions = ImmutableArray.CreateBuilder<InventoryAvailabilityResult>();
         var asOf = DateTimeOffset.UtcNow;
         var rooms = roomIds.Distinct().ToImmutableArray();
         foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor })
         {
-            var batch = await resolver.ResolveAsync(new(null, rooms, custody), new(AllowedCustody: custody), asOf, ct);
-            positions.AddRange(batch.Positions.Where(x => x.Identity.CropYear == receipt.CropYear && x.Identity.GrowerLotId == receipt.GrowerLotId
-                && x.Identity.FruitProfileId == receipt.FruitProfileId || x.ReceiptProvenance.ReceiptIds.Contains(receiptId)));
+            var batch = await loader.LoadAsync(new(null, rooms, custody), asOf, ct);
+            // Same-lot inventory elsewhere does not belong to this receipt merely
+            // because identity matches. Include every position retaining its evidence.
+            positions.AddRange(batch.Positions.Where(x => x.Receipts.Any(r => r.Id == receiptId)
+                || x.Projections.Any(p => p.ReceiptId == receiptId) || x.Movements.Any(m => m.ReceiptId == receiptId))
+                .Select(x => InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: custody, ReceiptId: receiptId))));
         }
         var allocation = ImmutableArray.CreateBuilder<InventoryReceiptAllocation>();
         string? blocker = receipt.IsDeleted || receipt.IsTransferReceipt ? "An active ordinary receipt is required." : null;
@@ -50,7 +53,7 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
             if (p.AuthoritativeQuantity < 0) blocker ??= "Negative authoritative inventory requires a separately reviewed correction.";
             if (p.AuthoritativeQuantity == 0 && p.IsOperable) continue;
             if (!p.IsOperable || p.ReceiptProvenance.Confidence != InventoryConfidence.Proven)
-            { blocker ??= "Exact receipt inventory or treatment ownership cannot be proven."; continue; }
+            { blocker ??= "Exact current receipt inventory and treatment ownership cannot be proven. Review the receipt allocations and unassigned movements; same-lot stock alone is not receipt attribution."; continue; }
             foreach (var group in p.TreatmentSlices.Where(x => x.ReceiptEvidenceIds.Length == 1 && x.ReceiptEvidenceIds[0] == receiptId).GroupBy(x => new { x.Signature, x.State }))
             {
                 var first = group.First();
