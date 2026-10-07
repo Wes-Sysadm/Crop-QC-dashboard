@@ -9,6 +9,34 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReceivingPlacementWorkflowTests
 {
+    [InventoryPostgresFact]
+    public async Task Zero_bin_status_alias_is_retired_before_receiving_without_manufacturing_inventory()
+    {
+        await using var f = await Fixture.Create();
+        await using (var db = f.CreateDbContext())
+        {
+            var ledger = await db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 100000);
+            ledger.ChangeAmount = 0; ledger.NewBinCount = 0;
+            var alias = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == 100000);
+            alias.CurrentBins = 0; alias.IdentityKey += "CONVENTIONAL"; alias.InventoryStatusSnapshot = "Conventional";
+            await db.SaveChangesAsync();
+        }
+        var command = new InventoryCommand(Guid.NewGuid().ToString("N"), InventoryCommandKind.ReceiveStock, 8000,
+            DateTimeOffset.UtcNow, "Empty status-alias placement regression", [], Receipt: new(2026, 9001, 9002, 100000, 9004, "LOCAL-EMPTY-ALIAS", 40));
+        var result = await f.Execute(command);
+        Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail);
+        await using var verify = f.CreateDbContext();
+        Assert.Equal(40, await f.Physical());
+        var retired = await verify.TreatmentLineageSegments.SingleAsync(x => x.Id == 100000);
+        Assert.Equal("Historical", retired.Disposition); Assert.Equal(0, retired.CurrentBins);
+        Assert.Single(await verify.Receipts.Where(x => x.CompuTechReceiptId == "LOCAL-EMPTY-ALIAS").ToArrayAsync());
+        Assert.Single(await verify.AuditLogs.Where(x => x.Action == "CanonicalInventoryNormalization").ToArrayAsync());
+        Assert.Equal(40, await verify.TreatmentLineageSegments.Where(x => x.Disposition == "Current").SumAsync(x => x.CurrentBins));
+        var snapshot = await f.Snapshot();
+        Assert.Equal(InventoryCommandStatus.Replayed, (await f.Execute(command)).Status);
+        Assert.Equal(snapshot, await f.Snapshot());
+    }
+
     [InventoryPostgresTheory]
     [InlineData("unproven-treatment")]
     [InlineData("negative-authority")]

@@ -8,7 +8,8 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition,
+    AcknowledgeTransfer, PlaceReceiptCustody
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -28,7 +29,12 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
     InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null, InventoryReceiptLocationChange? ReceiptLocation = null,
     InventoryReceiptIdentityChange? ReceiptIdentity = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptCustodyIntent? ReceiptCustody = null);
+public sealed record InventoryReceiptCustodyIntent(long TransferId, long ReceiptId, long TransferVersion, long ReceiptVersion,
+    ImmutableArray<InventoryCustodyQuantity> Allocations, InventoryCommandDestination? Destination = null);
+// AcknowledgeTransfer uses dispatch movement IDs; PlaceReceiptCustody uses acknowledgement IDs.
+public sealed record InventoryCustodyQuantity(long Id, int Quantity);
 public sealed record InventoryProductDefinitionChange(int FruitProfileId, string ExpectedFingerprint);
 public sealed record InventoryReceiptIdentityChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
     InventoryReceiptIntent ExpectedReceipt, InventoryIdentity Target);
@@ -100,7 +106,7 @@ public static class InventoryNormalizationPlanner
         return new(Algorithm, result.Proof.EvidenceVersion, result.Watermark.Fingerprint,
             "Retire exact old projection rows; recreate independently proven untreated pool without per-receipt allocation.",
             result.ReceiptProvenance, result.Proof.Evidence,
-            current.Where(x => x.Quantity > 0).OrderBy(x => x.Id).Select(x => new InventoryProjectionChange(x.Id,
+            current.OrderBy(x => x.Id).Select(x => new InventoryProjectionChange(x.Id,
                 x.Quantity, 0, x.Version, checked(x.Version + 1), "Current", "Historical", x.Signature, x.ReceiptId, x.ApplicationIds, x.RawKey, x.State, x.UpdatedAt)).ToImmutableArray(),
             result.AuthoritativeQuantity, result.ReceiptProvenance.Confidence == InventoryConfidence.Proven
                 && result.ReceiptProvenance.ReceiptIds.Length == 1 ? result.ReceiptProvenance.ReceiptIds[0] : null);

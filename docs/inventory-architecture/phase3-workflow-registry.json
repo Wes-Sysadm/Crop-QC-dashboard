@@ -90,13 +90,16 @@
     "WritePath": "Canonical",
     "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
     "OperationIntents": [
-      "ReceiveTransfer"
+      "ReceiveTransfer",
+      "AcknowledgeTransfer",
+      "PlaceReceiptCustody"
     ],
-    "Reversal": "ReopenTransfer",
-    "Evidence": "Dispatch remainder; exact variety reconciliation",
+    "Reversal": "Whole-load reopen only without acknowledgements; partial custody correction requires a reviewed allocation-specific compensating operation",
+    "Evidence": "Exact dispatch allocation selection; receipt-held acknowledgements; independent room placement; original load = unresolved + held + placed",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },

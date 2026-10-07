@@ -48,7 +48,7 @@
     {
         <p class="notice warning">@(Model.Comparison.Sum(x => x.Difference) == 0 ? "Totals match, but varieties do not." : "Transfer and receipt totals differ.") Receipt cannot be completed until the transfer and receipt match exactly. Correct the underlying record; no override is available.</p>
     }
-    @if (receipt.TransferCompletedAt is null && Model.CanEditReceipt)
+    @if (receipt.TransferCompletedAt is null && Model.CanEditReceipt && Model.Acknowledgments.Count == 0)
     {
         <form method="post" action="/Receipts/@receipt.Id/CompleteTransfer">
             @Html.AntiForgeryToken()
@@ -56,7 +56,54 @@
             <button type="submit" disabled="@(!Model.IsReconciled)">Complete Receipt</button>
         </form>
     }
-    @if (Model.CanAdmin)
+    @if (receipt.TransferCompletedAt is null && Model.CanEditReceipt && Model.SupportsReceiptCustody)
+    {
+        <h2>Acknowledge arrived allocations</h2>
+        <p>Identify the original allocations that arrived. Acknowledged bins remain held by this receipt until room placement. Missing bins stay unresolved under this transfer.</p>
+        <form method="post" action="/Receipts/@receipt.Id/AcknowledgeTransfer">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferId" value="@transfer.Id" /><input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+            @for (var i = 0; i < Model.Allocations.Count; i++)
+            {
+                var allocation = Model.Allocations[i];
+                var source = allocation.Movement.SourceSegment!;
+                <div class="subpanel">
+                    <input type="hidden" name="Allocations[@i].Id" value="@allocation.Movement.Id" />
+                    <label>Allocation @allocation.Movement.Id · Origin receipt @allocation.Movement.ReceiptId · @(allocation.Canonical?.Identity.Lot ?? source.LotNumberSnapshot) / @(allocation.Canonical?.Identity.Variety ?? source.VarietyCodeSnapshot) / @(allocation.Canonical?.TreatmentState ?? source.TreatmentState) · @allocation.Bins unresolved
+                        <input type="number" name="Allocations[@i].Quantity" min="0" max="@allocation.Bins" value="0" />
+                    </label>
+                    @foreach (var link in source.Applications.OrderBy(x => x.Sequence))
+                    {
+                        <p>@link.RoomTreatmentApplication.ProductNameSnapshot · @BusinessTime.FormatPacific(link.RoomTreatmentApplication.AppliedAt) @(link.RoomTreatmentApplication.ReversedAt != null ? "(reversed)" : "")</p>
+                    }
+                </div>
+            }
+            <label>Receiving evidence / note<input name="Reason" required maxlength="1000" /></label>
+            <button type="submit" disabled="@(Model.Allocations.Count == 0)">Acknowledge selected bins</button>
+        </form>
+        @if (Model.ReceiptHeldBins > 0)
+        {
+            <h2>Place receipt-held bins</h2>
+            <p>Place only the selected held quantity in the receipt's destination room. Prior placements will not be repeated.</p>
+            var held = Model.Acknowledgments.Where(x => x.Quantity > x.Placements.Sum(p => p.Quantity)).ToList();
+            <form method="post" action="/Receipts/@receipt.Id/PlaceTransferCustody">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="TransferId" value="@transfer.Id" /><input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
+                @for (var i = 0; i < held.Count; i++)
+                {
+                    var allocation = held[i];
+                    var remaining = allocation.Quantity - allocation.Placements.Sum(p => p.Quantity);
+                    <input type="hidden" name="Allocations[@i].Id" value="@allocation.Id" />
+                    <label>Acknowledgement @allocation.Id · Original dispatch lot/variety @allocation.DispatchMovement.SourceSegment!.LotNumberSnapshot / @allocation.DispatchMovement.SourceSegment.VarietyCodeSnapshot · @remaining held
+                        <input type="number" name="Allocations[@i].Quantity" min="0" max="@remaining" value="0" />
+                    </label>
+                }
+                <label>Placement note<input name="Reason" required maxlength="1000" /></label>
+                <button type="submit">Place selected bins</button>
+            </form>
+        }
+    }
+    @if (Model.CanAdmin && Model.Acknowledgments.Count == 0)
     {
         <details><summary>Reopen / Unlink Transfer Receipt</summary><p>Completed inventory returns to In Transit only if no subsequent activity makes reversal unsafe. Original history is retained.</p>
         <form method="post" action="/Receipts/@receipt.Id/ReopenTransfer">
@@ -82,7 +129,7 @@
         </tbody></table></div><button type="submit">Save receipt quantities</button>
     </form>
 }
-@if (transfer?.Status == InterCrewTransferStatuses.InTransit && Model.CanEditTransfer)
+@if (transfer?.Status == InterCrewTransferStatuses.InTransit && Model.CanEditTransfer && Model.Acknowledgments.Count == 0)
 {
     <h2>In Transit allocations</h2>
     <p>Adding bins removes available source inventory. Removing bins restores only the selected allocation to its original source.</p>

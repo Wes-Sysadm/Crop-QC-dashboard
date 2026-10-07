@@ -138,6 +138,17 @@ public sealed partial class ReceiptInventoryOverrideService(
         CancellationToken cancellationToken)
     {
         var authorizationError = await AuthorizeAsync(principal, cancellationToken);
+        if (authorizationError != null && await userAccessService.HasAccessAsync(principal, ApplicationAreas.Receipts, PageAccessLevel.Create, cancellationToken))
+        {
+            var saved = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
+            if (saved != null && form.CropYear == saved.CropYear
+                && form.GrowerLotId == saved.GrowerLotId && form.FruitProfileId == saved.FruitProfileId
+                && form.WarehouseId == saved.WarehouseId && form.RoomId == saved.RoomId && form.CorrectionSourceRoomId == null
+                && form.ReceivedAt == saved.ReceivedAt && form.CompuTechReceiptId.Trim() == saved.CompuTechReceiptId
+                && form.ReceiptType == saved.ReceiptType && form.GrowerName.Trim() == saved.GrowerName.Trim()
+                && form.GrowerNumber.Trim() == (saved.GrowerNumber ?? saved.LotCode) && form.LotCode.Trim() == saved.LotCode)
+                authorizationError = null;
+        }
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationKey, form.Reason, form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
@@ -364,9 +375,9 @@ public sealed partial class ReceiptInventoryOverrideService(
 
             if (quantityChanged)
             {
-                if (operation.CurrentInventoryAfter < 0 && !form.AcknowledgeNegativeInventory)
+                if (operation.CurrentInventoryAfter < 0)
                 {
-                    return await RollbackAsync(transaction, Failed("This correction would create negative inventory. Select the separate negative-inventory acknowledgment before saving."), cancellationToken);
+                    return await RollbackAsync(transaction, Failed("This correction exceeds current receipt custody. Acknowledgement cannot authorize negative inventory or recall bins already transferred or consumed."), cancellationToken);
                 }
                 if (operation.InventoryDelta > 0)
                 {
@@ -1054,8 +1065,7 @@ public sealed partial class ReceiptInventoryOverrideService(
         }
         if (remaining > 0)
         {
-            var target = BalanceFromReceipt(receipt, 0);
-            AddAdjustment(operation, target, -remaining, target.CurrentBins - remaining, administrator, now, "NegativeQuantityCorrection");
+            throw new InvalidOperationException("The reduction exceeds proven current receipt allocations; no negative balancing entry is allowed.");
         }
     }
 

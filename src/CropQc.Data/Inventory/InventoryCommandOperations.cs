@@ -10,6 +10,8 @@ public sealed partial class InventoryCommandExecutor
 {
     private static void ValidateShape(InventoryCommand c)
     {
+        Require(c.Lines.All(x => x.Source.Location.Custody != InventoryCustody.ReceiptHeld),
+            "Receipt-held custody requires an exact allocation placement command.");
         Require(c.Kind != InventoryCommandKind.ReverseRoomMove || c.PhysicalParentId > 0 && c.Lines.Length == 1,
             "Room reversal requires the exact original transfer.");
         Require(c.Lines.All(x => Enum.IsDefined(x.AdjustmentDirection) && (x.AdjustmentDirection == InventoryAdjustmentDirection.Decrease
@@ -19,6 +21,11 @@ public sealed partial class InventoryCommandExecutor
         Require(c.Lines.All(x => x.Source.Location.Custody == InventoryCustody.Room
             || c.Kind is InventoryCommandKind.ReceiveTransfer or InventoryCommandKind.Return or InventoryCommandKind.ReturnTransitAllocation), "Operation requires room inventory.");
         Require(c.Kind != InventoryCommandKind.ReceiptCorrection || c.Lines.All(x => x.ReceiptId != null), "Receipt correction requires exact receipt scope.");
+        Require(c.Kind != InventoryCommandKind.ReceiptCorrection || c.Lines.Length == 1,
+            "Use the reviewed receipt quantity correction for multiple allocations.");
+        Require(c.Lines.All(x => x.AdjustmentDirection != InventoryAdjustmentDirection.Increase
+            || c.Kind == InventoryCommandKind.ManualStockAddition || x.TreatmentSignature == "u"),
+            "An increase cannot inherit historical treatment. Use the reviewed receipt quantity correction to add untreated fruit.");
         Require(c.Kind != InventoryCommandKind.ReceiptDepletion || c.Lines.Length == 1 && c.Lines[0].ReceiptId > 0, "Receipt depletion requires one exact receipt and treatment selection.");
         Require(!InventoryCommandPolicy.IsRoomMove(c.Kind) || c.Lines.All(x => x.Destination != null
             && x.Destination.RoomId != x.Source.Location.RoomId), "Room movement requires a different destination.");
@@ -212,7 +219,7 @@ public sealed partial class InventoryCommandExecutor
             RoomInventoryAdjustment? debit = null;
             if (loc.Custody == InventoryCustody.Room && !InventoryCommandPolicy.IsTreatment(c.Kind))
             {
-                debit = Ledger(c, i, loc.WarehouseId, loc.RoomId!.Value, delta, before, partKey + ":out", now);
+                debit = Ledger(increase ? c with { EffectiveAt = now } : c, i, loc.WarehouseId, loc.RoomId!.Value, delta, before, partKey + ":out", now);
                 entries.Add(debit);
             }
             if (InventoryCommandPolicy.IsRoomMove(c.Kind))
@@ -400,7 +407,7 @@ public sealed partial class InventoryCommandExecutor
             {
                 var receipt = await db.Receipts.SingleAsync(x => x.Id == line.ReceiptId, ct);
                 Require(!receipt.IsDeleted && !receipt.IsTransferReceipt && (increase || receipt.BinCount >= qty), "Receipt correction would make its quantity negative.");
-                var old = JsonSerializer.Serialize(receipt.BinCount); var oldBins = receipt.BinCount;
+                var old = ReceiptValues(receipt); var oldBins = receipt.BinCount;
                 receipt.BinCount = checked(receipt.BinCount + delta); receipt.ConcurrencyVersion++; receipt.UpdatedAt = now;
                 var correction = new ReceiptInventoryOverride
                 {
@@ -417,21 +424,33 @@ public sealed partial class InventoryCommandExecutor
                     OperationKey = partKey,
                     CreatedAt = now,
                     BeforeReceiptSnapshotJson = old,
-                    AfterReceiptSnapshotJson = JsonSerializer.Serialize(receipt.BinCount),
-                    AffectedInventorySnapshotJson = JsonSerializer.Serialize(r, Json),
+                    AfterReceiptSnapshotJson = ReceiptValues(receipt),
+                    AffectedInventorySnapshotJson = JsonSerializer.Serialize(new[] { r }, Json),
                     ExpectedAdjustmentCount = 1,
                     IsComplete = true
                 };
                 db.ReceiptInventoryOverrides.Add(correction); debit!.ReceiptInventoryOverride = correction;
-                debit.ReceiptId = receipt.Id; debit.AdjustmentType = "ReceiptQuantityCorrection";
-                foreach (var a in allocations) movements.Add(Move(c, i, a, null, loc.RoomId, null, partKey, now, "ManualTrueUp"));
+                debit.ReceiptId = receipt.Id; debit.AdjustmentType = "ReceiptAdminOverride";
+                foreach (var a in allocations)
+                {
+                    var movement = Move(increase ? c with { EffectiveAt = now } : c, i, a, increase ? a.Segment : null,
+                        increase ? null : loc.RoomId, increase ? loc.RoomId : null, partKey, now, "ReceiptQuantityCorrection");
+                    if (increase) { movement.SourceSegment = null; movement.SourceSegmentId = null; }
+                    movements.Add(movement);
+                }
                 parentId = receipt.Id;
             }
             else if (c.Kind == InventoryCommandKind.BaselineAdjustment)
             {
                 // Explicit signed adjustment, never a baseline replacement or inferred projection gap.
                 debit!.AdjustmentType = "ManualTrueUp";
-                foreach (var a in allocations) movements.Add(Move(c, i, a, null, loc.RoomId, null, partKey, now, "ManualTrueUp"));
+                foreach (var a in allocations)
+                {
+                    var movement = Move(increase ? c with { EffectiveAt = now } : c, i, a, increase ? a.Segment : null,
+                        increase ? null : loc.RoomId, increase ? loc.RoomId : null, partKey, now, "ManualTrueUp");
+                    if (increase) { movement.SourceSegment = null; movement.SourceSegmentId = null; }
+                    movements.Add(movement);
+                }
             }
             else throw new Rejection(InventoryCommandStatus.InvalidIntent, "Unsupported operation shape.");
 

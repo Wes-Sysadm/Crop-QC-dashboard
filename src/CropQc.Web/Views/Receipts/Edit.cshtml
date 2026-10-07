@@ -92,8 +92,9 @@
             {
                 <p class="notice warning">@preview.CanonicalBlocker</p>
             }
-            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review Bin Count Override</button>
-            @if (CanonicalMode.Enabled)
+            <p class="notice wide">Receivers may correct a mistaken bin count. Record the reason and review the inventory affected. Identity and location corrections require administrator access.</p>
+            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review bin count correction</button>
+            @if (CanonicalMode.Enabled && Model.CanCorrectInventoryIdentity)
             {
                 <button id="reviewLocationCorrection" type="button" class="wide">Correct current inventory location</button>
             }
@@ -129,7 +130,7 @@
                                 }
                                 @foreach (var location in locations)
                                 {
-                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room — @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
+                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room â€” @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
                                 }
                             </select>
                         }
@@ -224,7 +225,7 @@
                 <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000" placeholder="Incorrect original bin count / buffer bins included"></textarea><p class="muted">Buffer bins included in error are a receipt quantity correction, not fruit loss, a dump or a transfer. The original entered count remains in the audit history.</p></div>
                 <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm this audited Receipt correction and its durable Receipt Admin Override record.</label>
                 <input type="hidden" name="ConfirmInventoryChange" value="false" />
-                <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
+                <p id="negativeInventoryAcknowledgment" class="notice warning wide" hidden>This reduction exceeds current receipt custody and cannot be saved. Review transferred or consumed bins before correcting the count.</p>
                 <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
                 <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Receipt Correction</button>
             </section>

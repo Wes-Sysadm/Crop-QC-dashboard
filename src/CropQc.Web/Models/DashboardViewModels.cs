@@ -1712,6 +1712,7 @@ public sealed class EditReceiptPageViewModel
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<GrowerLot> GrowerLots { get; set; } = [];
     public bool CanAdminOverride { get; set; }
+    public bool CanCorrectInventoryIdentity { get; set; }
     public ReceiptInventoryOverridePreviewViewModel? AdminOverridePreview { get; set; }
 }
 

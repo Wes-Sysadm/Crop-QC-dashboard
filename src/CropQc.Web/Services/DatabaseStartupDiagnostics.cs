@@ -11,6 +11,23 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
+        new("ReceiptCustodyAcknowledgments", "ReceiptCustodyAcknowledgments", null),
+        new("ReceiptCustodyAcknowledgments.Id", "ReceiptCustodyAcknowledgments", "Id", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.ReceiptId", "ReceiptCustodyAcknowledgments", "ReceiptId", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.InterCrewTransferId", "ReceiptCustodyAcknowledgments", "InterCrewTransferId", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.DispatchMovementId", "ReceiptCustodyAcknowledgments", "DispatchMovementId", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.Quantity", "ReceiptCustodyAcknowledgments", "Quantity", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.OperationKey", "ReceiptCustodyAcknowledgments", "OperationKey", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.ActorId", "ReceiptCustodyAcknowledgments", "ActorId", RequireNotNullable: true),
+        new("ReceiptCustodyAcknowledgments.AcknowledgedAt", "ReceiptCustodyAcknowledgments", "AcknowledgedAt", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements", "ReceiptCustodyPlacements", null),
+        new("ReceiptCustodyPlacements.Id", "ReceiptCustodyPlacements", "Id", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.AcknowledgmentId", "ReceiptCustodyPlacements", "AcknowledgmentId", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.Quantity", "ReceiptCustodyPlacements", "Quantity", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.OperationKey", "ReceiptCustodyPlacements", "OperationKey", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.InventoryAdjustmentId", "ReceiptCustodyPlacements", "InventoryAdjustmentId", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.MovementId", "ReceiptCustodyPlacements", "MovementId", RequireNotNullable: true),
+        new("ReceiptCustodyPlacements.PlacedAt", "ReceiptCustodyPlacements", "PlacedAt", RequireNotNullable: true),
         new("CanonicalOrchards", "CanonicalOrchards", null),
         new("OrchardReportRecipients", "OrchardReportRecipients", null),
         new("GrowerReportRecipients", "GrowerReportRecipients", null),

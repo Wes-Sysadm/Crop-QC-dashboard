@@ -13,6 +13,8 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
         base.OnConfiguring(optionsBuilder);
     }
     public DbSet<InventoryCommandRecord> InventoryCommands => Set<InventoryCommandRecord>();
+    public DbSet<ReceiptCustodyAcknowledgment> ReceiptCustodyAcknowledgments => Set<ReceiptCustodyAcknowledgment>();
+    public DbSet<ReceiptCustodyPlacement> ReceiptCustodyPlacements => Set<ReceiptCustodyPlacement>();
     private bool synchronizingDefectInspectionStatus;
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGoogleCredential> UserGoogleCredentials => Set<UserGoogleCredential>();
@@ -260,6 +262,24 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ReceiptCustodyAcknowledgment>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(60);
+            entity.HasIndex(x => new { x.OperationKey, x.DispatchMovementId }).IsUnique();
+            entity.HasOne(x => x.Receipt).WithMany().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.InterCrewTransfer).WithMany(x => x.CustodyAcknowledgments).HasForeignKey(x => x.InterCrewTransferId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.DispatchMovement).WithMany().HasForeignKey(x => x.DispatchMovementId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ReceiptCustodyPlacement>(entity =>
+        {
+            entity.Property(x => x.OperationKey).HasMaxLength(60);
+            entity.HasIndex(x => new { x.OperationKey, x.AcknowledgmentId }).IsUnique();
+            entity.HasIndex(x => x.InventoryAdjustmentId).IsUnique();
+            entity.HasIndex(x => x.MovementId).IsUnique();
+            entity.HasOne(x => x.Acknowledgment).WithMany(x => x.Placements).HasForeignKey(x => x.AcknowledgmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.InventoryAdjustment).WithMany().HasForeignKey(x => x.InventoryAdjustmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Movement).WithMany().HasForeignKey(x => x.MovementId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<InventoryCommandRecord>(entity =>
         {
             entity.HasKey(x => x.OperationKey);

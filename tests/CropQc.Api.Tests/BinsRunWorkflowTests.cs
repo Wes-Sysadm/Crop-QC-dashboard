@@ -1710,7 +1710,7 @@ public sealed class BinsRunWorkflowTests
         Assert.Contains("--verify-release-readiness", File.ReadAllText(FindRepositoryFile(
             "src", "CropQc.Web", "Services", "TreatmentLineage144CorrectionService.cs")));
         Assert.Contains("20260906025535_AddHarvestWatchDeployments", program);
-        Assert.Contains("expectedSchemaObjects = 979", program);
+        Assert.Contains("expectedSchemaObjects = 996", program);
         Assert.Contains("VerifyReadinessAsync", program);
         Assert.Contains("topology", program);
         Assert.Contains("Environment.ExitCode = releaseReady ? 0 : 1", program);
@@ -2127,7 +2127,7 @@ public sealed class BinsRunWorkflowTests
     }
 
     [Fact]
-    public async Task ActualRun_OverdrawRequiresDifferentAdministratorAndPersistsOverrideAudit()
+    public async Task ActualRun_ShortageRequestRetainsAuditButAdministratorCannotConsumeMissingBins()
     {
         using var db = CreateDbContext();
         await SeedInventoryAsync(db);
@@ -2155,16 +2155,11 @@ public sealed class BinsRunWorkflowTests
             admin,
             CancellationToken.None);
 
-        Assert.Null(approvalError);
-        var entry = await db.BinsRunEntries.SingleAsync();
-        Assert.True(entry.IsOverdrawOverride);
-        Assert.Equal(30, entry.OverrideAvailableBins);
-        Assert.Equal(35, entry.OverrideRequestedBins);
-        Assert.Equal(5, entry.OverrideShortageBins);
-        Assert.Equal("Approved for verified physical pull", entry.OverrideReason);
-        Assert.Equal(1000, entry.OverrideApprovedByUserId);
-        Assert.Equal(-5, entry.NewAvailableBins);
-        Assert.Equal(ActualRunOverrideStatuses.Approved, (await db.ActualRunOverrideRequests.SingleAsync()).Status);
+        Assert.Contains("cannot create physical inventory", approvalError);
+        Assert.Empty(await db.BinsRunEntries.ToListAsync());
+        Assert.Empty(await db.ActualRuns.ToListAsync());
+        Assert.Equal(baselineAdjustmentCount, await db.RoomInventoryAdjustments.CountAsync());
+        Assert.Equal(ActualRunOverrideStatuses.Pending, (await db.ActualRunOverrideRequests.SingleAsync()).Status);
         Assert.Contains(await db.AuditLogs.ToListAsync(), x => x.Action == "OverdrawAttempt");
     }
 

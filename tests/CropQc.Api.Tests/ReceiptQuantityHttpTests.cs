@@ -23,7 +23,7 @@ public sealed class ReceiptQuantityHttpTests
         var response = await client.GetAsync($"/Receipts/{id}/Edit");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Review Bin Count Override", html); Assert.Contains("buffer bins included", html);
+        Assert.Contains("Review bin count correction", html); Assert.Contains("buffer bins included", html);
         Assert.Contains("Removed from selected current inventory", html); Assert.Contains("35 bins", html);
         Assert.Contains("Untreated", html); Assert.Contains("Bins to correct", html);
         Assert.Contains("ConfirmAdditionalBinsUntreated", html);

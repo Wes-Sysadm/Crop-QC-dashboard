@@ -400,7 +400,7 @@ public sealed class BusinessTimeAndReceiptPurgeTests
     {
         var source = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ReceiptsController.cs"));
 
-        Assert.Equal(7, source.Split("AccessPolicyNames.ReceiptDeleteAdmin", StringSplitOptions.None).Length - 1);
+        Assert.Equal(6, source.Split("AccessPolicyNames.ReceiptDeleteAdmin", StringSplitOptions.None).Length - 1);
         Assert.Contains("AdminInventoryOverride", source);
     }
 

@@ -46,27 +46,8 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
             return error != null ? (null, error) : (await GetAsync(result.Effects[0].ParentId!.Value, cancellationToken), null);
         }
 
-        var now = DateTimeOffset.UtcNow;
-        var growerName = await ResolveAuthoritativeNameAsync(request.GrowerName, request.LotCode, cancellationToken);
-        var receipt = new Receipt
-        {
-            CropYear = request.CropYear,
-            ReceivedAt = request.ReceivedAt,
-            CompuTechReceiptId = request.CompuTechReceiptId.Trim(),
-            WarehouseId = request.WarehouseId,
-            RoomId = request.RoomId,
-            FruitProfileId = request.FruitProfileId,
-            GrowerName = growerName,
-            LotCode = request.LotCode.Trim(),
-            BinCount = request.BinCount,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
+        return (null, "Create inventory receipts through the audited receiving workflow. The legacy API cannot establish authoritative custody.");
 
-        dbContext.Receipts.Add(receipt);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await auditService.RecordAsync("Create", nameof(Receipt), receipt.Id.ToString(), afterValuesJson: "Receipt created.", cancellationToken: cancellationToken);
-        return (ToDto(receipt), null);
     }
 
     public async Task<ReceiptDto?> GetAsync(long id, CancellationToken cancellationToken)
@@ -162,6 +143,12 @@ public sealed class ReceiptService(CropQcDbContext dbContext, IAuditService audi
         {
             return (null, "Only same-day receipt fields can be updated.");
         }
+
+        if (receipt.BinCount != request.BinCount || receipt.CropYear != request.CropYear
+            || receipt.WarehouseId != request.WarehouseId || receipt.RoomId != request.RoomId
+            || receipt.FruitProfileId != request.FruitProfileId || receipt.LotCode != request.LotCode.Trim()
+            || receipt.ReceivedAt != request.ReceivedAt)
+            return (null, "Use the audited receipt correction workflow for quantity, identity, location or receiving-time changes.");
 
         var keyFieldChanged = receipt.WarehouseId != request.WarehouseId
             || receipt.RoomId != request.RoomId

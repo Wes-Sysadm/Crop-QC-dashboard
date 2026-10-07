@@ -53,6 +53,24 @@ public sealed class TruckReceiptReconciliationController(TruckReceiptReconciliat
         return Result(await service.ReopenAsync(form, ct), id);
     }
 
+    [HttpPost("Receipts/{id:long}/AcknowledgeTransfer")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Acknowledge(long id, TruckReceiptActionForm form, CancellationToken ct)
+    {
+        form.ReceiptId = id;
+        return Result(await service.AcknowledgeAsync(form, ct), id);
+    }
+
+    [HttpPost("Receipts/{id:long}/PlaceTransferCustody")]
+    [Authorize(Policy = AccessPolicyNames.ReceiptsEdit)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Place(long id, TruckReceiptActionForm form, CancellationToken ct)
+    {
+        form.ReceiptId = id;
+        return Result(await service.PlaceCustodyAsync(form, ct), id);
+    }
+
     [HttpPost("BinsRun/InterCrewTransfers/{id:long}/EditTransit")]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     [ValidateAntiForgeryToken]

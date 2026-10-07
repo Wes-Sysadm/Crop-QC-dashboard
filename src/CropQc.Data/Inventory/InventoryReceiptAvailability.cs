@@ -37,7 +37,7 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
         var positions = ImmutableArray.CreateBuilder<InventoryAvailabilityResult>();
         var asOf = DateTimeOffset.UtcNow;
         var rooms = roomIds.Distinct().ToImmutableArray();
-        foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor })
+        foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor, InventoryCustody.ReceiptHeld })
         {
             var batch = await loader.LoadAsync(new(null, rooms, custody), asOf, ct);
             // Same-lot inventory elsewhere does not belong to this receipt merely

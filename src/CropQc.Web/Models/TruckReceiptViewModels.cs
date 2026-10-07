@@ -10,6 +10,13 @@ public sealed class TruckReceiptActionForm
     public long TransferVersion { get; set; }
     public string Reason { get; set; } = "";
     public List<TruckReceiptVarietyForm> Lines { get; set; } = [];
+    public List<TruckReceiptAllocationForm> Allocations { get; set; } = [];
+}
+
+public sealed class TruckReceiptAllocationForm
+{
+    public long Id { get; set; }
+    public int Quantity { get; set; }
 }
 
 public sealed class TruckReceiptVarietyForm
@@ -56,10 +63,16 @@ public sealed class TruckReceiptPage
     public bool CanEditReceipt { get; set; }
     public bool CanEditTransfer { get; set; }
     public Dictionary<long, string> CandidateVarieties { get; set; } = [];
+    public bool SupportsReceiptCustody { get; set; }
+    public IReadOnlyList<ReceiptCustodyAcknowledgment> Acknowledgments { get; set; } = [];
+    public int AcknowledgedBins => Acknowledgments.Sum(x => x.Quantity);
+    public int ReceiptHeldBins => Acknowledgments.Sum(x => x.Quantity - x.Placements.Sum(p => p.Quantity));
+    public int UnresolvedBins => Math.Max(0, (Transfer?.BinsLoaded ?? 0) - AcknowledgedBins);
     public bool IsReconciled => Comparison.Count > 0 && Comparison.All(x => x.Difference == 0);
     public string Status => Transfer is { RequiresTruckReceipt: false } ? "Legacy transfer — existing receiving workflow"
         : Transfer?.Status == InterCrewTransferStatuses.Reversed ? "Cancelled - returned to source"
         : Transfer?.Status == InterCrewTransferStatuses.Received ? "Completed"
+        : Acknowledgments.Count > 0 ? $"Incomplete — {AcknowledgedBins} acknowledged, {ReceiptHeldBins} receipt-held, {UnresolvedBins} unresolved"
         : Receipt is null || Transfer is null ? "Awaiting Receipt"
         : IsReconciled ? "Reconciled — ready to complete" : "Reconciliation Required";
 }

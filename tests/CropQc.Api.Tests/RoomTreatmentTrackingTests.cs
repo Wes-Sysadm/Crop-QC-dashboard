@@ -110,10 +110,10 @@ public sealed class RoomTreatmentTrackingTests
     public async Task Backdated_application_uses_as_of_snapshot_and_refuses_later_treatment_ambiguity()
     {
         await using var fixture = await Fixture.CreateAsync();
-        fixture.Ledger.AsOf.Clear();
-        fixture.Ledger.AsOf.Add(fixture.AppleSnapshot(70));
         var first = await fixture.Service.ApplyAsync(fixture.ApplyForm("current-treatment", 1), default);
         Assert.Null(first.Error);
+        fixture.Ledger.AsOf.Clear();
+        fixture.Ledger.AsOf.Add(fixture.AppleSnapshot(70));
 
         var backdated = fixture.ApplyForm("backdated", 5);
         backdated.AppliedAt = Now.AddHours(-1);
@@ -132,6 +132,10 @@ public sealed class RoomTreatmentTrackingTests
         fixture.Ledger.ReplaceCurrent(fixture.AppleSnapshot(100));
         var form = fixture.ApplyForm("deterministic-backdate", 1);
         form.AppliedAt = Now.AddHours(-1);
+        var originalReceipt = await fixture.Db.Receipts.SingleAsync();
+        originalReceipt.BinCount = 70;
+        (await fixture.Db.RoomInventoryAdjustments.SingleAsync()).ChangeAmount = 70;
+        await fixture.AddArrival(30, Now.AddMinutes(-30));
 
         var result = await fixture.Service.ApplyAsync(form, default);
 
@@ -149,6 +153,7 @@ public sealed class RoomTreatmentTrackingTests
         await using var fixture = await Fixture.CreateAsync();
         Assert.Null((await fixture.Service.ApplyAsync(fixture.ApplyForm("before-arrival", 1), default)).Error);
         fixture.Ledger.ReplaceCurrent(fixture.AppleSnapshot(125));
+        await fixture.AddArrival(25, Now.AddMinutes(1));
 
         var selections = await fixture.Service.GetSelectionsAsync(fixture.AppleSnapshot(125), default);
 
@@ -269,6 +274,7 @@ public sealed class RoomTreatmentTrackingTests
         await using var fixture = await Fixture.CreateAsync();
         Assert.Null((await fixture.Service.ApplyAsync(fixture.ApplyForm("mix-source", 1), default)).Error);
         fixture.Ledger.ReplaceCurrent(fixture.AppleSnapshot(120));
+        await fixture.AddArrival(20, Now.AddMinutes(1));
         var source = fixture.AppleSnapshot(120);
         var segments = await fixture.Service.GetSelectionsAsync(source, default);
 
@@ -294,6 +300,7 @@ public sealed class RoomTreatmentTrackingTests
         await using var fixture = await Fixture.CreateAsync();
         Assert.Null((await fixture.Service.ApplyAsync(fixture.ApplyForm("cross-facility-treatment", 1), default)).Error);
         fixture.Ledger.ReplaceCurrent(fixture.AppleSnapshot(120));
+        await fixture.AddArrival(20, Now.AddMinutes(1));
         var source = fixture.AppleSnapshot(120);
         var treated = (await fixture.Service.GetSelectionsAsync(source, default))
             .Single(x => x.TreatmentState == TreatmentLineageStates.Confirmed);
@@ -465,7 +472,7 @@ public sealed class RoomTreatmentTrackingTests
         Assert.Contains("migration_history_intentionally_unchanged", verifier);
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("20260906025535_AddHarvestWatchDeployments", gate);
-        Assert.Equal(979, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(996, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     private static string FindRepositoryFile(params string[] segments)
@@ -620,7 +627,9 @@ public sealed class RoomTreatmentTrackingTests
             };
             var service = new RoomTreatmentService(db, ledger, access, new FixedHttpContextAccessor(context),
                 new PacificBusinessTimeService(new FixedClock(Now)), NullLogger<RoomTreatmentService>.Instance);
-            return new Fixture(db, ledger, access, service);
+            var fixture = new Fixture(db, ledger, access, service);
+            await fixture.AddArrival(100, Now.AddDays(-1));
+            return fixture;
 
             RoomTransfer Transfer(long id, int bins, int destinationWarehouseId = WarehouseId, int destinationRoomId = Room2Id) => new()
             {
@@ -641,6 +650,42 @@ public sealed class RoomTreatmentTrackingTests
                 CreatedByUserId = UserId,
                 CreatedAt = Now
             };
+        }
+
+        public async Task AddArrival(int bins, DateTimeOffset arrivedAt)
+        {
+            var receipt = new Receipt
+            {
+                WarehouseId = WarehouseId,
+                RoomId = RoomId,
+                FruitProfileId = AppleProfileId,
+                CropYear = 2026,
+                CompuTechReceiptId = Guid.NewGuid().ToString("N"),
+                GrowerNumber = "9350",
+                LotCode = "9350",
+                GrowerName = "ROLOFF FARM-NAGLE CONV",
+                BinCount = bins,
+                ReceivedAt = arrivedAt,
+                CreatedAt = arrivedAt,
+                UpdatedAt = arrivedAt
+            };
+            Db.Receipts.Add(receipt);
+            Db.RoomInventoryAdjustments.Add(new RoomInventoryAdjustment
+            {
+                Receipt = receipt,
+                WarehouseId = WarehouseId,
+                RoomId = RoomId,
+                FruitProfileId = AppleProfileId,
+                CropYear = 2026,
+                GrowerName = receipt.GrowerName,
+                LotNumber = "9350",
+                VarietyCode = "GALA",
+                ChangeAmount = bins,
+                AdjustmentType = "ReceiptAdd",
+                AdjustmentAt = arrivedAt,
+                CreatedAt = arrivedAt
+            });
+            await Db.SaveChangesAsync();
         }
 
         public RoomInventoryLedgerSnapshot AppleSnapshot(int bins = 100) => Snapshot(bins, RoomId, AppleProfileId, "Apple", "GALA", "Gala");

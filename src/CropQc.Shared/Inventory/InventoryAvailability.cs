@@ -15,7 +15,7 @@ public static class InventoryLedgerKinds
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryCustody>))]
-public enum InventoryCustody { Room, InTransit, OutsideWarehouse, Processor }
+public enum InventoryCustody { Room, InTransit, OutsideWarehouse, Processor, ReceiptHeld }
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryConfidence>))]
 public enum InventoryConfidence { Unknown, Proven, Ambiguous }
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryBlockerCode>))]
