@@ -252,6 +252,7 @@ public sealed class ReceiptPositiveTrueUpPostgreSqlTests
         ExpectedPositiveTrueUpStateToken = preview.PositiveTrueUpStateToken,
         OperationKey = "50860500-0000-0000-0000-000000000001",
         Reason = reason,
+        ConfirmAdditionalBinsUntreated = true,
         ConfirmInventoryChange = true,
         CropYear = receipt.CropYear,
         ConfirmCropYear = true,

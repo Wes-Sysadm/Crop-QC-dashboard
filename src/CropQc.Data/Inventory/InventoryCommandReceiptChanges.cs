@@ -25,6 +25,8 @@ public sealed partial class InventoryCommandExecutor
             "Voiding requires the exact receipt confirmation and no remaining external/transit custody.");
         var delta = isVoid ? -state.RoomQuantity : checked(change.NewQuantity - receipt.BinCount);
         Require(isVoid || delta != 0, "No quantity correction was requested.");
+        Require(delta <= 0 || change.ConfirmAdditionalBinsUntreated, ReceiptCorrectionTreatmentPolicy.ConfirmationRequired);
+        var posting = delta > 0 ? c with { EffectiveAt = now } : c;
         var allocations = change.Allocations;
         if (isVoid) allocations = state.Allocations.Where(x => x.Position.Location.Custody == InventoryCustody.Room)
             .Select(x => new InventoryReceiptQuantityAllocation(x.Key, x.Slice.Quantity)).ToImmutableArray();
@@ -82,9 +84,10 @@ public sealed partial class InventoryCommandExecutor
             var moves = new List<TreatmentLineageMovement>();
             if (delta > 0)
             {
-                var target = await factory.CurrentAsync(p.Identity, warehouse, room, slice.Signature, slice.State, receipt.Id, slice.ApplicationIds, now, ct);
+                // A count correction proves additional origin, not historical treatment membership.
+                var target = await factory.CurrentAsync(p.Identity, warehouse, room, "u", "Untreated", receipt.Id, [], now, ct);
                 Credit(target, input.Quantity, now);
-                var movement = Move(c, p.Identity, new(target, input.Quantity), target, null, room, c.OperationKey + ":correct:" + index, now, "ReceiptQuantityCorrection");
+                var movement = Move(posting, p.Identity, new(target, input.Quantity), target, null, room, c.OperationKey + ":correct:" + index, now, "ReceiptQuantityCorrection");
                 movement.SourceSegment = null; movement.SourceSegmentId = null; moves.Add(movement);
             }
             else
@@ -101,7 +104,7 @@ public sealed partial class InventoryCommandExecutor
                 }
                 Require(remaining == 0, "Receipt correction would consume unproven stock.");
             }
-            var ledger = Ledger(c, p.Identity, warehouse, room, signed, before, c.OperationKey + ":correct:" + index, now);
+            var ledger = Ledger(posting, p.Identity, warehouse, room, signed, before, c.OperationKey + ":correct:" + index, now);
             ledger.Receipt = receipt; ledger.ReceiptInventoryOverride = operation; ledger.AdjustmentType = "ReceiptAdminOverride";
             db.RoomInventoryAdjustments.Add(ledger); db.TreatmentLineageMovements.AddRange(moves);
             await Stage("Movement", db, attempt, ct); await db.SaveChangesAsync(ct);

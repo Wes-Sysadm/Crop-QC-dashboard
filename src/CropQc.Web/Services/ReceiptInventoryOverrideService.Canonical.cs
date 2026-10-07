@@ -103,7 +103,7 @@ public sealed partial class ReceiptInventoryOverrideService
             allocations = [new(available[0].Key, Math.Abs(form.BinCount - r.BinCount))];
         var command = new InventoryCommand(form.OperationKey, InventoryCommandKind.CorrectReceiptQuantity, actor.Id, DateTimeOffset.UtcNow,
             form.Reason.Trim(), [], ApplicationIntent: submission, ReceiptChange: new(form.Id, form.ExpectedConcurrencyVersion,
-                form.ExpectedInventoryStateToken, form.BinCount, allocations));
+                form.ExpectedInventoryStateToken, form.BinCount, allocations, ConfirmAdditionalBinsUntreated: form.ConfirmAdditionalBinsUntreated));
         return await CanonicalResultAsync(await canonicalCommands.ExecuteAsync(command, ct), ct);
     }
 
