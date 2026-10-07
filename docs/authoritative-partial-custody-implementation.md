@@ -105,3 +105,12 @@ The final custody group and mixed-allocation test include tests added after the 
 An intermediate broad focused run exhausted the disposable PostgreSQL lock pool under unrestricted test parallelism. Re-running with the repository's existing four-thread PostgreSQL runsettings resolved that environment limitation. Earlier failures also exposed the legacy variance/negative-override expectations, incomplete mock arrival evidence, and changed correction button text; the revised tests assert the new persisted behavior rather than accepting the old unsafe behavior.
 
 Release still requires scoped production-shaped rehearsal, inspection of ambiguous historical records, interactive/responsive receiving checks, and the repository's explicitly authorized backup/deployment gates. Draft status does not authorize those actions.
+
+### Delivery record
+
+- Draft PR: [#271](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/271), open and draft; GitHub reported a clean merge state and no Actions/check results at creation.
+- Branch: `codex/authoritative-partial-custody`.
+- Verified implementation commit: `788e9c3cfe43334cb772a81a4f032b3199642177`; subsequent delivery-record changes are documentation only.
+- Base and current remote main: `95518dec131d44b01e2dc8fcfcbb82f508a8f399`; no update from newer main was necessary.
+- Final incremental solution build: 0 errors, 7 existing test warnings; the earlier affected build emitted 64 existing warnings. Restore, model consistency, formatting and diff checks passed.
+- Working changes are committed and pushed. No production data was modified, and no merge, deployment, backup run, historical repair or MSI build was performed.
