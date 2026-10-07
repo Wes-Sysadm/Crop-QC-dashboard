@@ -327,7 +327,7 @@
     "Path": "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "4CCC5F0001D255C9A56F8CC52872B7740F731E188ABE8448B79711807474F2E8"
+    "Sha256": "78BDD46503F41B6DB2F4031B33ABEA6DE86851CB3F5851992B2EABE0438282DD"
   },
   {
     "Path": "src/CropQc.Web/Services/InventoryDiagnosticAcknowledgmentService.cs",
