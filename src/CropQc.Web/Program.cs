@@ -1033,17 +1033,27 @@ if (args.Contains(July28ActualRunExpectationBackfillConstants.CommandName, Strin
 await DatabaseStartupDiagnostics.InspectAsync(app.Services, app.Configuration, app.Environment);
 
 var abandonBackupCommand = args.FirstOrDefault(x => x.StartsWith("--abandon-backup=", StringComparison.OrdinalIgnoreCase));
-if (abandonBackupCommand is not null)
+var abandonBackupsCommand = args.FirstOrDefault(x => x.StartsWith("--abandon-backups-json=", StringComparison.OrdinalIgnoreCase));
+if (abandonBackupCommand is not null || abandonBackupsCommand is not null)
 {
     string? RecoveryValue(string name) => args.FirstOrDefault(x => x.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))?.Split('=', 2)[1];
-    if (!long.TryParse(RecoveryValue("--abandon-backup"), out var id)
-        || !DateTimeOffset.TryParse(RecoveryValue("--expected-start"), out var expectedStart)
-        || !args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase))
+    if (!args.Contains("--confirm-production", StringComparer.OrdinalIgnoreCase)
+        || (abandonBackupCommand is not null && abandonBackupsCommand is not null))
         throw new InvalidOperationException("Backup recovery requires exact run/start guards and --confirm-production; use --apply only after worker termination is independently confirmed.");
+    BackupLegacyRecoveryTarget[] targets;
+    if (abandonBackupsCommand is not null)
+        targets = System.Text.Json.JsonSerializer.Deserialize<BackupLegacyRecoveryTarget[]>(RecoveryValue("--abandon-backups-json")!,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new InvalidOperationException("The reviewed recovery target set is required.");
+    else if (long.TryParse(RecoveryValue("--abandon-backup"), out var id)
+        && DateTimeOffset.TryParse(RecoveryValue("--expected-start"), System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var expectedStart))
+        targets = [new(id, expectedStart, RecoveryValue("--termination-evidence") ?? "")];
+    else throw new InvalidOperationException("Backup recovery requires exact run/start guards.");
     using var recoveryScope = app.Services.CreateScope();
     var recoveryDb = recoveryScope.ServiceProvider.GetRequiredService<CropQcDbContext>();
-    var result = await BackupLegacyRecovery.AbandonAsync(recoveryDb, id, expectedStart,
-        RecoveryValue("--requested-by") ?? "", RecoveryValue("--termination-evidence") ?? "",
+    var result = await BackupLegacyRecovery.AbandonBatchAsync(recoveryDb, targets,
+        RecoveryValue("--requested-by") ?? "",
         args.Contains("--worker-stopped", StringComparer.OrdinalIgnoreCase),
         args.Contains("--apply", StringComparer.OrdinalIgnoreCase), CancellationToken.None);
     recoveryScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("BackupRecovery").LogInformation("{RecoveryResult}", result);

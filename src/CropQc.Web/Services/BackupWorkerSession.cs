@@ -23,6 +23,9 @@ public sealed class BackupWorkerSession : IAsyncDisposable
     private BackupWorkerSession(NpgsqlConnection connection, CancellationToken ct)
     { this.connection = connection; lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct); }
 
+    internal CropQcDbContext CreateRecoveryContext() =>
+        new(new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(connection).Options);
+
     public static async Task<BackupWorkerSession?> TryOpenAsync(string connectionString, CancellationToken ct)
     {
         // Dispose must close the PostgreSQL session, never return a locked session to a pool.

@@ -56,7 +56,7 @@ After an owning session ends, a successor holding that same exclusive lock may m
 
 Legacy records such as #177 have no session-lock participation. They are **never automatically abandoned** by this proof. A new worker refuses to pass such a Running record until an administrator independently verifies worker termination and uses the exact guarded recovery command below. Do not deploy new and old backup runners concurrently: old binaries do not honor the new lock. Keep the additive migration during application rollback and coordinate worker shutdown before changing runner versions.
 
-### Reviewed legacy recovery (not executed for #177)
+### Reviewed legacy recovery
 
 Use the exact run id and StartedAt from the authoritative record. First inspect the hosting job/process identity and verify it has terminated and cannot resume. A stale heartbeat, elapsed time, or missing interactive shell alone is insufficient evidence. The command does not terminate workers.
 
@@ -64,7 +64,15 @@ Use the exact run id and StartedAt from the authoritative record. First inspect 
 dotnet CropQc.Web.dll --abandon-backup=<id> --expected-start=<exact-UTC-start> --requested-by=<administrator> --termination-evidence=<specific-host-job-termination-evidence> --worker-stopped --confirm-production
 ```
 
-This defaults to read-only preflight. After the separately authorized review, add `--apply`. The transaction requires exactly the reviewed legacy Running attempt, matching start, no other Running attempt and no participating session owner. It records Abandoned with actor/evidence and releases the lease, preserving all package references and history. Evidence must never include credentials. No invocation of this command is authorized merely by this document. Runbook production-mutation gates still apply.
+This single-run syntax remains compatible. For multiple independently reviewed legacy attempts, use an exact JSON set; do not recover them one at a time or edit status with SQL:
+
+```bash
+dotnet CropQc.Web.dll --abandon-backups-json='[{"Id":35,"ExpectedStart":"2026-08-01T22:44:47.388930Z","TerminationEvidence":"<reviewed host termination evidence for 35>"},{"Id":177,"ExpectedStart":"2026-10-01T22:06:13.539320Z","TerminationEvidence":"<reviewed host termination evidence for 177>"}]' --requested-by=<administrator> --worker-stopped --confirm-production
+```
+
+Both forms default to read-only preflight, reporting the exact records, per-record evidence and lease state. After reviewing that output under the authorized runbook, add `--apply`. The command first acquires the exclusive worker advisory lock, then uses that same session for a PostgreSQL Serializable transaction. Every target must still be Running with its exact StartedAt and null WorkerId. Any missing/changed target, modern worker, unreviewed Running row or inconsistent nightly guard fails the entire batch. Empty/duplicate targets, missing actor, evidence or stopped-worker confirmation are rejected.
+
+Apply records every target as Abandoned with a shared completion time, duration, lease-release timestamp and a separate BackupAbandoned before/after audit containing the actor and that target's termination evidence. Package/checksum/verification and original diagnostic fields are preserved; nothing is certified or deleted. Compatibility lease state is cleared and any associated nightly guard is closed in the same transaction. Audit persistence failure rolls back all changes. A retry clearly reports changed/already-recovered state without adding audits. Evidence must never contain credentials. These examples do not authorize production mutation by themselves.
 
 ## Schema, rollout and validation
 

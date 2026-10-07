@@ -221,6 +221,7 @@ public sealed class BoundedBackupTests
         Assert.Equal(BackupRunStatuses.Running, run.Status);
         Assert.Empty(await db.AuditLogs.ToListAsync());
         await BackupLegacyRecovery.AbandonAsync(db, run.Id, run.StartedAt, "admin", "Confirmed job termination in host event", true, true, default);
+        await db.Entry(run).ReloadAsync();
         Assert.Equal(BackupRunStatuses.Abandoned, run.Status);
         Assert.Single(await db.AuditLogs.Where(x => x.Action == "BackupAbandoned").ToListAsync());
         Assert.Null(run.VerifiedAt);
@@ -254,6 +255,200 @@ public sealed class BoundedBackupTests
         else BackupService.VerifyPackage(package.ToArray());
     }
 
+    [BackupPostgresFact]
+    public async Task Batch_abandons_two_exact_targets_with_one_audit_each_and_preserves_success_history()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        var first = Run(null); var second = Run(null); var success = Run(null);
+        first.ErrorSummary = "Original historical diagnostic";
+        first.PackageFileName = "incomplete-original.zip"; first.Sha256 = "original-hash";
+        second.ScheduledPacificDate = "2026-10-01";
+        success.Status = BackupRunStatuses.Succeeded; success.VerifiedAt = success.StartedAt;
+        success.PackageFileName = "verified.zip"; success.Sha256 = "verified-hash";
+        db.BackupRunRecords.AddRange(first, second, success);
+        await db.SaveChangesAsync();
+        db.BackupNightlyRunGuards.Add(new BackupNightlyRunGuard
+        {
+            PacificDate = second.ScheduledPacificDate,
+            BackupRunId = second.Id,
+            Result = BackupRunStatuses.Running,
+            CreatedAt = second.StartedAt
+        });
+        var lease = await db.BackupOperationLeases.SingleAsync();
+        lease.LeaseId = Guid.NewGuid(); lease.ExpiresAt = DateTimeOffset.UtcNow.AddDays(1);
+        await db.SaveChangesAsync();
+        var successBefore = JsonSerializer.Serialize(success);
+        var targets = Reviewed(first, second);
+        var before = await RecoveryFingerprint(db);
+        var preview = await BackupLegacyRecovery.AbandonBatchAsync(db, targets, "reviewing-admin", true, false, default);
+        Assert.Contains("Preflight", preview); Assert.Contains("changed\":0", preview);
+        Assert.Equal(before, await RecoveryFingerprint(db));
+
+        var result = await BackupLegacyRecovery.AbandonBatchAsync(db, targets, "reviewing-admin", true, true, default);
+        Assert.Contains("changed\":2", result);
+        db.ChangeTracker.Clear();
+        var recovered = await db.BackupRunRecords.Where(x => x.Id != success.Id).ToListAsync();
+        Assert.All(recovered, x =>
+        {
+            Assert.Equal(BackupRunStatuses.Abandoned, x.Status); Assert.NotNull(x.CompletedAt);
+            Assert.NotNull(x.LeaseReleasedAt); Assert.True(x.DurationMilliseconds > 0); Assert.Null(x.VerifiedAt);
+        });
+        Assert.Equal(recovered[0].CompletedAt, recovered[1].CompletedAt);
+        Assert.Equal("incomplete-original.zip", recovered.Single(x => x.Id == first.Id).PackageFileName);
+        Assert.Equal("original-hash", recovered.Single(x => x.Id == first.Id).Sha256);
+        Assert.Equal("Original historical diagnostic", recovered.Single(x => x.Id == first.Id).ErrorSummary);
+        Assert.Equal(successBefore, JsonSerializer.Serialize(await db.BackupRunRecords.SingleAsync(x => x.Id == success.Id)));
+        var audits = await db.AuditLogs.OrderBy(x => x.EntityKey).ToListAsync();
+        Assert.Equal(2, audits.Count);
+        foreach (var target in targets)
+        {
+            var audit = Assert.Single(audits, x => x.EntityKey == target.Id.ToString());
+            Assert.Equal("BackupAbandoned", audit.Action);
+            Assert.Contains("Running", audit.BeforeValuesJson);
+            Assert.Contains("Abandoned", audit.AfterValuesJson);
+            Assert.Contains("reviewing-admin", audit.AfterValuesJson);
+            Assert.Contains(target.TerminationEvidence, audit.AfterValuesJson);
+        }
+        lease = await db.BackupOperationLeases.SingleAsync();
+        Assert.Null(lease.LeaseId); Assert.Null(lease.ExpiresAt);
+        var guard = await db.BackupNightlyRunGuards.SingleAsync();
+        Assert.Equal(BackupRunStatuses.Abandoned, guard.Result); Assert.Equal(second.Id, guard.BackupRunId);
+        var after = await RecoveryFingerprint(db);
+        var retry = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            BackupLegacyRecovery.AbandonBatchAsync(db, targets, "reviewing-admin", true, true, default));
+        Assert.Contains("already recovered", retry.Message);
+        Assert.Equal(after, await RecoveryFingerprint(db));
+        // The same worker admission path that previously rejected legacy rows now accepts a nightly worker.
+        await using var worker = (await BackupWorkerSession.TryOpenAsync(f.Connection, default))!;
+        await worker.RecoverOrphansAsync(default);
+        var nightly = Run(worker.WorkerId); nightly.BackupType = BackupRunTypes.Daily;
+        lease = await db.BackupOperationLeases.SingleAsync();
+        db.BackupRunRecords.Add(nightly); lease.LeaseId = worker.WorkerId; await db.SaveChangesAsync();
+        await worker.StartAsync(nightly.Id, default);
+        await worker.FinishAsync();
+        Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "BackupAbandoned"));
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_changed_start_or_status_or_missing_target_changes_nothing()
+    {
+        foreach (var change in new[] { "start", "status", "missing" })
+        {
+            await using var f = await Database.Create();
+            await using var db = f.Context();
+            var a = Run(null); var b = Run(null); db.BackupRunRecords.AddRange(a, b); await db.SaveChangesAsync();
+            var targets = Reviewed(a, b);
+            if (change == "start") targets[1] = targets[1] with { ExpectedStart = b.StartedAt.AddSeconds(1) };
+            if (change == "status") { b.Status = BackupRunStatuses.Succeeded; await db.SaveChangesAsync(); }
+            if (change == "missing") targets[1] = targets[1] with { Id = long.MaxValue };
+            var before = await RecoveryFingerprint(db);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                BackupLegacyRecovery.AbandonBatchAsync(db, targets, "admin", true, true, default));
+            Assert.Equal(before, await RecoveryFingerprint(db));
+        }
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_modern_target_or_unreviewed_running_attempt_blocks_every_change()
+    {
+        foreach (var change in new[] { "modern-target", "unreviewed-legacy", "unreviewed-modern" })
+        {
+            await using var f = await Database.Create();
+            await using var db = f.Context();
+            var a = Run(null); var b = Run(change == "modern-target" ? Guid.NewGuid() : null);
+            db.BackupRunRecords.AddRange(a, b);
+            if (change != "modern-target") db.BackupRunRecords.Add(Run(change == "unreviewed-modern" ? Guid.NewGuid() : null));
+            await db.SaveChangesAsync();
+            var before = await RecoveryFingerprint(db);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                BackupLegacyRecovery.AbandonBatchAsync(db, Reviewed(a, b), "admin", true, true, default));
+            Assert.Equal(before, await RecoveryFingerprint(db));
+        }
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_live_worker_session_blocks_even_without_a_modern_record()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        var a = Run(null); var b = Run(null); db.BackupRunRecords.AddRange(a, b); await db.SaveChangesAsync();
+        var before = await RecoveryFingerprint(db);
+        await using var worker = (await BackupWorkerSession.TryOpenAsync(f.Connection, default))!;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            BackupLegacyRecovery.AbandonBatchAsync(db, Reviewed(a, b), "admin", true, true, default));
+        Assert.Equal(before, await RecoveryFingerprint(db));
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_requires_each_evidence_actor_stopped_confirmation_and_unique_targets()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        var a = Run(null); var b = Run(null); db.BackupRunRecords.AddRange(a, b); await db.SaveChangesAsync();
+        var before = await RecoveryFingerprint(db);
+        foreach (var change in new[] { "evidence", "actor", "confirmation", "duplicate", "empty" })
+        {
+            var targets = Reviewed(a, b);
+            if (change == "evidence") targets[1] = targets[1] with { TerminationEvidence = "" };
+            if (change == "duplicate") targets[1] = targets[0];
+            if (change == "empty") targets = [];
+            await Assert.ThrowsAsync<InvalidOperationException>(() => BackupLegacyRecovery.AbandonBatchAsync(db,
+                targets, change == "actor" ? "" : "admin", change != "confirmation", true, default));
+            Assert.Equal(before, await RecoveryFingerprint(db));
+        }
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_invalid_nightly_guard_fails_in_preflight_and_apply_without_partial_writes()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        var a = Run(null); var b = Run(null); b.ScheduledPacificDate = "2026-10-01";
+        db.BackupRunRecords.AddRange(a, b); await db.SaveChangesAsync();
+        var before = await RecoveryFingerprint(db);
+        foreach (var apply in new[] { false, true })
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                BackupLegacyRecovery.AbandonBatchAsync(db, Reviewed(a, b), "admin", true, apply, default));
+        Assert.Equal(before, await RecoveryFingerprint(db));
+    }
+
+    [BackupPostgresFact]
+    public async Task Batch_audit_write_failure_rolls_back_both_runs_and_lease()
+    {
+        await using var f = await Database.Create();
+        await using var db = f.Context();
+        var a = Run(null); var b = Run(null); db.BackupRunRecords.AddRange(a, b); await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE FUNCTION reject_recovery_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN RAISE EXCEPTION 'Injected audit persistence failure'; END $$;
+            CREATE TRIGGER reject_recovery_audit BEFORE INSERT ON "AuditLogs"
+            FOR EACH ROW EXECUTE FUNCTION reject_recovery_audit();
+            """);
+        var before = await RecoveryFingerprint(db);
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            BackupLegacyRecovery.AbandonBatchAsync(db, Reviewed(a, b), "admin", true, true, default));
+        Assert.Equal(before, await RecoveryFingerprint(db));
+        await using var nextWorker = await BackupWorkerSession.TryOpenAsync(f.Connection, default);
+        Assert.NotNull(nextWorker); // Failed recovery must release its session lock.
+    }
+
+    private static BackupLegacyRecoveryTarget[] Reviewed(params BackupRunRecord[] runs) =>
+        runs.Select(run => new BackupLegacyRecoveryTarget(run.Id, run.StartedAt,
+            $"Host deployment for backup {run.Id} was deactivated; matching job terminated.")).ToArray();
+
+    private static async Task<string> RecoveryFingerprint(CropQcDbContext db)
+    {
+        db.ChangeTracker.Clear();
+        return JsonSerializer.Serialize(new
+        {
+            runs = await db.BackupRunRecords.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+            leases = await db.BackupOperationLeases.AsNoTracking().OrderBy(x => x.Id).ToListAsync(),
+            guards = await db.BackupNightlyRunGuards.AsNoTracking().OrderBy(x => x.PacificDate).ToListAsync(),
+            audits = await db.AuditLogs.AsNoTracking().OrderBy(x => x.Id).ToListAsync()
+        });
+    }
+
     private static QcPhoto Photo(int id) => new()
     {
         Id = id,
@@ -276,7 +471,7 @@ public sealed class BoundedBackupTests
         EnvironmentName = "Test",
         DatabaseProvider = "PostgreSQL",
         RetentionCategory = "Manual",
-        StartedAt = DateTimeOffset.UtcNow.AddDays(-2),
+        StartedAt = new DateTimeOffset(DateTimeOffset.UtcNow.AddDays(-2).Ticks / 10 * 10, TimeSpan.Zero),
         WorkerId = worker
     };
 
