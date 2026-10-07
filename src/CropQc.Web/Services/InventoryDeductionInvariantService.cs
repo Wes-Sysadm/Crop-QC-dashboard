@@ -1,5 +1,6 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using Microsoft.EntityFrameworkCore;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -212,6 +213,13 @@ public sealed class InventoryDeductionInvariantService(
             .Select(x => x.Entity)
             .ToList();
 
+        var outsideMovements = outsideTransferIds.Count == 0 ? []
+            : await dbContext.TreatmentLineageMovements.AsNoTracking()
+                .Where(x => x.OutsideWarehouseTransferId != null && outsideTransferIds.Contains(x.OutsideWarehouseTransferId.Value))
+                .ToListAsync(cancellationToken);
+        var trackedOutsideMovements = dbContext.ChangeTracker.Entries<TreatmentLineageMovement>()
+            .Where(x => x.State != EntityState.Deleted).Select(x => x.Entity).ToList();
+
         var interCrewTransferIds = adjustments.Where(x => x.InterCrewTransferId is not null).Select(x => x.InterCrewTransferId!.Value).Distinct().ToList();
         var persistedInterCrewTransfers = interCrewTransferIds.Count == 0 ? [] : await dbContext.InterCrewTransfers.AsNoTracking()
             .Include(x => x.InventoryAdjustments).Where(x => interCrewTransferIds.Contains(x.Id)).ToListAsync(cancellationToken);
@@ -322,7 +330,12 @@ public sealed class InventoryDeductionInvariantService(
                         .Select(x => x.Entity))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
                     .ToList();
-                ValidateOutsideWarehouseTransfer(adjustment, outsideTransfer, outsideAdjustments, Add);
+                var movements = trackedOutsideMovements
+                    .Where(x => ReferenceEquals(x.OutsideWarehouseTransfer, outsideTransfer)
+                        || outsideTransfer.Id > 0 && x.OutsideWarehouseTransferId == outsideTransfer.Id)
+                    .Concat(outsideMovements.Where(x => x.OutsideWarehouseTransferId == outsideTransfer.Id))
+                    .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id).ToList();
+                ValidateOutsideWarehouseTransfer(adjustment, outsideTransfer, outsideAdjustments, movements, Add);
             }
             else if (interCrewTransfer is not null)
             {
@@ -497,6 +510,7 @@ public sealed class InventoryDeductionInvariantService(
         RoomInventoryAdjustment adjustment,
         OutsideWarehouseTransfer transfer,
         IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        IReadOnlyCollection<TreatmentLineageMovement> movements,
         Action<string, string> add)
     {
         var outbound = operationAdjustments.Where(x => string.Equals(x.AdjustmentType, OutsideWarehouseTransferAdjustmentTypes.Transfer, StringComparison.Ordinal)).ToList();
@@ -516,13 +530,19 @@ public sealed class InventoryDeductionInvariantService(
         }
         foreach (var side in operationAdjustments)
         {
+            // Names are historical display evidence, not identity: canonical Ledger stores
+            // the grower number here, while the transfer retains the source segment's name.
+            // Keep the legacy name guard when stable identity is incomplete. Never rewrite
+            // either snapshot to follow a subsequent master-data rename.
+            var hasStableIdentity = side.GrowerLotId is > 0 && side.FruitProfileId is > 0
+                && side.CropYear is > 0 && !string.IsNullOrWhiteSpace(side.LotNumber);
             if (side.WarehouseId != transfer.SourceWarehouseId
                 || side.RoomId != transfer.SourceRoomId
                 || side.ReceiptId != transfer.ReceiptId
                 || side.CropYear != transfer.CropYear
                 || side.GrowerLotId != transfer.GrowerLotId
                 || side.FruitProfileId != transfer.FruitProfileId
-                || !Same(side.GrowerName, transfer.GrowerNameSnapshot)
+                || !hasStableIdentity && !Same(side.GrowerName, transfer.GrowerNameSnapshot)
                 || !Same(side.LotNumber, transfer.LotNumberSnapshot)
                 || !Same(side.VarietyCode, transfer.VarietyCodeSnapshot)
                 || !Same(side.InventoryStatus, transfer.InventoryStatusSnapshot))
@@ -541,6 +561,26 @@ public sealed class InventoryDeductionInvariantService(
                 add("MultipleParents", "Outside Warehouse Transfer adjustment also references another operational parent.");
                 break;
             }
+        }
+        if (outbound.Any(x => x.InventoryInvariantVersion >= InventoryLedgerKinds.CanonicalCommandInvariantVersion))
+        {
+            // Canonical movements retain the immutable grower number and complete identity,
+            // unlike the ledger's display field. Require that independent evidence so a real
+            // grower-number, organic, treatment or operation mismatch still blocks deployment.
+            var identity = new InventoryIdentity(transfer.CropYear, transfer.GrowerLotId, transfer.FruitProfileId,
+                transfer.LotNumberSnapshot, transfer.GrowerNumberSnapshot, transfer.VarietyCodeSnapshot,
+                transfer.ProductionTypeSnapshot, transfer.IsOrganicSnapshot, transfer.InventoryStatusSnapshot ?? "");
+            var dispatch = movements.Where(x => x.MovementType == OutsideWarehouseTransferAdjustmentTypes.Transfer
+                && x.ReversesTreatmentLineageMovementId == null).ToList();
+            if (!identity.IsComplete || dispatch.Count == 0 || dispatch.Sum(x => (long)x.BinCount) != transfer.BinCount
+                || dispatch.Any(x => x.BinCount <= 0 || x.IdentityKey != identity.Key
+                    || x.SourceRoomId != transfer.SourceRoomId || x.DestinationRoomId != null
+                    || x.SourceSegmentId == null || x.DestinationSegmentId != null
+                    || x.OperationKey != transfer.OperationKey + ":s" + x.SourceSegmentId
+                    || transfer.ReceiptId != null && x.ReceiptId != transfer.ReceiptId
+                    || !Same(x.TreatmentSignatureSnapshot, transfer.TreatmentSignatureSnapshot)
+                    || !Same(x.TreatmentStateSnapshot, transfer.TreatmentStateSnapshot)))
+                add("OutsideWarehouseTransferMovementMismatch", "Canonical Outside Warehouse Transfer identity, quantity or provenance does not match its immutable dispatch movements.");
         }
         if (adjustment.OutsideWarehouseTransferId is null && adjustment.OutsideWarehouseTransfer is null)
         {
