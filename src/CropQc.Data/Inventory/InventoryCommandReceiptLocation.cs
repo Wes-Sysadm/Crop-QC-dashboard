@@ -52,7 +52,7 @@ public sealed partial class InventoryCommandExecutor
         if (targetEvidence != null)
         {
             var resolved = InventoryAvailabilityResolver.Resolve(targetEvidence, new());
-            Require(resolved.IsOperable, "Destination inventory needs review before receiving the correction.");
+            Require(resolved.IsOperable, CanonicalInventoryMessages.PlacementBlocker($"Receipt {receipt.CompuTechReceiptId}", targetEvidence.Location.Name, resolved));
             await NormalizePositionAsync(db, factory, c, targetEvidence, resolved, now, attempt, ct);
         }
         var beforeJson = ReceiptValues(receipt);
