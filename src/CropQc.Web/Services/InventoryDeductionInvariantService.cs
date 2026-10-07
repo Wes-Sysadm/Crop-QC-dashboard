@@ -1,8 +1,11 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Data.Inventory;
 using CropQc.Shared.Inventory;
 using Microsoft.EntityFrameworkCore;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace CropQc.Web.Services;
@@ -158,6 +161,12 @@ public sealed class InventoryDeductionInvariantService(
                 .ToListAsync(cancellationToken);
         var trackedCorrections = dbContext.ChangeTracker.Entries<InventoryIdentityCorrection>()
             .Where(x => x.State != EntityState.Deleted).Select(x => x.Entity).ToList();
+        var overrideKeys = persistedOverrides.Select(x => x.OperationKey).Distinct().ToArray();
+        var overrideCommands = await dbContext.InventoryCommands.AsNoTracking()
+            .Where(x => overrideKeys.Contains(x.OperationKey)).ToDictionaryAsync(x => x.OperationKey, cancellationToken);
+        var correctionMovements = await dbContext.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => x.InventoryIdentityCorrectionId != null && correctionIds.Contains(x.InventoryIdentityCorrectionId.Value))
+            .ToListAsync(cancellationToken);
         var canonicalCorrections = (await dbContext.InventoryIdentityCorrections.AsNoTracking()
                 .Where(x => x.IsActive && x.IsComplete)
                 .ToListAsync(cancellationToken))
@@ -294,7 +303,9 @@ public sealed class InventoryDeductionInvariantService(
                         .Select(x => x.Entity))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
                     .ToList();
-                ValidateReceiptOverride(adjustment, receiptOverride, overrideAdjustments, Add);
+                overrideCommands.TryGetValue(receiptOverride.OperationKey, out var overrideCommand);
+                ValidateReceiptOverride(adjustment, receiptOverride, overrideAdjustments, identityCorrection, overrideCommand,
+                    correctionMovements.Where(x => x.InventoryIdentityCorrectionId == identityCorrection?.Id).ToArray(), Add);
             }
             else if (loss is not null)
             {
@@ -840,6 +851,9 @@ public sealed class InventoryDeductionInvariantService(
         RoomInventoryAdjustment adjustment,
         ReceiptInventoryOverride receiptOverride,
         IReadOnlyCollection<RoomInventoryAdjustment> operationAdjustments,
+        InventoryIdentityCorrection? correction,
+        InventoryCommandRecord? command,
+        IReadOnlyCollection<TreatmentLineageMovement> movements,
         Action<string, string> add)
     {
         if (!receiptOverride.IsComplete
@@ -858,15 +872,22 @@ public sealed class InventoryDeductionInvariantService(
         {
             add("ReceiptOverrideAmountMismatch", "Receipt administrator override and room-ledger quantities do not match.");
         }
+        // Dispatch by the versioned writer contract, not a receipt/adjustment exception.
+        // The canonical branch must prove its journal, parent and snapshots below.
+        var canonicalIdentity = operationAdjustments.Any(x => x.InventoryInvariantVersion == InventoryLedgerKinds.CanonicalCommandInvariantVersion
+            && x.AdjustmentType == "InventoryIdentityCorrection");
         if (operationAdjustments.Any(x => x.ReceiptId != receiptOverride.ReceiptId
             || x.CreatedByUserId != receiptOverride.AdministratorUserId
-            || !string.Equals(x.AdjustmentType, ReceiptInventoryOverrideService.AdjustmentType, StringComparison.Ordinal)
+            || !string.Equals(x.AdjustmentType, canonicalIdentity ? "InventoryIdentityCorrection" : ReceiptInventoryOverrideService.AdjustmentType, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(x.LotNumber)
             || x.FruitProfileId is null))
         {
             add("ReceiptOverrideIdentityMismatch", "Receipt administrator override adjustment receipt, administrator, or inventory identity does not match.");
         }
-        ValidateReceiptOverrideInventoryIdentity(receiptOverride, operationAdjustments, add);
+        if (canonicalIdentity)
+            ValidateCanonicalReceiptIdentity(receiptOverride, operationAdjustments, correction, command, movements, add);
+        else
+            ValidateReceiptOverrideInventoryIdentity(receiptOverride, operationAdjustments, add);
         if (adjustment.ReceiptInventoryOverrideId is null && adjustment.ReceiptInventoryOverride is null)
         {
             add("MissingReceiptOverrideLink", "Receipt administrator adjustment is not linked by a persisted override ID.");
@@ -916,6 +937,134 @@ public sealed class InventoryDeductionInvariantService(
         else
         {
             add("UnknownReceiptOverrideAction", "Receipt administrator override action type is not recognized.");
+        }
+    }
+
+    private static void ValidateCanonicalReceiptIdentity(
+        ReceiptInventoryOverride operation, IReadOnlyCollection<RoomInventoryAdjustment> adjustments,
+        InventoryIdentityCorrection? correction, InventoryCommandRecord? record,
+        IReadOnlyCollection<TreatmentLineageMovement> movements, Action<string, string> add)
+    {
+        try
+        {
+            // Required constructor parameters prevent missing nested identity/quantity fields
+            // from silently becoming CLR defaults. Never fall back to a legacy interpretation.
+            var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { RespectRequiredConstructorParameters = true };
+            if (correction is null || record is null
+                || operation.ActionType != ReceiptInventoryOverrideActionTypes.InventoryReclassification
+                || correction.ReceiptInventoryOverrideId != operation.Id || correction.CorrectedReceiptId != operation.ReceiptId
+                || correction.OperationKey != operation.OperationKey || record.OperationKey != operation.OperationKey
+                || correction.CreatedByUserId != operation.AdministratorUserId || record.ActorId != operation.AdministratorUserId
+                || correction.CreatedAt != operation.CreatedAt || record.CommittedAt != operation.CreatedAt
+                || correction.Reason != operation.Reason || record.ReversesOperationKey != null
+                || adjustments.Any(x => x.InventoryInvariantVersion != InventoryLedgerKinds.CanonicalCommandInvariantVersion
+                    || x.Source != "CanonicalInventory/v1" || x.InventoryIdentityCorrectionId != correction.Id
+                    || x.ReceiptInventoryOverrideId != operation.Id || x.CreatedAt != operation.CreatedAt
+                    || x.OldBinCount is null || x.NewBinCount != x.OldBinCount + x.ChangeAmount)
+                || Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(record.IntentJson))) != record.IntentHash)
+            {
+                add("ReceiptOverrideIdentityMismatch", "Canonical receipt identity correction lacks matching durable parent and command evidence.");
+                return;
+            }
+            var intent = JsonSerializer.Deserialize<InventoryCommand>(record.IntentJson, json)!;
+            var result = JsonSerializer.Deserialize<InventoryCommandResult>(record.ResultJson, json)!;
+            var change = intent.ReceiptIdentity;
+            if (intent.Kind != InventoryCommandKind.CorrectReceiptIdentity || change is null
+                || intent.OperationKey != operation.OperationKey || intent.ActorId != operation.AdministratorUserId
+                || intent.Reason != operation.Reason || !intent.Lines.IsEmpty || change.ReceiptId != operation.ReceiptId
+                // PostgreSQL stores microseconds; command JSON retains .NET's 100ns ticks.
+                || adjustments.Any(x => x.AdjustmentAt.UtcTicks / 10 != intent.EffectiveAt.UtcTicks / 10 || x.Reason != intent.Reason)
+                || result.Status != InventoryCommandStatus.Committed || result.OperationKey != operation.OperationKey
+                || !result.Effects.SelectMany(x => x.LedgerIds).Order().SequenceEqual(adjustments.Select(x => x.Id).Order())
+                || !result.Effects.SelectMany(x => x.MovementIds).Order().SequenceEqual(movements.Select(x => x.Id).Order())
+                || movements.Count != correction.ExpectedTreatmentMovementCount)
+            {
+                add("ReceiptOverrideIdentityMismatch", "Canonical receipt identity correction intent/result does not identify its exact committed ledger and movement rows.");
+                return;
+            }
+            using var beforeDoc = JsonDocument.Parse(operation.BeforeReceiptSnapshotJson);
+            using var afterDoc = JsonDocument.Parse(operation.AfterReceiptSnapshotJson);
+            using var sourceDoc = JsonDocument.Parse(correction.SourceIdentitySnapshotJson);
+            var before = beforeDoc.RootElement;
+            var after = afterDoc.RootElement;
+            var target = JsonSerializer.Deserialize<InventoryIdentity>(correction.TargetIdentitySnapshotJson, json)!;
+            var allocations = JsonSerializer.Deserialize<InventoryReceiptAllocation[]>(operation.AffectedInventorySnapshotJson, json)!;
+            var sourceAllocations = sourceDoc.RootElement.GetProperty("allocations").Deserialize<InventoryReceiptAllocation[]>(json)!;
+            var expected = change.ExpectedReceipt;
+            var valid = target.IsComplete && target == change.Target
+                && target.CropYear == correction.TargetCropYear && target.GrowerLotId == correction.TargetGrowerLotId
+                && target.FruitProfileId == correction.TargetFruitProfileId
+                && sourceDoc.RootElement.GetProperty("receipt").GetString() == operation.BeforeReceiptSnapshotJson
+                && JsonSerializer.Serialize(allocations, json) == JsonSerializer.Serialize(sourceAllocations, json)
+                && before.GetProperty("id").GetInt64() == operation.ReceiptId && after.GetProperty("id").GetInt64() == operation.ReceiptId
+                && before.GetProperty("cropYear").GetInt32() == correction.SourceCropYear && correction.SourceCropYear == expected.CropYear
+                && before.GetProperty("growerLotId").GetInt32() == correction.SourceGrowerLotId && correction.SourceGrowerLotId == expected.GrowerLotId
+                && before.GetProperty("fruitProfileId").GetInt32() == correction.SourceFruitProfileId && correction.SourceFruitProfileId == expected.FruitProfileId
+                && after.GetProperty("cropYear").GetInt32() == target.CropYear && after.GetProperty("growerLotId").GetInt32() == target.GrowerLotId
+                && after.GetProperty("fruitProfileId").GetInt32() == target.FruitProfileId && after.GetProperty("growerNumber").GetString() == target.GrowerNumber
+                && before.GetProperty("binCount").GetInt32() == expected.Quantity && expected.Quantity == operation.OldReceiptBinCount
+                && after.GetProperty("binCount").GetInt32() == expected.Quantity && expected.Quantity == operation.NewReceiptBinCount
+                && before.GetProperty("concurrencyVersion").GetInt64() == change.ExpectedVersion
+                && after.GetProperty("concurrencyVersion").GetInt64() == change.ExpectedVersion + 1
+                && before.GetProperty("warehouseId").GetInt32() == expected.WarehouseId && after.GetProperty("warehouseId").GetInt32() == expected.WarehouseId
+                && before.GetProperty("roomId").GetInt32() == expected.RoomId && after.GetProperty("roomId").GetInt32() == expected.RoomId
+                && before.GetProperty("compuTechReceiptId").GetString() == expected.ReceiptNumber && after.GetProperty("compuTechReceiptId").GetString() == expected.ReceiptNumber
+                && allocations.Select(x => x.Key).Distinct().Count() == allocations.Length
+                && allocations.Sum(x => x.Slice.Quantity) == operation.CurrentInventoryBefore;
+            foreach (var allocation in allocations)
+            {
+                var p = allocation.Position;
+                valid &= p.Identity.IsComplete && p.Identity.CropYear == correction.SourceCropYear
+                    && p.Identity.GrowerLotId == correction.SourceGrowerLotId && p.Identity.FruitProfileId == correction.SourceFruitProfileId
+                    && p.Identity.Lot == before.GetProperty("growerNumber").GetString()
+                    && p.IsOperable && p.QuantityConfidence == InventoryConfidence.Proven && p.TreatmentConfidence == InventoryConfidence.Proven
+                    && allocation.Slice.Quantity > 0 && allocation.Slice.Quantity <= p.AuthoritativeQuantity
+                    && allocation.Slice.Confidence == InventoryConfidence.Proven
+                    && allocation.Slice.ReceiptEvidenceIds.SequenceEqual(new[] { operation.ReceiptId });
+            }
+            var groups = allocations.Where(x => x.Position.Location.Custody == InventoryCustody.Room).GroupBy(x => x.Position.PositionKey).ToArray();
+            valid &= adjustments.Count == groups.Length * 2 && result.Effects.Length == groups.Length;
+            foreach (var group in groups)
+            {
+                var p = group.First().Position;
+                var quantity = group.Sum(x => x.Slice.Quantity);
+                var source = new OverrideIdentity(p.Location.WarehouseId, p.Location.RoomId!.Value, p.Identity.CropYear,
+                    p.Identity.GrowerLotId, p.Identity.FruitProfileId, p.Identity.Lot, p.Identity.Variety, p.Identity.Status);
+                var destination = new OverrideIdentity(source.WarehouseId, source.RoomId, target.CropYear,
+                    target.GrowerLotId, target.FruitProfileId, target.Lot, target.Variety,
+                    InventoryStatusIdentity.Normalize(p.Identity.Status, p.Identity.ProductionType));
+                var outgoing = adjustments.Where(x => x.ChangeAmount == -quantity && Matches(x, source, true)).ToArray();
+                var incoming = adjustments.Where(x => x.ChangeAmount == quantity && Matches(x, destination, true)).ToArray();
+                var effects = result.Effects.Where(x => x.PositionKey == p.PositionKey).ToArray();
+                if (outgoing.Length != 1 || incoming.Length != 1 || effects.Length != 1) { valid = false; continue; }
+                var effect = effects[0];
+                var part = $"{operation.OperationKey}:identity:{result.Effects.IndexOf(effect)}";
+                valid &= quantity <= p.AuthoritativeQuantity && effect.ParentId == operation.ReceiptId && effect.Quantity == quantity
+                    && effect.Before == p.AuthoritativeQuantity && effect.After == p.AuthoritativeQuantity - quantity
+                    && outgoing[0].OldBinCount == effect.Before && outgoing[0].NewBinCount == effect.After
+                    && outgoing[0].InventoryOperationKey == part + ":out" && incoming[0].InventoryOperationKey == part + ":in"
+                    && effect.LedgerIds.SequenceEqual(new[] { outgoing[0].Id, incoming[0].Id });
+                var moves = movements.Where(x => effect.MovementIds.Contains(x.Id)).ToArray();
+                valid &= moves.All(x => x.ReceiptId == operation.ReceiptId && x.CreatedByUserId == operation.AdministratorUserId
+                    && x.CreatedAt == operation.CreatedAt && x.OccurredAt.UtcTicks / 10 == intent.EffectiveAt.UtcTicks / 10 && x.BinCount > 0
+                    && x.ReversesTreatmentLineageMovementId == null);
+                foreach (var slice in group)
+                {
+                    var outs = moves.Where(x => x.MovementType == "InventoryIdentityCorrectionOut" && x.TreatmentSignatureSnapshot == slice.Slice.Signature).ToArray();
+                    var ins = moves.Where(x => x.MovementType == "InventoryIdentityCorrectionIn" && x.TreatmentSignatureSnapshot == slice.Slice.Signature).ToArray();
+                    valid &= outs.Sum(x => x.BinCount) == slice.Slice.Quantity && ins.Sum(x => x.BinCount) == slice.Slice.Quantity
+                        && outs.All(x => x.SourceRoomId == source.RoomId && x.DestinationRoomId == null && x.TreatmentStateSnapshot == slice.Slice.State
+                            && x.IdentityKey == p.Identity.Key && x.SourceSegmentId != null && x.DestinationSegmentId == null)
+                        && ins.All(x => x.DestinationRoomId == source.RoomId && x.SourceRoomId == null && x.TreatmentStateSnapshot == slice.Slice.State
+                            && x.IdentityKey == (target with { Status = destination.InventoryStatus! }).Key && x.DestinationSegmentId != null && x.SourceSegmentId == null);
+                }
+                valid &= moves.Sum(x => x.BinCount) == quantity * 2;
+            }
+            if (!valid) add("ReceiptOverrideRoomLotMismatch", "Canonical receipt identity correction does not reconcile its exact receipt allocations, target, ledger and movement evidence.");
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or NullReferenceException or OverflowException)
+        {
+            add("ReceiptOverrideSnapshotInvalid", "Canonical receipt identity correction evidence is unreadable or incomplete.");
         }
     }
 
