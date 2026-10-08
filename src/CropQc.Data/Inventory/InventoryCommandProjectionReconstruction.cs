@@ -280,14 +280,12 @@ public sealed partial class InventoryCommandExecutor
         return RepairHash(JsonSerializer.Serialize(hashes));
     }
 
-    private static async Task<ProjectionReconstructionPreview> ReadReconstructionAsync(CropQcDbContext db,
-        ProjectionReconstructionTarget target, CancellationToken ct)
+    // Classification is diagnostic only. Only a fresh database-bound preview,
+    // separate approval and the serializable execution path can authorize writes.
+    public static (string Classification, ImmutableArray<string> Blockers, InventoryNormalizationPlan? Plan)
+        AssessProjectionReconstruction(InventoryPositionEvidence evidence)
     {
-        Require(target.Identity.IsComplete && target.RoomId > 0 && target.WarehouseId > 0, "Exact complete room identity required.");
-        var batch = await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), DateTimeOffset.UtcNow, ct);
-        var evidence = batch.Positions.SingleOrDefault(x => x.Identity.Key == target.Identity.Key);
-        Require(evidence != null, "Target identity is absent.");
-        var result = InventoryAvailabilityResolver.Resolve(evidence!, new());
+        var result = InventoryAvailabilityResolver.Resolve(evidence, new());
         var blockers = new List<string>();
         InventoryNormalizationPlan? plan = null;
         var category = result.AuthoritativeQuantity < 0 ? "AuthoritativeInventoryProblem" : "AdditionalReconciliationEvidence";
@@ -311,6 +309,18 @@ public sealed partial class InventoryCommandExecutor
         }
         catch (InvalidOperationException ex) { blockers.Add(ex.Message); }
         catch (Rejection ex) { blockers.Add(ex.Message); }
+        return (category, blockers.ToImmutableArray(), plan);
+    }
+
+    private static async Task<ProjectionReconstructionPreview> ReadReconstructionAsync(CropQcDbContext db,
+        ProjectionReconstructionTarget target, CancellationToken ct)
+    {
+        Require(target.Identity.IsComplete && target.RoomId > 0 && target.WarehouseId > 0, "Exact complete room identity required.");
+        var batch = await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), DateTimeOffset.UtcNow, ct);
+        var evidence = batch.Positions.SingleOrDefault(x => x.Identity.Key == target.Identity.Key);
+        Require(evidence != null, "Target identity is absent.");
+        var result = InventoryAvailabilityResolver.Resolve(evidence!, new());
+        var (category, blockers, plan) = AssessProjectionReconstruction(evidence!);
         var ids = evidence!.Projections.Where(x => x.Disposition == "Current" && x.Quantity > 0).Select(x => x.Id).Order().ToArray();
         var rows = await db.TreatmentLineageSegments.AsNoTracking().Where(x => ids.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
         var beforeJson = JsonSerializer.Serialize(rows, ReconstructionJson);

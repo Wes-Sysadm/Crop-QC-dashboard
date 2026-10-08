@@ -99,7 +99,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
     "Classification": "CLI maintenance",
     "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
-    "Sha256": "0CCFEF6AF8F7FA834D49D63512BAC57C118E4D1AC32DFA4F6F3ABEB9D260E774"
+    "Sha256": "94D7252D4427F7B8C86D981B8C7CFB41E1241E01299A3F28D6FF5D32A5289640"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
