@@ -134,7 +134,7 @@ Independent verification: compare protected row counts/hashes before and after; 
 
 ## J. Automated regression and evidence results
 
-Base/current main: `e58d73a12c8bf0cc5f0f2333e442497e2b91b807`; branch `codex/lineage-blocker-investigation`. PR #271 remains separate at `58e6d29edc9d81326274a3d7ff73c56dde20fcc5`.
+Base/current main: `e58d73a12c8bf0cc5f0f2333e442497e2b91b807`; branch `codex/lineage-blocker-investigation`. Published as [draft PR #272](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/272). Main did not advance; no branch update/rebase was required. GitHub reported no checks for this branch (empty status-check rollup), so no hosted CI pass is claimed. PR #271 remains separate at `58e6d29edc9d81326274a3d7ff73c56dde20fcc5`.
 
 Restore and solution build passed (64 existing warnings, zero errors at first build; final incremental build seven existing warnings, zero errors). **59 focused tests passed, zero failed/skipped**: `TreatmentLineageReadinessEvidenceTests`, `TreatmentLineage144CorrectionTests`, `InventoryAvailabilityTests`. No full-suite or browser/hardware certification is claimed; the changed code only reads readiness evidence. No MSI is required.
 

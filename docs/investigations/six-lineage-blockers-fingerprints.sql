@@ -17,4 +17,3 @@ SELECT jsonb_build_object('observed_at',current_timestamp,
 'InventoryCommands',(SELECT jsonb_build_object('rows',count(*),'hash',md5(coalesce(string_agg(to_jsonb(t)::text,'' ORDER BY to_jsonb(t)::text),''))) FROM "InventoryCommands" t),
 'audits',(SELECT jsonb_build_object('max_id',max("Id"),'rows',count(*),'hash',md5(string_agg(to_jsonb(t)::text,'' ORDER BY "Id"))) FROM "AuditLogs" t),
 'ledger_total',(SELECT sum("ChangeAmount") FROM "RoomInventoryAdjustments")) AS baseline;;
-

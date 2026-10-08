@@ -8,4 +8,3 @@ FROM "BackupRunRecords" ORDER BY "Id" DESC LIMIT 6) r) AS backups,
 (SELECT json_agg(x) FROM (SELECT "NotificationType","Status",count(*) FROM "BackupNotificationRecords" WHERE "BackupRunId">=185 GROUP BY "NotificationType","Status") x) AS notifications,
 (SELECT json_agg(x ORDER BY "MigrationId") FROM (SELECT "MigrationId" FROM "__EFMigrationsHistory" WHERE "MigrationId">='20261001') x) AS migrations,
 to_regclass('public."ReceiptCustodyAcknowledgments"')::text AS custody_table;
-

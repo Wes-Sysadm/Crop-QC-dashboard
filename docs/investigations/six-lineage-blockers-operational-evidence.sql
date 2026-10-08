@@ -15,4 +15,3 @@ SELECT jsonb_build_object('observed_at',now(),'read_only',current_setting('trans
 'RoomTreatmentApplications',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM "RoomTreatmentApplications" t),
 'RoomTreatmentApplicationSources',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM "RoomTreatmentApplicationSources" t),
 'BinsRunEntries',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM "BinsRunEntries" t)) AS evidence;
-
