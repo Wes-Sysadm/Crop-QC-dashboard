@@ -1,0 +1,8 @@
+diff --git a/docs/governance/ENFORCEMENT_PROBE.md b/docs/governance/ENFORCEMENT_PROBE.md
+new file mode 100644
+--- /dev/null
++++ b/docs/governance/ENFORCEMENT_PROBE.md
+@@ -0,0 +1,3 @@
++# DO NOT MERGE: disposable enforcement probe
++
++This synthetic reference must fail governance: [probe](intentionally-missing-enforcement-proof.md).

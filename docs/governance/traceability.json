@@ -1,0 +1,388 @@
+{
+  "version": 1,
+  "specificationVersion": "1.0.1",
+  "rules": [
+    {
+      "id": "INV-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
+          "member": "Ordinary_receipt_conversion_and_unposted_receiving_use_one_audited_stock_creation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV001_missing_origin_cannot_become_available_stock",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Opening-balance authorization remains operation-specific; this gate is not a certification of every historical origin."
+    },
+    {
+      "id": "INV-002",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
+          "member": "Normal_completion_reopen_match_and_recompletion_preserve_one_destination_population",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "Receipt-held acknowledgement state and compensation are pending #271; main covers transit/complete/reopen, not all new custody states."
+    },
+    {
+      "id": "INV-003",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
+        "src/CropQc.Web/Services/InventoryConservationReportService.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryCommandTests",
+          "member": "Room_moves_losses_and_receipt_corrections_conserve_physical_stock",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV003_move_has_equal_ledger_legs_and_preserves_original_evidence",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "Whole-production accounting requires a fresh read-only release report; no live quantities certified by CI."
+    },
+    {
+      "id": "INV-004",
+      "code": [
+        "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
+        "src/CropQc.Shared/Inventory/InventoryCommands.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV004_shared_projection_excess_cannot_invent_quantity_or_receipt_ancestry",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Six production excess findings are untouched. Rule correctness does not authorize reconstruction."
+    },
+    {
+      "id": "INV-005",
+      "code": [
+        "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
+          "member": "Wp7_accounts_for_duplicate_and_consumed_history_without_inventing_receipt_allocation",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Corrected historical receipt replay remains conservative; #273 revision diagnostics do not prove surviving custody."
+    },
+    {
+      "id": "INV-006",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
+        "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV004_shared_projection_excess_cannot_invent_quantity_or_receipt_ancestry",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Exact ancestry stays unknown where records do not support allocation, even when a shared pool is operable."
+    },
+    {
+      "id": "TRT-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
+          "member": "New_receipt_after_room_treatment_is_separate_untreated_stock_and_reversal_preserves_both_receipts",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
+          "member": "Gap_is_not_untreated_without_arrival_evidence",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Current main's post-treatment quantity correction implementation conflicts with TRT-001; #269/#271 address it. New receiving coverage does not certify that outstanding correction path."
+    },
+    {
+      "id": "TRT-002",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryCommandTests",
+          "member": "Whole_room_treatment_is_one_application_across_multiple_lots_and_reverses_atomically",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
+          "member": "Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock",
+          "kind": "unit",
+          "required": true
+        }
+      ],
+      "gap": "Partial mixed receipt-held lineage belongs to #271 and must be integrated without cross-branch contamination."
+    },
+    {
+      "id": "REC-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptCorrectionWorkflowTests",
+          "member": "Quantity_correction_and_void_change_only_exact_receipt_stock_with_atomic_audits_and_replay",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptCorrectionWorkflowTests",
+          "member": "Correction_failure_rolls_back_receipt_projection_ledger_override_and_audits",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "#271 custody compensations and later-arrival treatment correction need combined-candidate validation before release."
+    },
+    {
+      "id": "REC-002",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandTransitEdits.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "PARTIAL COVERAGE: main proves partial transit return, not 50 dispatched / 49 acknowledged. ReceiptCustodyWorkflowTests and ReceiptCustodyCorrectionTests exist only in draft #271; port traceability and require them on integration."
+    },
+    {
+      "id": "MOV-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandCustody.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryCommandConcurrencyTests",
+          "member": "Concurrent_identical_intent_replays_one_durable_result",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryCommandConcurrencyTests",
+          "member": "Transfer_versus_dump",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryCommandTests",
+          "member": "Direct_move_cannot_bypass_a_route_requiring_a_truck_receipt",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "Selected independent-session races are not exhaustive certification of all adapters."
+    },
+    {
+      "id": "ROOM-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalHistoricalWorkflowTests",
+          "member": "Normal_selectors_and_outside_roundtrip_preserve_historical_shapes",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "Open/sealed/facility policy remains enforced; no new capacity or commodity segregation rule is invented. #271 placement eligibility needs its own review."
+    },
+    {
+      "id": "AUD-001",
+      "code": [
+        "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "INV003_move_has_equal_ledger_legs_and_preserves_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptCorrectionWorkflowTests",
+          "member": "Correction_failure_rolls_back_receipt_projection_ledger_override_and_audits",
+          "kind": "postgres",
+          "required": true
+        }
+      ],
+      "gap": "Application atomicity and selected row preservation are proven; no claim of tamper-proof database-admin access."
+    },
+    {
+      "id": "OPS-001",
+      "code": [
+        "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptOverrideReadinessTests",
+          "member": "Normal_64_bin_identity_correction_passes_readiness_without_rewriting_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptOverrideReadinessTests",
+          "member": "Incomplete_or_conflicting_canonical_evidence_remains_blocked",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests",
+          "member": "Every_physical_write_candidate_matches_its_reviewed_source_and_allowlist",
+          "kind": "structural",
+          "required": true
+        }
+      ],
+      "gap": "CI cannot prove fresh backup, live readiness, human approval or compensation-aware rollback. These remain mandatory release gates."
+    },
+    {
+      "id": "QC-001",
+      "code": [
+        "src/CropQc.Web/Services/CanonicalQcFruitIdentity.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.CanonicalQcTransferTests",
+          "member": "ReceivingQc_FollowsPartialAndChainedTransfers_AndReversalWithoutDuplication",
+          "kind": "workflow",
+          "required": false
+        }
+      ],
+      "gap": "Not rerun for governance-only change. Per-fruit partial-save coverage remains in existing QC suites; this one identity test is not whole-domain certification."
+    },
+    {
+      "id": "FIELD-001",
+      "code": [
+        "src/CropQc.Web/Services/FieldSampleService.cs"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.FieldSampleDeletionAndTrendTests",
+          "member": "DeleteAsync_SoftDeletesSampleAndPhotoWhilePreservingOperationalHistory",
+          "kind": "workflow",
+          "required": false
+        }
+      ],
+      "gap": "Not rerun here; dedicated field workflow coverage does not certify every hardware/trend case."
+    },
+    {
+      "id": "DEV-001",
+      "code": [
+        "src/CropQc.QcStation/Api/QcStationApiClient.cs"
+      ],
+      "tests": [],
+      "gap": "Hardware, station authentication and installer suites remain change-scoped; no physical FTA/scale or workstation test here. See qc-station-fta.md; add exact required cases for device changes."
+    },
+    {
+      "id": "SYNC-001",
+      "code": [
+        "docs/offline-sync-design.md"
+      ],
+      "tests": [],
+      "gap": "Durable offline queue remains planned, not implemented certification. Existing stale-write/device tests must be selected for that change; no new sync behavior here."
+    },
+    {
+      "id": "PHOTO-001",
+      "code": [
+        "src/CropQc.Web/Services/BackupService.cs",
+        "docs/active-photo-backup-contract.md"
+      ],
+      "tests": [],
+      "gap": "Storage/backup provider and active/deleted-reference tests stay change-scoped; CI here does not access Google Drive or certify remote object durability."
+    },
+    {
+      "id": "GOV-001",
+      "code": [
+        "AGENTS.md",
+        "scripts/governance/check.mjs",
+        "docs/change-scoped-testing-standard.md",
+        "scripts/Sync-CropQcKnowledge.ps1"
+      ],
+      "tests": [
+        {
+          "type": "CropQc.Api.Tests.BusinessRuleContractTests",
+          "member": "Mandatory_provider_is_local_disposable_PostgreSql18",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.GovernanceArchitectureTests",
+          "member": "Every_tagged_business_contract_has_a_traceability_entry",
+          "kind": "structural",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.GovernanceArchitectureTests",
+          "member": "Rule_test_references_resolve_to_real_executable_methods",
+          "kind": "structural",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests",
+          "member": "Only_canonical_Data_infrastructure_can_open_the_physical_write_capability",
+          "kind": "structural",
+          "required": true
+        }
+      ],
+      "gap": "Required checks/review need GitHub configuration. Structural tests cannot prove behavior or authenticate owner approval."
+    }
+  ],
+  "structuralSuites": [
+    "CropQc.Api.Tests.GovernanceArchitectureTests",
+    "CropQc.Api.Tests.CanonicalInventoryArchitectureTests"
+  ]
+}
