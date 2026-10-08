@@ -108,7 +108,7 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
             if (path.Split('/').Any(x => x is "bin" or "obj" or "Migrations")) continue;
             if (Regex.IsMatch(File.ReadAllText(file), @"\.CanonicalCommandTransaction\s*=")) assignments.Add(path);
         }
-        Assert.Equal(new[] { "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs", "src/CropQc.Data/Inventory/InventoryCommandOperations.cs" }, assignments.Order());
+        Assert.Equal(new[] { "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs", "src/CropQc.Data/Inventory/InventoryCommandOperations.cs", "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs" }, assignments.Order());
         var context = File.ReadAllText(Path.Combine(Root(), "src/CropQc.Data/CropQcDbContext.cs"));
         Assert.Contains("internal bool CanonicalCommandTransaction", context);
         Assert.Contains("CanonicalInventoryWriteGuard.Check(this)", context);

@@ -1,0 +1,1851 @@
+{
+  "positivePositions": [
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 398,
+        "fruitProfileId": 2,
+        "lot": "1084",
+        "growerNumber": "1084",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 4,
+        "roomId": 2,
+        "facility": "WP",
+        "name": "WP-5",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 10,
+      "rawProjectionQuantity": 130,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Ledger debit 135 lacks complete exact untreated movement evidence."
+      ],
+      "segmentIds": [
+        65,
+        597
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 495,
+        "fruitProfileId": 18,
+        "lot": "2350",
+        "growerNumber": "2350",
+        "variety": "DANJ",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 4,
+        "roomId": 5,
+        "facility": "WP",
+        "name": "WP-8",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 170,
+      "rawProjectionQuantity": 362,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Ledger debit 3142 lacks complete exact untreated movement evidence."
+      ],
+      "segmentIds": [
+        552,
+        553
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 574,
+        "fruitProfileId": 9,
+        "lot": "9332",
+        "growerNumber": "9332",
+        "variety": "ORGS",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|574|9|9332|9332|ORGS|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 7,
+        "facility": "EBS",
+        "name": "LAMB-14",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 155,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 623,
+        "fruitProfileId": 10,
+        "lot": "9541",
+        "growerNumber": "9541",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|623|10|9541|9541|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 9,
+        "facility": "EBS",
+        "name": "LAMB-16",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 228,
+      "rawProjectionQuantity": 30,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        639
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 628,
+        "fruitProfileId": 14,
+        "lot": "9562",
+        "growerNumber": "9562",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|628|14|9562|9562|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 10,
+        "facility": "EBS",
+        "name": "Lamb-17",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 972,
+      "rawProjectionQuantity": 933,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        717
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 132,
+        "fruitProfileId": 2,
+        "lot": "1565",
+        "growerNumber": "1565",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|132|2|1565|1565|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 11,
+        "facility": "EBS",
+        "name": "Evans-01",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 140,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 331,
+        "fruitProfileId": 2,
+        "lot": "9380",
+        "growerNumber": "9380",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|331|2|9380|9380|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 11,
+        "facility": "EBS",
+        "name": "Evans-01",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 147,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 399,
+        "fruitProfileId": 7,
+        "lot": "1011",
+        "growerNumber": "1011",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|399|7|1011|1011|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 12,
+        "facility": "EBS",
+        "name": "EVANS-2",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 1153,
+      "rawProjectionQuantity": 1049,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        163
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 574,
+        "fruitProfileId": 7,
+        "lot": "9332",
+        "growerNumber": "9332",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|574|7|9332|9332|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 12,
+        "facility": "EBS",
+        "name": "EVANS-2",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 180,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 399,
+        "fruitProfileId": 7,
+        "lot": "1011",
+        "growerNumber": "1011",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|399|7|1011|1011|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 15,
+        "facility": "EBS",
+        "name": "Evans-5",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 350,
+      "rawProjectionQuantity": 189,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        174
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 579,
+        "fruitProfileId": 2,
+        "lot": "9342",
+        "growerNumber": "9342",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|579|2|9342|9342|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 15,
+        "facility": "EBS",
+        "name": "Evans-5",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 77,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 505,
+        "fruitProfileId": 2,
+        "lot": "3032",
+        "growerNumber": "3032",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|505|2|3032|3032|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 17,
+        "facility": "EBS",
+        "name": "EVANS-7",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 113,
+      "rawProjectionQuantity": 105,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        37
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 505,
+        "fruitProfileId": 2,
+        "lot": "3032",
+        "growerNumber": "3032",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|505|2|3032|3032|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 18,
+        "facility": "EBS",
+        "name": "EVANS-8",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 55,
+      "rawProjectionQuantity": 11,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        376
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 336,
+        "fruitProfileId": 2,
+        "lot": "3050",
+        "growerNumber": "3050",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|336|2|3050|3050|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 18,
+        "facility": "EBS",
+        "name": "EVANS-8",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 275,
+      "rawProjectionQuantity": 275,
+      "canonicalBlockers": [
+        {
+          "code": "MixedTreatmentAmbiguity",
+          "detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        92,
+        198,
+        283,
+        285,
+        286,
+        287,
+        288
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 520,
+        "fruitProfileId": 10,
+        "lot": "3241",
+        "growerNumber": "3241",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|520|10|3241|3241|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 21,
+        "facility": "EBS",
+        "name": "EVANS-11",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 146,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 623,
+        "fruitProfileId": 10,
+        "lot": "9541",
+        "growerNumber": "9541",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|623|10|9541|9541|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 21,
+        "facility": "EBS",
+        "name": "EVANS-11",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 378,
+      "rawProjectionQuantity": 129,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        538,
+        607
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 649,
+        "fruitProfileId": 9,
+        "lot": "9751",
+        "growerNumber": "9751",
+        "variety": "ORGS",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|649|9|9751|9751|ORGS|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 22,
+        "facility": "EBS",
+        "name": "Evans-12",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 510,
+      "rawProjectionQuantity": 52,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        742
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 511,
+        "fruitProfileId": 14,
+        "lot": "3152",
+        "growerNumber": "3152",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|511|14|3152|3152|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 28,
+        "facility": "EBS",
+        "name": "BM-2",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 120,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 517,
+        "fruitProfileId": 14,
+        "lot": "3192",
+        "growerNumber": "3192",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|517|14|3192|3192|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 28,
+        "facility": "EBS",
+        "name": "BM-2",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 214,
+      "rawProjectionQuantity": 54,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        714
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 600,
+        "fruitProfileId": 14,
+        "lot": "9432",
+        "growerNumber": "9432",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|600|14|9432|9432|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 28,
+        "facility": "EBS",
+        "name": "BM-2",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 350,
+      "rawProjectionQuantity": 75,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        707
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 97,
+        "fruitProfileId": 14,
+        "lot": "9285",
+        "growerNumber": "9285",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|97|14|9285|9285|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 30,
+        "facility": "EBS",
+        "name": "BM-4",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 34,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        722
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 495,
+        "fruitProfileId": 18,
+        "lot": "2350",
+        "growerNumber": "2350",
+        "variety": "DANJ",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 2,
+        "roomId": 47,
+        "facility": "DH",
+        "name": "DH-15",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 202,
+      "rawProjectionQuantity": 598,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Ledger debit 3000 lacks complete exact untreated movement evidence."
+      ],
+      "segmentIds": [
+        407,
+        557
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 396,
+        "fruitProfileId": 9,
+        "lot": "1082",
+        "growerNumber": "1082",
+        "variety": "ORGS",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|396|9|1082|1082|ORGS|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 2,
+        "roomId": 49,
+        "facility": "DH",
+        "name": "DH-17",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 271,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 468,
+        "fruitProfileId": 7,
+        "lot": "1451",
+        "growerNumber": "1451",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|468|7|1451|1451|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 2,
+        "roomId": 51,
+        "facility": "DH",
+        "name": "DH-19",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 253,
+      "rawProjectionQuantity": 140,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        460
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 395,
+        "fruitProfileId": 9,
+        "lot": "1081",
+        "growerNumber": "1081",
+        "variety": "ORGS",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|395|9|1081|1081|ORGS|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 2,
+        "roomId": 54,
+        "facility": "DH",
+        "name": "DH-22",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 403,
+      "rawProjectionQuantity": 2,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        620
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 57,
+        "fruitProfileId": 7,
+        "lot": "2200",
+        "growerNumber": "2200",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|57|7|2200|2200|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 57,
+        "facility": "McDougall",
+        "name": "MCD-05",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 280,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 186,
+        "fruitProfileId": 7,
+        "lot": "2710",
+        "growerNumber": "2710",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|186|7|2710|2710|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 57,
+        "facility": "McDougall",
+        "name": "MCD-05",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 323,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 184,
+        "fruitProfileId": 7,
+        "lot": "2910",
+        "growerNumber": "2910",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|184|7|2910|2910|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 57,
+        "facility": "McDougall",
+        "name": "MCD-05",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 69,
+      "rawProjectionQuantity": 42,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        111
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 14,
+        "fruitProfileId": 21,
+        "lot": "2825",
+        "growerNumber": "2825",
+        "variety": "ORDA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|14|21|2825|2825|ORDA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 58,
+        "facility": "McDougall",
+        "name": "MCD-06",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 537,
+      "rawProjectionQuantity": 340,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        243,
+        245
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 186,
+        "fruitProfileId": 7,
+        "lot": "2710",
+        "growerNumber": "2710",
+        "variety": "ORGA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|186|7|2710|2710|ORGA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 63,
+        "facility": "McDougall",
+        "name": "MCD-11",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 426,
+      "rawProjectionQuantity": 159,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        239
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 126,
+        "fruitProfileId": 19,
+        "lot": "1110",
+        "growerNumber": "1110",
+        "variety": "ORBA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|126|19|1110|1110|ORBA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 67,
+        "facility": "McDougall",
+        "name": "MCD-15",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 286,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 272,
+        "fruitProfileId": 19,
+        "lot": "1290",
+        "growerNumber": "1290",
+        "variety": "ORBA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|272|19|1290|1290|ORBA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 67,
+        "facility": "McDougall",
+        "name": "MCD-15",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 5,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 14,
+        "fruitProfileId": 19,
+        "lot": "2825",
+        "growerNumber": "2825",
+        "variety": "ORBA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "",
+        "key": "2026|14|19|2825|2825|ORBA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 67,
+        "facility": "McDougall",
+        "name": "MCD-15",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 524,
+      "rawProjectionQuantity": 0,
+      "canonicalBlockers": [
+        {
+          "code": "UnknownTreatment",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 430,
+        "fruitProfileId": 14,
+        "lot": "1242",
+        "growerNumber": "1242",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 73,
+        "facility": "McDougall",
+        "name": "MCD-02",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 652,
+      "rawProjectionQuantity": 442,
+      "canonicalBlockers": [
+        {
+          "code": "MixedTreatmentAmbiguity",
+          "detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        729,
+        730
+      ],
+      "population": "Positive"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 187,
+        "fruitProfileId": 14,
+        "lot": "2750",
+        "growerNumber": "2750",
+        "variety": "RED",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 73,
+        "facility": "McDougall",
+        "name": "MCD-02",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 257,
+      "rawProjectionQuantity": 183,
+      "canonicalBlockers": [
+        {
+          "code": "MixedTreatmentAmbiguity",
+          "detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        727,
+        728
+      ],
+      "population": "Positive"
+    }
+  ],
+  "depletedPositions": [
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 94,
+        "fruitProfileId": 2,
+        "lot": "9040",
+        "growerNumber": "9040",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|94|2|9040|9040|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 7,
+        "facility": "EBS",
+        "name": "LAMB-14",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 228,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        123,
+        124,
+        125,
+        128,
+        142,
+        162
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 98,
+        "fruitProfileId": 2,
+        "lot": "9100",
+        "growerNumber": "9100",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|98|2|9100|9100|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 7,
+        "facility": "EBS",
+        "name": "LAMB-14",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 6,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        145,
+        284
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 331,
+        "fruitProfileId": 2,
+        "lot": "9380",
+        "growerNumber": "9380",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|331|2|9380|9380|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 7,
+        "facility": "EBS",
+        "name": "LAMB-14",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 3,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        351,
+        555
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 331,
+        "fruitProfileId": 2,
+        "lot": "9380",
+        "growerNumber": "9380",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|331|2|9380|9380|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 8,
+        "facility": "EBS",
+        "name": "LAMB-15",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 40,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        177,
+        178,
+        179,
+        181
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 588,
+        "fruitProfileId": 10,
+        "lot": "9401",
+        "growerNumber": "9401",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|588|10|9401|9401|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 15,
+        "facility": "EBS",
+        "name": "Evans-5",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 8,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        432,
+        433
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 643,
+        "fruitProfileId": 10,
+        "lot": "9691",
+        "growerNumber": "9691",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|643|10|9691|9691|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 16,
+        "facility": "EBS",
+        "name": "EVANS-6",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 1,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        441,
+        570
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 336,
+        "fruitProfileId": 2,
+        "lot": "3050",
+        "growerNumber": "3050",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "",
+        "key": "2026|336|2|3050|3050|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 20,
+        "facility": "EBS",
+        "name": "EVANS-10",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 48,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        79,
+        93
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 227,
+        "fruitProfileId": 10,
+        "lot": "3290",
+        "growerNumber": "3290",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|227|10|3290|3290|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 20,
+        "facility": "EBS",
+        "name": "EVANS-10",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 35,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        533,
+        560,
+        562
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 593,
+        "fruitProfileId": 10,
+        "lot": "9414",
+        "growerNumber": "9414",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|593|10|9414|9414|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 20,
+        "facility": "EBS",
+        "name": "EVANS-10",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 6,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        540,
+        605
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 623,
+        "fruitProfileId": 10,
+        "lot": "9541",
+        "growerNumber": "9541",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|623|10|9541|9541|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 20,
+        "facility": "EBS",
+        "name": "EVANS-10",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 4,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        532,
+        537
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 250,
+        "fruitProfileId": 10,
+        "lot": "9820",
+        "growerNumber": "9820",
+        "variety": "ORHC",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|250|10|9820|9820|ORHC|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 20,
+        "facility": "EBS",
+        "name": "EVANS-10",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 3,
+      "canonicalBlockers": [
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        564,
+        608
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 559,
+        "fruitProfileId": 2,
+        "lot": "9092",
+        "growerNumber": "9092",
+        "variety": "GALA",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|559|2|9092|9092|GALA|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 1,
+        "roomId": 21,
+        "facility": "EBS",
+        "name": "EVANS-11",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 10,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        425,
+        556
+      ],
+      "population": "Depleted"
+    },
+    {
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 292,
+        "fruitProfileId": 21,
+        "lot": "1600",
+        "growerNumber": "1600",
+        "variety": "ORDA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|292|21|1600|1600|ORDA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 60,
+        "facility": "McDougall",
+        "name": "MCD-08",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": 0,
+      "rawProjectionQuantity": 252,
+      "canonicalBlockers": [],
+      "classification": "AdditionalReconciliationEvidence",
+      "blockers": [
+        "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+      ],
+      "segmentIds": [
+        335,
+        541
+      ],
+      "population": "Depleted"
+    }
+  ],
+  "note": "Separate populations. The three unresolved correction blockers are included in positivePositions, not additional missing bins. No automatic corrections."
+}

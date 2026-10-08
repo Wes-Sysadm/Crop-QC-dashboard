@@ -1,0 +1,62 @@
+{
+  "tests": {
+    "total": "135",
+    "executed": "135",
+    "passed": "135",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "newHistoricalTimelineCases": 36,
+  "scope": "Maintenance proof, receipt revision validation, reconstruction transactions/concurrency/rollback/replay, canonical availability and writer architecture.",
+  "restore": "PASS",
+  "build": "PASS, 12 existing warnings, 0 errors",
+  "format": "PASS, workspace-load warnings only",
+  "defaultModel": "PASS, no pending model changes",
+  "postgresModel": "Pre-existing provider-specific pending-model warning reproduced on unchanged baseline; no entity/model/migration changes in this branch.",
+  "fullSuite": "Not rerun: ordinary operational resolver and workflows are unchanged. Prior task full-suite results remain historical, not results for this follow-up.",
+  "readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 979,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1079,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 986,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 438,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 438 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "invalidOutside": 0
+    }
+  },
+  "sha256": {
+    "src/CropQc.Data/Inventory/RecordedInventoryHistory.cs": "aa83b81d729da38e376c8e0db4926b3786732daaaf33715d59d8c0851af4aadc",
+    "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs": "f5696dfb3a5902fa9623b8ec9e6bb189f05c63875745a9cb56f5ca1e66bd8a0d",
+    "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs": "990dc528e78bd74c76fe384afb35be06b7bd7d8057ae49cd10ca505a80d4d702"
+  }
+}

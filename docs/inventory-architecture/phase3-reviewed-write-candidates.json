@@ -96,6 +96,12 @@
     "Sha256": "882FC08115192D803F5B72D518406D56F19219C7C82AFD14C9E37CD1895C6E04"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
+    "Classification": "CLI maintenance",
+    "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
+    "Sha256": "F5696DFB3A5902FA9623B8EC9E6BB189F05C63875745A9CB56F5CA1E66BD8A0D"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
@@ -180,6 +186,18 @@
     "Sha256": "A5FB3F170E783B7511B76C1980755ADE213BBF39D0B08191A68B8CE952CC6581"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "AsNoTracking evidence reads and local diagnostic collections only; correction arithmetic never grants custody or reconstruction authority.",
+    "Sha256": "990DC528E78BD74C76FE384AFB35BE06B7BD7D8057AE49CD10CA505A80D4D702"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/RecordedInventoryHistory.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Detached read-only history loader and pure maintenance proof; collection Add calls construct evidence, never persist physical entities.",
+    "Sha256": "AA83B81D729DA38E376C8E0DB4926B3786732DAAAF33715D59D8C0851AF4AADC"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
@@ -213,7 +231,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "51303BF0924830C491A17A82E3C61A5196A12A1AE14E5087174D5DB056F971F5"
+    "Sha256": "F1F590CCDC24238EF4791E10AE82DFD1B9C8F25BC19DBA6FE5CA411CDB9896D6"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
