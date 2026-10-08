@@ -271,7 +271,7 @@ public sealed class OutsideWarehouseTransferTests
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
         Assert.Equal("20260906025535_AddHarvestWatchDeployments", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(996, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(1007, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]

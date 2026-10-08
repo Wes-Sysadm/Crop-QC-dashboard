@@ -1956,6 +1956,10 @@ public sealed class ReceiptInventoryOverrideTests
         var conventional = new FruitProfile { Id = 93301, Name = "PG Gala", VarietyCode = "PG-GALA", FruitType = "Apple", ProductionType = "Conventional" };
         var organic = new FruitProfile { Id = 93302, Name = "PG Organic Gala", VarietyCode = "PG-ORG-GALA", FruitType = "Apple", ProductionType = "Organic", IsOrganic = true };
         var growerLot = new GrowerLot { Id = 93310, Grower = "PostgreSQL Grower", LotNumber = "PG-LOT", IsActive = true, CreatedAt = Now, UpdatedAt = Now };
+        // Quantity/void scenarios above create receipt-specific treatment evidence.
+        // Keep the independent positive legacy reclassification case out of that
+        // consolidated pool; genuine ambiguous provenance must remain blocked.
+        var reclassGrowerLot = new GrowerLot { Id = 93311, Grower = "PostgreSQL Reclassification", LotNumber = "PG-RECLASS", IsActive = true, CreatedAt = Now, UpdatedAt = Now };
         var admin = await db.Users
             .SingleOrDefaultAsync(x => x.Email == ApplicationAreas.OwnerEmail && x.IsActive)
             ?? new User
@@ -1967,7 +1971,7 @@ public sealed class ReceiptInventoryOverrideTests
                 IsActive = true,
                 CreatedAt = Now
             };
-        db.AddRange(warehouse, roomA, roomB, conventional, organic, growerLot);
+        db.AddRange(warehouse, roomA, roomB, conventional, organic, growerLot, reclassGrowerLot);
         if (db.Entry(admin).State == EntityState.Detached)
         {
             db.Users.Add(admin);
@@ -1978,10 +1982,11 @@ public sealed class ReceiptInventoryOverrideTests
         var unresolvedReceipt = PgReceipt(93504, "PG-OVERRIDE-UNRESOLVED", warehouse, roomA, conventional);
         foreach (var receipt in new[] { quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt })
         {
-            receipt.GrowerLot = growerLot;
-            receipt.GrowerLotId = growerLot.Id;
-            receipt.GrowerNumber = growerLot.LotNumber;
-            receipt.LotCode = growerLot.LotNumber;
+            var receiptGrowerLot = receipt == reclassReceipt ? reclassGrowerLot : growerLot;
+            receipt.GrowerLot = receiptGrowerLot;
+            receipt.GrowerLotId = receiptGrowerLot.Id;
+            receipt.GrowerNumber = receiptGrowerLot.LotNumber;
+            receipt.LotCode = receiptGrowerLot.LotNumber;
         }
         db.AddRange(quantityReceipt, transferReceipt, reclassReceipt, unresolvedReceipt);
         db.RoomInventoryAdjustments.AddRange(
@@ -2023,8 +2028,10 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.True((await service.ApplyEditAsync(reductionForm, principal, CancellationToken.None)).WasIdempotent);
         var increaseForm = PgForm(quantityReceipt, 100, Guid.NewGuid().ToString("D"));
         increaseForm.ExpectedConcurrencyVersion = 1;
+        increaseForm.ConfirmAdditionalBinsUntreated = true;
         increaseForm.ExpectedPositiveTrueUpStateToken = (await service.GetPreviewAsync(quantityReceipt.Id, CancellationToken.None))!.PositiveTrueUpStateToken;
-        Assert.True((await service.ApplyEditAsync(increaseForm, principal, CancellationToken.None)).Succeeded);
+        var increase = await service.ApplyEditAsync(increaseForm, principal, CancellationToken.None);
+        Assert.True(increase.Succeeded, increase.Error);
         var consumed = PgSource(93605, quantityReceipt, -90, "PostgreSqlConsumed");
         consumed.Receipt = null;
         db.RoomInventoryAdjustments.Add(consumed);
@@ -2033,7 +2040,14 @@ public sealed class ReceiptInventoryOverrideTests
         var negativeForm = PgForm(quantityReceipt, 80, Guid.NewGuid().ToString("D"));
         negativeForm.ExpectedConcurrencyVersion = 2;
         negativeForm.AcknowledgeNegativeInventory = true;
-        Assert.True((await service.ApplyEditAsync(negativeForm, principal, CancellationToken.None)).Succeeded);
+        var beforeRejectedReduction = await db.RoomInventoryAdjustments.CountAsync();
+        var negative = await service.ApplyEditAsync(negativeForm, principal, CancellationToken.None);
+        Assert.False(negative.Succeeded);
+        Assert.Contains("exceeds current receipt custody", negative.Error);
+        Assert.Equal(beforeRejectedReduction, await db.RoomInventoryAdjustments.CountAsync());
+        var unchangedReceipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == quantityReceipt.Id);
+        Assert.Equal(100, unchangedReceipt.BinCount);
+        Assert.Equal(2, unchangedReceipt.ConcurrencyVersion);
         var stale = PgForm(quantityReceipt, 70, Guid.NewGuid().ToString("D"));
         Assert.True((await service.ApplyEditAsync(stale, principal, CancellationToken.None)).IsConflict);
 

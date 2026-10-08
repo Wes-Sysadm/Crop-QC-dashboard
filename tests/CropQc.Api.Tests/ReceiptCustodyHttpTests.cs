@@ -58,5 +58,29 @@ public sealed class ReceiptCustodyHttpTests
         Assert.Equal(18, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
         Assert.Contains("0 receipt-held, 1 unresolved", await client.GetStringAsync(url + "/MatchTransfer"));
         Assert.Null(await db.Receipts.Where(x => x.Id == receiptId).Select(x => x.TransferCompletedAt).SingleAsync());
+        html = await client.GetStringAsync(url + "/MatchTransfer");
+        Assert.Contains("Custody and corrections", html);
+        var compensation = await Form((await db.ReceiptCustodyPlacements.SingleAsync()).Id, html);
+        compensation["Allocations[0].Quantity"] = "1";
+        before = await f.Snapshot();
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync(url + "/ReversePlacement", new FormUrlEncodedContent([]))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await denied.PostAsync(url + "/ReversePlacement", new FormUrlEncodedContent(compensation))).StatusCode);
+        Assert.Equal(before, await f.Snapshot());
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/ReversePlacement", new FormUrlEncodedContent(compensation))).StatusCode);
+        Assert.Equal(17, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        html = await client.GetStringAsync(url + "/MatchTransfer");
+        Assert.Contains("1 receipt-held, 1 unresolved", html);
+        var reverseAck = await Form((await db.ReceiptCustodyAcknowledgments.SingleAsync()).Id, html);
+        reverseAck["Allocations[0].Quantity"] = "1";
+        before = await f.Snapshot();
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync(url + "/ReverseAcknowledgment", new FormUrlEncodedContent([]))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await denied.PostAsync(url + "/ReverseAcknowledgment", new FormUrlEncodedContent(reverseAck))).StatusCode);
+        Assert.Equal(before, await f.Snapshot());
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/ReverseAcknowledgment", new FormUrlEncodedContent(reverseAck))).StatusCode);
+        after = await f.Snapshot();
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/ReverseAcknowledgment", new FormUrlEncodedContent(reverseAck))).StatusCode);
+        Assert.Equal(after, await f.Snapshot());
+        Assert.Contains("0 receipt-held, 2 unresolved", await client.GetStringAsync(url + "/MatchTransfer"));
+        Assert.Equal(2, await db.ReceiptCustodyReversals.CountAsync());
     }
 }

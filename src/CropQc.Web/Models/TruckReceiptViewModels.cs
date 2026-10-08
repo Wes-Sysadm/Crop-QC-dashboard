@@ -8,6 +8,7 @@ public sealed class TruckReceiptActionForm
     public long TransferId { get; set; }
     public long ReceiptVersion { get; set; }
     public long TransferVersion { get; set; }
+    public int? DestinationRoomId { get; set; }
     public string Reason { get; set; } = "";
     public List<TruckReceiptVarietyForm> Lines { get; set; } = [];
     public List<TruckReceiptAllocationForm> Allocations { get; set; } = [];
@@ -65,8 +66,10 @@ public sealed class TruckReceiptPage
     public Dictionary<long, string> CandidateVarieties { get; set; } = [];
     public bool SupportsReceiptCustody { get; set; }
     public IReadOnlyList<ReceiptCustodyAcknowledgment> Acknowledgments { get; set; } = [];
-    public int AcknowledgedBins => Acknowledgments.Sum(x => x.Quantity);
-    public int ReceiptHeldBins => Acknowledgments.Sum(x => x.Quantity - x.Placements.Sum(p => p.Quantity));
+    public int AcknowledgedBins => Acknowledgments.Sum(x => x.NetQuantity);
+    public int ReceiptHeldBins => Acknowledgments.Sum(x => x.HeldQuantity);
+    public int PlacedBins => Acknowledgments.Sum(x => x.PlacedQuantity);
+    public IReadOnlyList<Room> PlacementRooms { get; set; } = [];
     public int UnresolvedBins => Math.Max(0, (Transfer?.BinsLoaded ?? 0) - AcknowledgedBins);
     public bool IsReconciled => Comparison.Count > 0 && Comparison.All(x => x.Difference == 0);
     public string Status => Transfer is { RequiresTruckReceipt: false } ? "Legacy transfer — existing receiving workflow"

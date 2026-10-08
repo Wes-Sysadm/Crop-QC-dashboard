@@ -20,7 +20,7 @@ public sealed partial class InventoryEvidenceLoader
     private async Task<InventoryEvidenceBatch> LoadReceiptHeldAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct)
     {
         var rooms = scope.RoomIds.IsDefaultOrEmpty ? null : scope.RoomIds.ToArray();
-        var acks = await Bounded(db.ReceiptCustodyAcknowledgments.AsNoTracking().Include(x => x.Receipt).Include(x => x.InterCrewTransfer)
+        var acks = await Bounded(db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Include(x => x.Receipt).Include(x => x.InterCrewTransfer)
             .Include(x => x.DispatchMovement).ThenInclude(x => x.SourceSegment).ThenInclude(x => x!.Applications)
             .Include(x => x.Placements).ThenInclude(x => x.InventoryAdjustment).Include(x => x.Placements).ThenInclude(x => x.Movement)
             .Where(x => (scope.CustodyRecordId == null || x.ReceiptId == scope.CustodyRecordId)
@@ -40,10 +40,10 @@ public sealed partial class InventoryEvidenceLoader
             var flow = movements.Where(x => x.InterCrewTransferId == g.Key).ToArray();
             var placements = g.SelectMany(x => x.Placements).ToArray();
             return InventoryPhysicalFlow.Matches(rows, flow, segmentIndex)
-                && parent.BinsReceived == g.Sum(x => x.Quantity) && parent.BinsReceived <= parent.BinsLoaded
-                && rows.Sum(x => x.ChangeAmount) == -parent.BinsLoaded + placements.Sum(x => x.Quantity)
+                && parent.BinsReceived == g.Sum(x => x.NetQuantity) && parent.BinsReceived <= parent.BinsLoaded
+                && rows.Sum(x => x.ChangeAmount) == -parent.BinsLoaded + g.Sum(x => x.PlacedQuantity)
                 && flow.Where(x => x.MovementType == "InterCrewReceive").All(x => placements.Any(p => p.MovementId == x.Id))
-                && g.GroupBy(x => x.DispatchMovementId).All(a => a.Sum(x => x.Quantity)
+                && g.GroupBy(x => x.DispatchMovementId).All(a => a.Sum(x => x.NetQuantity)
                     <= a.First().DispatchMovement.BinCount - flow.Where(x => x.ReversesTreatmentLineageMovementId == a.Key).Sum(x => x.BinCount));
         });
         var origins = await Bounded(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct);
@@ -60,22 +60,27 @@ public sealed partial class InventoryEvidenceLoader
         {
             var receipt = group.First().Receipt;
             var identity = group.Key.Identity;
-            var quantity = group.Sum(x => x.Quantity - x.Placements.Sum(p => p.Quantity));
-            var valid = group.All(x => validParents[x.InterCrewTransferId] && x.Quantity > 0 && x.InterCrewTransfer.ReceivingReceiptId == x.ReceiptId
+            // Unrelated lots on the same load must not introduce treatment history
+            // into this identity's untreated proof (including fully compensated acknowledgements).
+            var groupApplicationIds = group.SelectMany(x => x.DispatchMovement.SourceSegment!.Applications)
+                .Select(x => x.RoomTreatmentApplicationId).ToHashSet();
+            var groupApps = apps.Where(x => groupApplicationIds.Contains(x.Id)).ToImmutableArray();
+            var quantity = group.Sum(x => x.HeldQuantity);
+            var valid = group.All(x => validParents[x.InterCrewTransferId] && ReceiptCustodyProof.Valid(x) && x.InterCrewTransfer.ReceivingReceiptId == x.ReceiptId
                 && x.DispatchMovement.InterCrewTransferId == x.InterCrewTransferId && x.DispatchMovement.MovementType == "InterCrewDispatch"
-                && x.Quantity <= x.DispatchMovement.BinCount && x.Placements.Sum(p => p.Quantity) <= x.Quantity
+                && x.NetQuantity <= x.DispatchMovement.BinCount
                 && x.Placements.All(p => p.Quantity > 0 && p.InventoryAdjustment.InterCrewTransferId == x.InterCrewTransferId
                     && p.InventoryAdjustment.ChangeAmount == p.Quantity && p.Movement.InterCrewTransferId == x.InterCrewTransferId
                     && p.Movement.BinCount == p.Quantity && p.Movement.SourceSegmentId == x.DispatchMovement.SourceSegmentId))
-                && group.GroupBy(x => x.DispatchMovementId).All(g => g.Sum(x => x.Quantity) <= g.First().DispatchMovement.BinCount);
+                && group.GroupBy(x => x.DispatchMovementId).All(g => g.Sum(x => x.NetQuantity) <= g.First().DispatchMovement.BinCount);
             var projections = group.Select(x =>
             {
                 var source = x.DispatchMovement.SourceSegment!;
                 var treatment = InventoryEffectiveTreatment.Read(x.DispatchMovement.TreatmentSignatureSnapshot, x.DispatchMovement.TreatmentStateSnapshot,
-                    source.Applications.Select(a => a.RoomTreatmentApplicationId).ToImmutableArray(), apps);
+                    source.Applications.Select(a => a.RoomTreatmentApplicationId).ToImmutableArray(), groupApps);
                 return Projection(source, Identity(source), source.WarehouseId) with
                 {
-                    Quantity = x.Quantity - x.Placements.Sum(p => p.Quantity),
+                    Quantity = x.HeldQuantity,
                     Disposition = "Current",
                     RetiredQuantity = null,
                     Signature = treatment.Signature,
@@ -90,12 +95,12 @@ public sealed partial class InventoryEvidenceLoader
                 receipt.Id,
                 receipt.ConcurrencyVersion,
                 Acknowledgments = group.Select(x => new
-                { x.Id, x.Quantity, x.DispatchMovementId, Placements = x.Placements.Select(p => new { p.Id, p.Quantity, p.MovementId, p.InventoryAdjustmentId }) }),
+                { x.Id, x.Quantity, x.NetQuantity, x.PlacedQuantity, Reversals = x.Reversals.Select(r => new { r.Id, r.Quantity, r.PlacementId, r.MovementId, r.InventoryAdjustmentId }), x.DispatchMovementId, Placements = x.Placements.Select(p => new { p.Id, p.Quantity, p.MovementId, p.InventoryAdjustmentId }) }),
                 projections
             }, consistency, []);
             result.Add(new(identity, new(InventoryCustody.ReceiptHeld, receipt.WarehouseId, null, "", receipt.CompuTechReceiptId, receipt.Id),
-                quantity, 0, identity.IsComplete, valid, [], projections, [], receipts, apps, watermark,
-                group.Any(x => x.AcknowledgedAt > asOf || x.Placements.Any(p => p.PlacedAt > asOf)),
+                quantity, 0, identity.IsComplete, valid, [], projections, [], receipts, groupApps, watermark,
+                group.Any(x => x.AcknowledgedAt > asOf || x.Placements.Any(p => p.PlacedAt > asOf) || x.Reversals.Any(r => r.ReversedAt > asOf)),
                 group.Select(x => new InventoryEvidenceReference("ReceiptCustodyAcknowledgment", x.Id.ToString())).ToImmutableArray()));
         }
         return new(result.ToImmutable(), acks.Count + origins.Count + applications.Count);

@@ -15,7 +15,7 @@ internal static class CanonicalInventoryWriteGuard
 {
     private static readonly HashSet<Type> PhysicalEntities =
     [
-        typeof(ReceiptCustodyAcknowledgment), typeof(ReceiptCustodyPlacement),
+        typeof(ReceiptCustodyAcknowledgment), typeof(ReceiptCustodyPlacement), typeof(ReceiptCustodyReversal),
         typeof(RoomInventoryAdjustment), typeof(TreatmentLineageSegment), typeof(TreatmentLineageMovement),
         typeof(TreatmentLineageSegmentApplication), typeof(RoomTreatmentApplication), typeof(RoomTreatmentApplicationSource),
         typeof(RoomTransfer), typeof(RoomDepletion), typeof(RoomInventoryLoss),
@@ -28,7 +28,7 @@ internal static class CanonicalInventoryWriteGuard
 
     internal static void Check(CropQcDbContext db)
     {
-        if (db.ChangeTracker.Entries().Any(x => x.Entity is ReceiptCustodyAcknowledgment or ReceiptCustodyPlacement
+        if (db.ChangeTracker.Entries().Any(x => x.Entity is ReceiptCustodyAcknowledgment or ReceiptCustodyPlacement or ReceiptCustodyReversal
             && x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Receipt custody evidence is immutable; use a separately audited compensating operation.");
         if (db.CanonicalCommandTransaction) return;

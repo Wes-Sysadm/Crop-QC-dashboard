@@ -127,6 +127,8 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             await db.OutsideWarehouseTransfers.Where(x => !x.IsReversed)
                 .SumAsync(x => (long?)x.BinCount, cancellationToken) ?? 0,
             (await db.ReceiptCustodyAcknowledgments.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
+                - (await db.ReceiptCustodyReversals.Where(x => x.PlacementId == null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
+                + (await db.ReceiptCustodyReversals.Where(x => x.PlacementId != null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0));
     }
 

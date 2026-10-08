@@ -34,7 +34,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
             || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
             || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion
-                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity or InventoryCommandKind.CorrectOrasDefinition or InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody) || command.Lines.Length > 100
+                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity or InventoryCommandKind.CorrectOrasDefinition or InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody or InventoryCommandKind.ReverseReceiptAcknowledgment or InventoryCommandKind.ReverseReceiptPlacement) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
                 || string.IsNullOrWhiteSpace(x.TreatmentSignature)))
@@ -47,6 +47,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             await using var db = await contexts.CreateDbContextAsync(cancellationToken);
             Require(db.Database.IsNpgsql(), "Canonical writes require PostgreSQL Serializable transactions.");
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            // The migration's physical-write fence rejects older binaries after custody is used.
+            await db.Database.ExecuteSqlRawAsync("SELECT set_config('cropqc.receipt_custody_writer', 'compensations-v1', true)", cancellationToken);
             db.CanonicalCommandTransaction = true;
             try
             {
@@ -115,7 +117,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 await Stage("Normalized", db, attempt, cancellationToken);
                 var effects = command.Kind switch
                 {
-                    InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody => await ChangeReceiptCustodyAsync(db, factory, command, readAt, attempt, cancellationToken),
+                    InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody or InventoryCommandKind.ReverseReceiptAcknowledgment or InventoryCommandKind.ReverseReceiptPlacement => await ChangeReceiptCustodyAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReverseLoss => await ReverseLossAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),

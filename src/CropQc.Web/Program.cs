@@ -836,7 +836,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
     {
         success = releaseReady,
         expectedMigration = releaseMigration,
-        expectedSchemaObjects = 996,
+        expectedSchemaObjects = 1007,
         schemaReady,
         inventory = new
         {

@@ -1,5 +1,7 @@
 # Authoritative custody implementation
 
+This is the initial implementation record at PR 271 head `eb8c3d8`. Its open reversal, integration, rehearsal and browser gaps are superseded by [PR 271 custody corrections and integration review](pr271-custody-completion.md). Historical test totals below describe the earlier run; use the completion report for the current candidate.
+
 ## Affected area and verification plan (recorded before implementation)
 
 Base: `95518dec131d44b01e2dc8fcfcbb82f508a8f399`, current remote main inspected October 7, 2026. Branch: `codex/authoritative-partial-custody`.

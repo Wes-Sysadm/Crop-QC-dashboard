@@ -11,6 +11,17 @@ public static class DatabaseStartupDiagnostics
 
     private static readonly SchemaExpectation[] RequiredSchemaExpectations =
     [
+        new("ReceiptCustodyReversals", "ReceiptCustodyReversals", null),
+        new("ReceiptCustodyReversals.Id", "ReceiptCustodyReversals", "Id", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.AcknowledgmentId", "ReceiptCustodyReversals", "AcknowledgmentId", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.PlacementId", "ReceiptCustodyReversals", "PlacementId"),
+        new("ReceiptCustodyReversals.Quantity", "ReceiptCustodyReversals", "Quantity", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.OperationKey", "ReceiptCustodyReversals", "OperationKey", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.Reason", "ReceiptCustodyReversals", "Reason", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.ActorId", "ReceiptCustodyReversals", "ActorId", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.ReversedAt", "ReceiptCustodyReversals", "ReversedAt", RequireNotNullable: true),
+        new("ReceiptCustodyReversals.InventoryAdjustmentId", "ReceiptCustodyReversals", "InventoryAdjustmentId"),
+        new("ReceiptCustodyReversals.MovementId", "ReceiptCustodyReversals", "MovementId"),
         new("ReceiptCustodyAcknowledgments", "ReceiptCustodyAcknowledgments", null),
         new("ReceiptCustodyAcknowledgments.Id", "ReceiptCustodyAcknowledgments", "Id", RequireNotNullable: true),
         new("ReceiptCustodyAcknowledgments.ReceiptId", "ReceiptCustodyAcknowledgments", "ReceiptId", RequireNotNullable: true),

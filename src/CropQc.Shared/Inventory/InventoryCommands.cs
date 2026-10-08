@@ -9,7 +9,7 @@ public enum InventoryCommandKind
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
     LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition,
-    AcknowledgeTransfer, PlaceReceiptCustody
+    AcknowledgeTransfer, PlaceReceiptCustody, ReverseReceiptAcknowledgment, ReverseReceiptPlacement
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,

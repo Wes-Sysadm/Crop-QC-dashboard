@@ -16,6 +16,33 @@ public sealed class ReceiptCustodyAcknowledgment
     public int ActorId { get; set; }
     public DateTimeOffset AcknowledgedAt { get; set; }
     public ICollection<ReceiptCustodyPlacement> Placements { get; } = new List<ReceiptCustodyPlacement>();
+    public ICollection<ReceiptCustodyReversal> Reversals { get; } = new List<ReceiptCustodyReversal>();
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int NetQuantity => Quantity - Reversals.Where(x => x.PlacementId == null).Sum(x => x.Quantity);
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int PlacedQuantity => Placements.Sum(x => x.Quantity) - Reversals.Where(x => x.PlacementId != null).Sum(x => x.Quantity);
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int HeldQuantity => NetQuantity - PlacedQuantity;
+}
+
+/// <summary>Immutable compensation. A null placement reverses only held acknowledgement;
+/// a placement link proves an exact room debit returning that quantity to receipt-held custody.</summary>
+public sealed class ReceiptCustodyReversal
+{
+    public long Id { get; set; }
+    public long AcknowledgmentId { get; set; }
+    public ReceiptCustodyAcknowledgment Acknowledgment { get; set; } = null!;
+    public long? PlacementId { get; set; }
+    public ReceiptCustodyPlacement? Placement { get; set; }
+    public int Quantity { get; set; }
+    public required string OperationKey { get; set; }
+    public required string Reason { get; set; }
+    public int ActorId { get; set; }
+    public DateTimeOffset ReversedAt { get; set; }
+    public long? InventoryAdjustmentId { get; set; }
+    public RoomInventoryAdjustment? InventoryAdjustment { get; set; }
+    public long? MovementId { get; set; }
+    public TreatmentLineageMovement? Movement { get; set; }
 }
 
 /// <summary>Immutable relinquishment of receipt-held custody to an exact room ledger/movement pair.</summary>

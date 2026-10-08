@@ -15,6 +15,12 @@ public sealed partial class TruckReceiptReconciliationService
     public Task<string?> PlaceCustodyAsync(TruckReceiptActionForm form, CancellationToken ct) =>
         WriteReceiptCustodyAsync(form, InventoryCommandKind.PlaceReceiptCustody, ct);
 
+    public Task<string?> ReverseAcknowledgmentAsync(TruckReceiptActionForm form, CancellationToken ct) =>
+        WriteReceiptCustodyAsync(form, InventoryCommandKind.ReverseReceiptAcknowledgment, ct);
+
+    public Task<string?> ReversePlacementAsync(TruckReceiptActionForm form, CancellationToken ct) =>
+        WriteReceiptCustodyAsync(form, InventoryCommandKind.ReverseReceiptPlacement, ct);
+
     private Task<string?> WriteReceiptCustodyAsync(TruckReceiptActionForm form, InventoryCommandKind kind, CancellationToken ct) =>
         CanonicalTruckWriteAsync(async actor =>
         {
@@ -24,6 +30,7 @@ public sealed partial class TruckReceiptReconciliationService
             var receipt = await db.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.ReceiptId && !x.IsDeleted, ct);
             Require(transfer != null && receipt != null && transfer.ReceivingReceiptId == receipt.Id, "The matched receipt was not found.");
             await RequireCrewAsync(actor, transfer!.DestinationCustodyGroup, ct);
+            Require(!string.IsNullOrWhiteSpace(form.Reason) && form.Reason.Length <= 1000, "Enter a receiving or correction reason (up to 1000 characters).");
             var key = CanonicalTruckKey(kind.ToString(), form);
             var submission = JsonSerializer.Serialize(form);
             var replay = await CanonicalApplicationReplay.TryAsync(db, canonicalCommands!, key, actor.Id, kind, submission, ct);
@@ -31,7 +38,7 @@ public sealed partial class TruckReceiptReconciliationService
             Require(form.Allocations.All(x => x.Quantity >= 0), "Allocation quantities cannot be negative.");
             var intent = new InventoryReceiptCustodyIntent(form.TransferId, form.ReceiptId, form.TransferVersion, form.ReceiptVersion,
                 form.Allocations.Where(x => x.Quantity > 0).Select(x => new InventoryCustodyQuantity(x.Id, x.Quantity)).ToImmutableArray(),
-                kind == InventoryCommandKind.PlaceReceiptCustody ? new(receipt!.WarehouseId, receipt.RoomId) : null);
+                kind == InventoryCommandKind.PlaceReceiptCustody ? new(receipt!.WarehouseId, form.DestinationRoomId ?? receipt.RoomId) : null);
             return CanonicalInventoryMessages.Result(await canonicalCommands!.ExecuteAsync(new(key, kind, actor.Id, time.UtcNow,
                 string.IsNullOrWhiteSpace(form.Reason) ? "Operator confirmed exact receipt custody allocations" : form.Reason,
                 [], ApplicationIntent: submission, ReceiptCustody: intent), ct));

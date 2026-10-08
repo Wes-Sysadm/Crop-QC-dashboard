@@ -400,6 +400,7 @@ public sealed partial class InventoryCommandExecutor
                     CreatedByUserId = c.ActorId
                 };
                 db.RoomInventoryLosses.Add(loss); debit!.RoomInventoryLoss = loss; debit.AdjustmentType = InventoryLedgerKinds.DroppedBins;
+                debit.GrowerName = loss.GrowerName;
                 foreach (var a in allocations) { var m = Move(c, i, a, null, loc.RoomId, null, partKey, now, "InventoryLoss"); m.RoomInventoryLoss = loss; movements.Add(m); }
                 await db.SaveChangesAsync(ct); parentId = loss.Id;
             }

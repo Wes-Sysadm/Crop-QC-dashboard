@@ -55,9 +55,11 @@ public sealed partial class TruckReceiptReconciliationService(
             page.WritesEnabled = page.CanAdmin = page.CanEditReceipt = page.CanEditTransfer = false;
             return page;
         }
+        if (receipt != null)
+            page.PlacementRooms = await db.Rooms.AsNoTracking().Where(x => x.WarehouseId == receipt.WarehouseId && x.IsActive && !x.IsSealed).OrderBy(x => x.Code).ToListAsync(ct);
         if (transfer is not null)
         {
-            page.Acknowledgments = await db.ReceiptCustodyAcknowledgments.AsNoTracking().Include(x => x.Placements)
+            page.Acknowledgments = await db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Include(x => x.Placements)
                 .Include(x => x.DispatchMovement).ThenInclude(x => x.SourceSegment)
                 .Where(x => x.InterCrewTransferId == transfer.Id).OrderBy(x => x.Id).ToListAsync(ct);
             page.Allocations = await ActiveAllocationsAsync(transfer.Id, ct);
@@ -67,8 +69,8 @@ public sealed partial class TruckReceiptReconciliationService(
                 var currentIdentities = await new InventoryEvidenceLoader(db).ResolveMovementIdentitiesAsync(
                     page.Acknowledgments.Select(x => x.DispatchMovementId).Distinct().ToArray(), ct);
                 var acknowledged = page.Acknowledgments.GroupBy(x => x.DispatchMovementId)
-                    .Select(g => new TransitAllocation(g.First().DispatchMovement, g.Sum(x => x.Quantity),
-                        new(g.Key, g.First().DispatchMovement.SourceSegmentId!.Value, g.Sum(x => x.Quantity),
+                    .Select(g => new TransitAllocation(g.First().DispatchMovement, g.Sum(x => x.NetQuantity),
+                        new(g.Key, g.First().DispatchMovement.SourceSegmentId!.Value, g.Sum(x => x.NetQuantity),
                             currentIdentities[g.Key], g.First().DispatchMovement.TreatmentSignatureSnapshot,
                             g.First().DispatchMovement.TreatmentStateSnapshot, g.First().DispatchMovement.ReceiptId)));
                 page.Comparison = Compare(page.Allocations.Concat(acknowledged), receipt?.VarietyLines ?? [], page.Profiles);
@@ -129,12 +131,12 @@ public sealed partial class TruckReceiptReconciliationService(
         Require(receipt.TransferCompletedAt is null, "Reopen the completed match before changing its receiving quantities.");
         await RequireCrewAsync(actor, TruckReceiptRoutes.Group(receipt.Warehouse.Code) ?? "", ct);
         var lines = form.Lines.Where(x => x.FruitProfileId != 0 || x.BinCount != 0).ToList();
-        var acknowledgments = await db.ReceiptCustodyAcknowledgments.AsNoTracking().Include(x => x.DispatchMovement).ThenInclude(x => x.SourceSegment)
+        var acknowledgments = await db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Include(x => x.DispatchMovement).ThenInclude(x => x.SourceSegment)
             .Where(x => x.ReceiptId == receipt.Id).ToListAsync(ct);
         var identities = await new InventoryEvidenceLoader(db).ResolveMovementIdentitiesAsync(
             acknowledgments.Select(x => x.DispatchMovementId).Distinct().ToArray(), ct);
         Require(acknowledgments.GroupBy(x => identities[x.DispatchMovementId].FruitProfileId)
-            .All(g => lines.Where(x => x.FruitProfileId == g.Key).Sum(x => x.BinCount) >= g.Sum(x => x.Quantity)),
+            .All(g => lines.Where(x => x.FruitProfileId == g.Key).Sum(x => x.BinCount) >= g.Sum(x => x.NetQuantity)),
             "Receipt counts cannot remove already acknowledged custody. Use an allocation-specific audited correction.");
         Require(lines.Count > 0 && lines.Count <= 100 && lines.All(x => x.BinCount > 0)
             && lines.Sum(x => (long)x.BinCount) <= int.MaxValue
@@ -296,7 +298,7 @@ public sealed partial class TruckReceiptReconciliationService(
 
     private Task<string?> ReopenLegacyAsync(TruckReceiptActionForm form, CancellationToken ct) => WriteAsync(async actor =>
     {
-        Require(!await db.ReceiptCustodyAcknowledgments.AnyAsync(x => x.InterCrewTransferId == form.TransferId, ct),
+        Require(!await db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AnyAsync(x => x.InterCrewTransferId == form.TransferId, ct),
             "Acknowledged custody cannot be unlinked or reversed as a whole load. An allocation-specific audited correction is required.");
         Require(await IsAdminAsync(ct), "Only Admin users may reopen or unlink a transfer receipt.");
         Require(!string.IsNullOrWhiteSpace(form.Reason), "An audit reason is required.");

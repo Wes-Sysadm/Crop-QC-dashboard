@@ -92,14 +92,17 @@
     "OperationIntents": [
       "ReceiveTransfer",
       "AcknowledgeTransfer",
-      "PlaceReceiptCustody"
+      "PlaceReceiptCustody",
+      "ReverseReceiptAcknowledgment",
+      "ReverseReceiptPlacement"
     ],
-    "Reversal": "Whole-load reopen only without acknowledgements; partial custody correction requires a reviewed allocation-specific compensating operation",
+    "Reversal": "Immutable allocation-linked compensation; held acknowledgement returns to unresolved custody; proven untouched placement debits its current room to held custody. Downstream dependencies block reversal.",
     "Evidence": "Exact dispatch allocation selection; receipt-held acknowledgements; independent room placement; original load = unresolved + held + placed",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
-      "tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/ReceiptCustodyCorrectionTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },

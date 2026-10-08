@@ -49,7 +49,7 @@ public sealed partial class InventoryEvidenceLoader
         else throw new ArgumentOutOfRangeException(nameof(scope));
         var parentIds = parents.Select(x => x.Id).ToArray();
         var acknowledgments = scope.Custody == InventoryCustody.InTransit
-            ? await Bounded(db.ReceiptCustodyAcknowledgments.AsNoTracking().Include(x => x.Placements)
+            ? await Bounded(db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Include(x => x.Placements)
                 .Where(x => parentIds.Contains(x.InterCrewTransferId)), ct) : [];
         var ledgerQuery = db.RoomInventoryAdjustments.AsNoTracking();
         var movementQuery = db.TreatmentLineageMovements.AsNoTracking();
@@ -89,21 +89,22 @@ public sealed partial class InventoryEvidenceLoader
             var kind = scope.Custody switch { InventoryCustody.InTransit => "InterCrewDispatch", InventoryCustody.Processor => "ProcessorShipment", _ => "OutsideWarehouseTransfer" };
             var acks = acknowledgments.Where(x => x.InterCrewTransferId == parent.Id).ToArray();
             var placements = acks.SelectMany(x => x.Placements).ToArray();
-            var acknowledged = acks.Sum(x => x.Quantity);
-            var placed = placements.Sum(x => x.Quantity);
+            var acknowledged = acks.Sum(x => x.NetQuantity);
+            var placed = acks.Sum(x => x.PlacedQuantity);
             var allocations = pm.Where(x => x.MovementType == kind && x.ReversesTreatmentLineageMovementId == null)
                 .Select(x => (Movement: x, Quantity: x.BinCount - reversals[x.Id].Sum(y => y.BinCount)
-                    - acks.Where(a => a.DispatchMovementId == x.Id).Sum(a => a.Quantity))).ToArray();
+                    - acks.Where(a => a.DispatchMovementId == x.Id).Sum(a => a.NetQuantity))).ToArray();
             var valid = parent.Active && parent.At <= asOf && parent.Quantity > 0 && allocations.Length > 0
                 && allocations.All(x => x.Quantity >= 0 && x.Movement.SourceSegmentId != null && segmentIndex.ContainsKey(x.Movement.SourceSegmentId.Value))
                 && allocations.Sum(x => x.Quantity) == parent.Quantity - acknowledged && pr.Sum(x => x.ChangeAmount) == -parent.Quantity + placed
                 && pr.Where(x => x.WarehouseId == parent.Warehouse && x.RoomId == parent.Room).Sum(x => x.ChangeAmount) == -parent.Quantity
                 && pr.Where(x => x.WarehouseId != parent.Warehouse || x.RoomId != parent.Room)
                     .GroupBy(x => new { x.WarehouseId, x.RoomId })
-                    .All(x => x.Sum(y => y.ChangeAmount) == placements.Where(p => x.Any(r => r.Id == p.InventoryAdjustmentId)).Sum(p => p.Quantity))
+                    .All(x => x.Sum(y => y.ChangeAmount) == placements.Where(p => x.Any(r => r.Id == p.InventoryAdjustmentId)).Sum(p => p.Quantity)
+                        - acks.SelectMany(a => a.Reversals).Where(r => x.Any(l => l.Id == r.InventoryAdjustmentId)).Sum(r => r.Quantity))
                 && !pm.Any(x => x.MovementType == "InterCrewReceive" && x.BinCount != reversals[x.Id].Sum(y => y.BinCount)
                     && !placements.Any(p => p.MovementId == x.Id && p.Quantity == x.BinCount))
-                && acks.All(a => a.Quantity > 0 && a.Placements.Sum(p => p.Quantity) <= a.Quantity
+                && acks.All(a => ReceiptCustodyProof.Valid(a)
                     && allocations.Any(x => x.Movement.Id == a.DispatchMovementId))
                 && placements.All(p => p.Quantity > 0 && pm.Any(m => m.Id == p.MovementId && m.BinCount == p.Quantity)
                     && pr.Any(l => l.Id == p.InventoryAdjustmentId && l.ChangeAmount == p.Quantity));

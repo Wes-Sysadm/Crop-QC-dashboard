@@ -74,18 +74,37 @@ public sealed class ReceiptCustodyWorkflowTests
         var ack = new InventoryCommand(Guid.NewGuid().ToString("N"), InventoryCommandKind.AcknowledgeTransfer,
             8000, DateTimeOffset.UtcNow, "Only untreated second lot arrived", [], ReceiptCustody:
             new(transferId, receiving.Id, transfer.ConcurrencyVersion, receiving.ConcurrencyVersion, [new(arrived.Id, 19)]));
+        var wrongArrival = await db.TreatmentLineageMovements.SingleAsync(x => x.InterCrewTransferId == transferId && x.ReceiptId == 100000 && x.MovementType == "InterCrewDispatch");
+        var wrong = ack with { ReceiptCustody = ack.ReceiptCustody! with { Allocations = [new(wrongArrival.Id, 19)] } };
+        Assert.Equal(InventoryCommandStatus.Committed, (await f.Execute(wrong)).Status);
+        db.ChangeTracker.Clear();
+        transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == transferId);
+        receiving = await db.Receipts.SingleAsync(x => x.Id == receiving.Id);
+        var wrongAck = await db.ReceiptCustodyAcknowledgments.SingleAsync();
+        var reverse = ack with
+        {
+            OperationKey = Guid.NewGuid().ToString("N"),
+            Kind = InventoryCommandKind.ReverseReceiptAcknowledgment,
+            ReceiptCustody = new(transferId, receiving.Id, transfer.ConcurrencyVersion, receiving.ConcurrencyVersion, [new(wrongAck.Id, 19)])
+        };
+        Assert.Equal(InventoryCommandStatus.Committed, (await f.Execute(reverse)).Status);
+        db.ChangeTracker.Clear();
+        transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == transferId);
+        receiving = await db.Receipts.SingleAsync(x => x.Id == receiving.Id);
+        ack = ack with { OperationKey = Guid.NewGuid().ToString("N"), ReceiptCustody = ack.ReceiptCustody! with { TransferVersion = transfer.ConcurrencyVersion, ReceiptVersion = receiving.ConcurrencyVersion } };
         Assert.Equal(InventoryCommandStatus.Committed, (await f.Execute(ack)).Status);
         var pending = await resolver.ResolveAsync(new(9001, [], InventoryCustody.InTransit, transferId), new(AllowedCustody: InventoryCustody.InTransit), DateTimeOffset.UtcNow);
         Assert.Equal(100000, Assert.Single(pending.Positions).Identity.GrowerLotId);
         Assert.Equal(19, pending.Positions.Single().AuthoritativeQuantity);
         Assert.Equal("Confirmed", Assert.Single(pending.Positions.Single().TreatmentSlices).State);
         var held = await resolver.ResolveAsync(new(1, [], InventoryCustody.ReceiptHeld, receiving.Id), new(AllowedCustody: InventoryCustody.ReceiptHeld), DateTimeOffset.UtcNow);
-        Assert.Equal(100001, Assert.Single(held.Positions).Identity.GrowerLotId);
-        Assert.Equal("u", Assert.Single(held.Positions.Single().TreatmentSlices).Signature);
+        Assert.Equal(100001, Assert.Single(held.Positions.Where(x => x.AuthoritativeQuantity > 0)).Identity.GrowerLotId);
+        Assert.True(held.Positions.Single(x => x.AuthoritativeQuantity > 0).IsOperable, System.Text.Json.JsonSerializer.Serialize(held));
+        Assert.Equal("u", Assert.Single(held.Positions.Single(x => x.AuthoritativeQuantity > 0).TreatmentSlices).Signature);
         db.ChangeTracker.Clear();
         transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == transferId);
         receiving = await db.Receipts.SingleAsync(x => x.Id == receiving.Id);
-        var acknowledgment = await db.ReceiptCustodyAcknowledgments.SingleAsync();
+        var acknowledgment = await db.ReceiptCustodyAcknowledgments.SingleAsync(x => x.DispatchMovementId == arrived.Id);
         var place = ack with
         {
             OperationKey = Guid.NewGuid().ToString("N"),
@@ -215,7 +234,7 @@ public sealed class ReceiptCustodyWorkflowTests
         await using var f = await Fixture.Create();
         await using var db = f.CreateDbContext();
         // The disposable fixture models the previous schema by removing only empty new tables.
-        await db.Database.ExecuteSqlRawAsync("DROP TABLE \"ReceiptCustodyPlacements\"; DROP TABLE \"ReceiptCustodyAcknowledgments\";");
+        await db.Database.ExecuteSqlRawAsync("DROP TABLE \"ReceiptCustodyReversals\"; DROP TABLE \"ReceiptCustodyPlacements\"; DROP TABLE \"ReceiptCustodyAcknowledgments\";");
         var before = await f.Snapshot();
         var migration = new CropQc.Data.Migrations.ReceiptHeldTransferCustody { ActiveProvider = "Npgsql.EntityFrameworkCore.PostgreSQL" };
         var generator = db.GetService<IMigrationsSqlGenerator>();
@@ -226,6 +245,15 @@ public sealed class ReceiptCustodyWorkflowTests
         foreach (var sql in generator.Generate(migration.DownOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
         Assert.Equal(before, await f.Snapshot());
         foreach (var sql in generator.Generate(migration.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
+        var compensation = new CropQc.Data.Migrations.ReceiptCustodyCompensations { ActiveProvider = "Npgsql.EntityFrameworkCore.PostgreSQL" };
+        foreach (var sql in generator.Generate(compensation.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
+        var guardrails = new CropQc.Data.Migrations.ReceiptCustodyGuardrails { ActiveProvider = "Npgsql.EntityFrameworkCore.PostgreSQL" };
+        var preserved = await f.Snapshot();
+        foreach (var sql in generator.Generate(guardrails.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
+        Assert.Equal(preserved, await f.Snapshot());
+        foreach (var sql in generator.Generate(guardrails.DownOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
+        Assert.Equal(preserved, await f.Snapshot());
+        foreach (var sql in generator.Generate(guardrails.UpOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
         var original = await f.ReceiveCommand();
         var command = await Command(f, original.Lines[0].Source.Location.CustodyRecordId!.Value,
             original.ReceivingEvidence!.ReceiptId, InventoryCommandKind.AcknowledgeTransfer, 18);
@@ -236,6 +264,20 @@ public sealed class ReceiptCustodyWorkflowTests
             foreach (var sql in generator.Generate(migration.DownOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
         });
         Assert.Equal(durable, await f.Snapshot());
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(async () =>
+        {
+            foreach (var sql in generator.Generate(guardrails.DownOperations, db.Model)) await db.Database.ExecuteSqlRawAsync(sql.CommandText);
+        });
+        await using var oldWriter = new Npgsql.NpgsqlConnection(f.Connection);
+        await oldWriter.OpenAsync();
+        await using var unsafeWrite = new Npgsql.NpgsqlCommand("UPDATE \"RoomInventoryAdjustments\" SET \"ChangeAmount\" = \"ChangeAmount\"", oldWriter);
+        var blocked = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => unsafeWrite.ExecuteNonQueryAsync());
+        Assert.Contains("Unsafe application downgrade blocked", blocked.MessageText);
+        Assert.Equal(durable, await f.Snapshot());
+        // The new executor supplies the transaction-local capability; ordinary new commands still work.
+        var place = await Command(f, original.Lines[0].Source.Location.CustodyRecordId!.Value,
+            original.ReceivingEvidence!.ReceiptId, InventoryCommandKind.PlaceReceiptCustody, 18);
+        Assert.Equal(InventoryCommandStatus.Committed, (await f.Execute(place)).Status);
     }
 
     [InventoryPostgresTheory]

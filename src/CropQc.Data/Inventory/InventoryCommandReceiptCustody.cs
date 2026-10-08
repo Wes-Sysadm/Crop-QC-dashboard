@@ -20,9 +20,9 @@ public sealed partial class InventoryCommandExecutor
         var receipt = await db.Receipts.Include(x => x.Warehouse).Include(x => x.VarietyLines).SingleAsync(x => x.Id == intent.ReceiptId, ct);
         Require(transfer.ConcurrencyVersion == intent.TransferVersion && receipt.ConcurrencyVersion == intent.ReceiptVersion,
             "Receipt or transfer changed; reload custody.", InventoryCommandStatus.Stale);
-        Require(transfer.RequiresTruckReceipt && transfer.Status == InterCrewTransferStatuses.InTransit
+        Require(transfer.RequiresTruckReceipt && transfer.Status is InterCrewTransferStatuses.InTransit or InterCrewTransferStatuses.Received
             && transfer.ReceivingReceiptId == receipt.Id && receipt.IsTransferReceipt && !receipt.IsDeleted
-            && receipt.TransferCompletedAt == null && receipt.ReceiptType == "Truck receipt"
+            && receipt.ReceiptType == "Truck receipt"
             && !string.IsNullOrWhiteSpace(receipt.CompuTechReceiptId)
             && TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)
             && TruckReceiptRoutes.Group(receipt.Warehouse.Code) == transfer.DestinationCustodyGroup,
@@ -30,24 +30,23 @@ public sealed partial class InventoryCommandExecutor
         var moves = await db.TreatmentLineageMovements.Include(x => x.SourceSegment).ThenInclude(x => x!.Applications)
             .Include(x => x.DestinationSegment).Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync(ct);
         var ledger = await db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync(ct);
-        var acks = await db.ReceiptCustodyAcknowledgments.Include(x => x.Placements)
+        var acks = await db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().Include(x => x.Placements)
             .Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync(ct);
         var dispatch = moves.Where(x => x.MovementType == "InterCrewDispatch" && x.ReversesTreatmentLineageMovementId == null).ToArray();
         var segments = moves.SelectMany(x => new[] { x.SourceSegment, x.DestinationSegment }).Where(x => x != null).DistinctBy(x => x!.Id).ToDictionary(x => x!.Id, x => x!);
         var placements = acks.SelectMany(x => x.Placements).ToArray();
         Require(dispatch.Length > 0 && dispatch.All(x => x.SourceSegment != null && x.BinCount > 0)
             && acks.All(x => dispatch.Any(d => d.Id == x.DispatchMovementId))
-            && dispatch.All(d => acks.Where(x => x.DispatchMovementId == d.Id).Sum(x => x.Quantity)
+            && dispatch.All(d => acks.Where(x => x.DispatchMovementId == d.Id).Sum(x => x.NetQuantity)
                 <= d.BinCount - moves.Where(r => r.ReversesTreatmentLineageMovementId == d.Id).Sum(r => r.BinCount))
-            && acks.All(x => x.ReceiptId == receipt.Id && x.Quantity > 0 && x.Placements.All(p => p.Quantity > 0)
-                && x.Placements.Sum(p => p.Quantity) <= x.Quantity)
+            && acks.All(x => x.ReceiptId == receipt.Id && ReceiptCustodyProof.Valid(x))
             && InventoryPhysicalFlow.Matches(ledger, moves, segments)
             && moves.Where(x => x.MovementType == "InterCrewReceive").All(x => placements.Any(p => p.MovementId == x.Id && p.Quantity == x.BinCount))
             && placements.All(p => ledger.Any(l => l.Id == p.InventoryAdjustmentId && l.ChangeAmount == p.Quantity)
                 && moves.Any(m => m.Id == p.MovementId && m.BinCount == p.Quantity))
             && dispatch.Sum(x => x.BinCount - moves.Where(r => r.ReversesTreatmentLineageMovementId == x.Id).Sum(r => r.BinCount)) == transfer.BinsLoaded
             && ledger.Where(x => x.RoomId == transfer.SourceRoomId && x.WarehouseId == transfer.SourceWarehouseId).Sum(x => x.ChangeAmount) == -transfer.BinsLoaded
-            && (transfer.BinsReceived ?? 0) == acks.Sum(x => x.Quantity),
+            && (transfer.BinsReceived ?? 0) == acks.Sum(x => x.NetQuantity),
             "Original dispatch, acknowledged custody and placement evidence do not conserve quantity.");
         Require(receipt.VarietyLines.Count > 0 && receipt.VarietyLines.All(x => x.BinCount > 0)
             && receipt.VarietyLines.Sum(x => x.BinCount) == receipt.BinCount,
@@ -58,8 +57,8 @@ public sealed partial class InventoryCommandExecutor
         Require(receipt.VarietyLines.All(v => v.BinCount <= dispatch.Where(x => Identity(x).FruitProfileId == v.FruitProfileId)
             .Sum(x => x.BinCount - moves.Where(r => r.ReversesTreatmentLineageMovementId == x.Id).Sum(r => r.BinCount))),
             "Over-receipt cannot be acknowledged against this load; reconcile the observed overage separately.");
-        var beforeAcknowledged = acks.Sum(x => x.Quantity);
-        var beforePlaced = placements.Sum(x => x.Quantity);
+        var beforeAcknowledged = acks.Sum(x => x.NetQuantity);
+        var beforePlaced = acks.Sum(x => x.PlacedQuantity);
         var effects = ImmutableArray.CreateBuilder<InventoryCommandEffect>();
         if (c.Kind == InventoryCommandKind.AcknowledgeTransfer)
         {
@@ -69,7 +68,7 @@ public sealed partial class InventoryCommandExecutor
                 var movement = dispatch.SingleOrDefault(x => x.Id == item.Id);
                 Require(movement != null, "Selected original dispatch allocation was not found.");
                 var available = movement!.BinCount - moves.Where(x => x.ReversesTreatmentLineageMovementId == item.Id).Sum(x => x.BinCount)
-                    - acks.Where(x => x.DispatchMovementId == item.Id).Sum(x => x.Quantity);
+                    - acks.Where(x => x.DispatchMovementId == item.Id).Sum(x => x.NetQuantity);
                 Require(item.Quantity <= available, "Acknowledgement exceeds the unresolved original dispatch allocation.");
                 var acknowledgment = new ReceiptCustodyAcknowledgment
                 {
@@ -85,19 +84,23 @@ public sealed partial class InventoryCommandExecutor
                 effects.Add(new($"transit:{transfer.Id}:{item.Id}", available, available - item.Quantity, item.Quantity, transfer.Id, [], []));
             }
             Require(acks.GroupBy(x => Identity(dispatch.Single(d => d.Id == x.DispatchMovementId)).FruitProfileId)
-                .All(g => g.Sum(x => x.Quantity) <= receipt.VarietyLines.Where(x => x.FruitProfileId == g.Key).Sum(x => x.BinCount)),
+                .All(g => g.Sum(x => x.NetQuantity) <= receipt.VarietyLines.Where(x => x.FruitProfileId == g.Key).Sum(x => x.BinCount)),
                 "Acknowledged allocations exceed the observed receiving quantity for a variety.");
+        }
+        else if (c.Kind is InventoryCommandKind.ReverseReceiptAcknowledgment or InventoryCommandKind.ReverseReceiptPlacement)
+        {
+            await ReverseReceiptCustodyAsync(db, c, acks, effects, now, ct);
         }
         else
         {
             var destination = intent.Destination;
-            Require(destination != null && destination.WarehouseId == receipt.WarehouseId && destination.RoomId == receipt.RoomId
+            Require(destination != null && destination.WarehouseId == receipt.WarehouseId && destination.RoomId != transfer.SourceRoomId
                 && await db.Rooms.AnyAsync(x => x.Id == destination.RoomId && x.WarehouseId == destination.WarehouseId
                     && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Select the receipt's active unsealed destination room.");
             foreach (var item in intent.Allocations)
             {
                 var ack = acks.SingleOrDefault(x => x.Id == item.Id);
-                Require(ack != null && item.Quantity <= ack.Quantity - ack.Placements.Sum(x => x.Quantity), "Placement exceeds receipt-held custody.");
+                Require(ack != null && item.Quantity <= ack.HeldQuantity, "Placement exceeds receipt-held custody.");
                 var original = dispatch.Single(x => x.Id == ack!.DispatchMovementId);
                 var source = original.SourceSegment!;
                 var identity = Identity(original);
@@ -136,22 +139,28 @@ public sealed partial class InventoryCommandExecutor
                 await db.SaveChangesAsync(ct);
                 Require(await PhysicalAsync(db, identity, destination.WarehouseId, destination.RoomId, ct) == before + item.Quantity,
                     "Receipt placement did not conserve room quantity.");
-                effects.Add(new($"receipt:{receipt.Id}:{item.Id}", ack!.Quantity - ack.Placements.Sum(x => x.Quantity) + item.Quantity,
-                    ack.Quantity - ack.Placements.Sum(x => x.Quantity), item.Quantity, transfer.Id, [credit.Id], [move.Id]));
+                effects.Add(new($"receipt:{receipt.Id}:{item.Id}", ack!.HeldQuantity + item.Quantity,
+                    ack.HeldQuantity, item.Quantity, transfer.Id, [credit.Id], [move.Id]));
             }
             transfer.DestinationWarehouseId = destination!.WarehouseId; transfer.DestinationRoomId = destination.RoomId;
         }
-        transfer.BinsReceived = acks.Sum(x => x.Quantity);
+        transfer.BinsReceived = acks.Sum(x => x.NetQuantity);
         transfer.VarianceBins = transfer.BinsReceived - transfer.BinsLoaded;
         transfer.ConcurrencyVersion++; receipt.ConcurrencyVersion++; receipt.UpdatedAt = now;
-        var placed = acks.Sum(x => x.Placements.Sum(p => p.Quantity));
-        Require(placed <= transfer.BinsReceived && transfer.BinsReceived <= transfer.BinsLoaded, "Receipt custody conservation failed.");
+        var placed = acks.Sum(x => x.PlacedQuantity);
+        Require(placed >= 0 && placed <= transfer.BinsReceived && transfer.BinsReceived <= transfer.BinsLoaded, "Receipt custody conservation failed.");
         if (placed == transfer.BinsLoaded && transfer.BinsReceived == transfer.BinsLoaded)
         {
             Require(receipt.BinCount == transfer.BinsLoaded, "Observed receipt quantity still contains an unresolved discrepancy.");
             transfer.Status = InterCrewTransferStatuses.Received;
             transfer.ReceivedAt = now; transfer.ReceivedByUserId = c.ActorId; transfer.ReceiveOperationKey = c.OperationKey;
             receipt.TransferCompletedAt = now;
+        }
+        else
+        {
+            transfer.Status = InterCrewTransferStatuses.InTransit;
+            transfer.ReceivedAt = null; transfer.ReceivedByUserId = null; transfer.ReceiveOperationKey = null;
+            receipt.TransferCompletedAt = null;
         }
         AddAudit(db, c, "CanonicalReceiptCustody", receipt.Id.ToString(), new { Acknowledged = beforeAcknowledged, Placed = beforePlaced },
             new { Acknowledged = transfer.BinsReceived, Placed = placed, Unresolved = transfer.BinsLoaded - transfer.BinsReceived, transfer.Status }, now);
