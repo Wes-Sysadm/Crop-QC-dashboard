@@ -243,8 +243,8 @@ table fingerprints unchanged** (migration-history bookkeeping excluded).
 
 | Historical pool | Authoritative bins, unchanged | Projection before | Projection after | Preview / approve / execute / verify seconds |
 |---|---:|---:|---:|---|
-| Evans CA 5 / 3152 | 61 | 162 | 61 | 7.936 / 7.814 / 23.183 / 4.100 |
-| Evans CA 5 / 9682 | 252 | 536 | 252 | 6.768 / 7.043 / 21.734 / 4.123 |
+| Evans Street 5 (room 15) / 3152 | 61 | 162 | 61 | 7.936 / 7.814 / 23.183 / 4.100 |
+| Evans Street 5 (room 15) / 9682 | 252 | 536 | 252 | 6.768 / 7.043 / 21.734 / 4.123 |
 | WP-7 / 1372 | 1,122 | 1,568 | 1,122 | 6.236 / 6.210 / 19.533 / 3.645 |
 | DH-15 / 2350 | 202 | 598 | 202 | 6.314 / 6.336 / 18.742 / 3.180 |
 | WP-5 / 1084 | 10 | 130 | 10 | 5.430 / 5.519 / 17.574 / 3.185 |
