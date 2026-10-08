@@ -42,12 +42,16 @@ try {
     $urls = @(Invoke-Git -Arguments @('remote', 'get-url', '--all', 'origin'))
     $allowed = '^(https://github\.com/Wes-Sysadm/Crop-QC-dashboard(?:\.git)?|git@github\.com:Wes-Sysadm/Crop-QC-dashboard(?:\.git)?|ssh://git@github\.com/Wes-Sysadm/Crop-QC-dashboard(?:\.git)?)$'
     if ($OfflineTestRemote) {
-        $fixture = (Resolve-Path -LiteralPath $OfflineTestRemote).Path
-        if ($urls.Count -ne 1 -or [IO.Path]::GetFullPath($urls[0]) -ne $fixture -or
-            -not (Test-Path -LiteralPath (Join-Path $fixture 'cropqc-sync-fixture')) -or
-            (& git -C $fixture rev-parse --is-bare-repository) -ne 'true') {
-            throw 'Offline tests require an explicitly marked local bare remote; network URLs are forbidden.'
+        if ($urls.Count -ne 1 -or -not [IO.Path]::IsPathRooted($urls[0]) -or $urls[0] -match '^\\\\|://') {
+            throw 'Offline tests require one absolute local remote path; network URLs are forbidden.'
         }
+        $fixture = (Resolve-Path -LiteralPath $OfflineTestRemote).ProviderPath
+        $fixtureOrigin = (Resolve-Path -LiteralPath $urls[0]).ProviderPath
+        if ($fixtureOrigin -ne $fixture) { throw 'Offline fixture and origin resolve to different paths.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $fixture 'cropqc-sync-fixture'))) { throw 'Offline bare remote marker is missing.' }
+        # Explicit --git-dir avoids discovery being influenced by a parent checkout.
+        $bare = & git "--git-dir=$fixture" rev-parse --is-bare-repository
+        if ($LASTEXITCODE -ne 0 -or $bare -ne 'true') { throw 'Offline fixture is not a verifiable bare repository.' }
         Write-Output 'OFFLINE DISPOSABLE TEST MODE; this does not verify GitHub freshness.'
     } elseif ($urls.Count -ne 1 -or $urls[0] -cnotmatch $allowed) {
         throw 'origin must be the credential-free Wes-Sysadm/Crop-QC-dashboard GitHub URL (HTTPS or SSH). Remote was not contacted.'
