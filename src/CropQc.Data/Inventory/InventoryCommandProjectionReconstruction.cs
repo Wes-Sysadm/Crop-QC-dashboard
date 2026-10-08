@@ -230,7 +230,7 @@ public sealed partial class InventoryCommandExecutor
         {
             var original = originalRows.RootElement.EnumerateArray().Single(x => x.GetProperty("id").GetInt64() == row.Id);
             var actual = JsonSerializer.SerializeToElement(row, ReconstructionJson);
-            Require(row.RetiredAt != null && row.RetiredAt == row.UpdatedAt
+            Require(row.RetiredAt == command.CommittedAt && row.RetiredAt == row.UpdatedAt
                 && original.EnumerateObject().Where(x => !retirementFields.Contains(x.Name))
                     .All(x => x.Value.GetRawText() == actual.GetProperty(x.Name).GetRawText()), "Historical projection metadata changed.");
         }
@@ -409,6 +409,15 @@ public sealed partial class InventoryCommandExecutor
             plan = null; category = "AdditionalReconciliationEvidence";
             blockers = blockers.AddRange(unsupportedReceipts.Select(x => $"InterCrewTransfer {x.Id}: status {x.Status}, dispatched {x.BinsLoaded}, acknowledged {x.BinsReceived}; this branch cannot prove partial/held settlement allocations. Acknowledgement is not room placement."));
         }
+        // A newer schema can coexist with this main-based maintenance command.
+        // Do not claim approval eligibility once the compensation-aware custody
+        // contract is in use: its immutable tables are not in this repair's
+        // protected manifest, and its writer fence must not be bypassed.
+        if (await ReconstructionReceiptCustodyAcknowledgmentAsync(db, ct) is long acknowledgmentId)
+        {
+            plan = null; category = "AdditionalReconciliationEvidence";
+            blockers = blockers.Add($"ReceiptCustodyAcknowledgment {acknowledgmentId}: compensation-aware custody is in use. This maintenance version does not protect acknowledgement, placement and reversal tables or implement their writer contract; reconstruction is unsupported until that integration is reviewed. The custody writer fence remains enforced.");
+        }
         var ids = plan?.Changes.Select(x => x.Id).Order().ToArray()
             ?? evidence!.Projections.Where(x => x.Disposition == "Current" && x.Quantity > 0).Select(x => x.Id).Order().ToArray();
         var rows = await db.TreatmentLineageSegments.AsNoTracking().Where(x => ids.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
@@ -428,5 +437,13 @@ public sealed partial class InventoryCommandExecutor
         var fingerprint = RepairHash(JsonSerializer.Serialize(new { evidence, beforeJson, movementHash, auditHash, protectedHash, custody }, ReconstructionJson));
         return new(target, category, blockers.ToImmutableArray(), result.AuthoritativeQuantity, result.RawProjectionQuantity,
             "u", plan, fingerprint, movementHash, auditHash, protectedHash, beforeJson, revisions, evidence, custody.ToImmutable(), capturedAt);
+    }
+
+    private static async Task<long?> ReconstructionReceiptCustodyAcknowledgmentAsync(CropQcDbContext db, CancellationToken ct)
+    {
+        var present = await db.Database.SqlQueryRaw<bool>(
+            "SELECT to_regclass('\"ReceiptCustodyAcknowledgments\"') IS NOT NULL AS \"Value\"").SingleAsync(ct);
+        return present ? await db.Database.SqlQueryRaw<long?>(
+            "SELECT min(\"Id\") AS \"Value\" FROM \"ReceiptCustodyAcknowledgments\"").SingleAsync(ct) : null;
     }
 }

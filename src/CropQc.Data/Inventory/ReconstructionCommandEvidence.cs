@@ -38,11 +38,25 @@ internal static class ReconstructionCommandEvidence
             var moveIds = result.Effects.SelectMany(x => x.MovementIds).Distinct().ToArray();
             var ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => ledgerIds.Contains(x.Id)).ToArrayAsync(ct);
             var moves = await db.TreatmentLineageMovements.AsNoTracking().Where(x => moveIds.Contains(x.Id)).ToArrayAsync(ct);
+            // The partial-custody correction contract posts newly added untreated
+            // bins at commit time, deliberately avoiding an older treatment clock.
+            // Read the persisted contract extension without duplicating its writer
+            // or requiring that pending schema on this main-based branch.
+            using var persistedIntent = JsonDocument.Parse(command.IntentJson);
+            var arrivalAtCommit = intent.Kind == InventoryCommandKind.CorrectReceiptQuantity
+                && persistedIntent.RootElement.TryGetProperty("receiptChange", out var change)
+                && change.TryGetProperty("confirmAdditionalBinsUntreated", out var confirmed) && confirmed.ValueKind == JsonValueKind.True
+                && ledger.Length > 0 && ledger.All(x => x.ChangeAmount > 0 && x.AdjustmentType == "ReceiptAdminOverride"
+                    && x.ReceiptId == intent.ReceiptChange!.ReceiptId && x.ReceiptInventoryOverrideId != null)
+                && moves.Length > 0 && moves.All(x => x.MovementType == "ReceiptQuantityCorrection"
+                    && x.ReceiptId == intent.ReceiptChange!.ReceiptId && x.SourceSegmentId == null
+                    && x.TreatmentStateSnapshot == "Untreated" && x.TreatmentSignatureSnapshot == "u");
+            var effectiveAt = arrivalAtCommit ? command.CommittedAt : intent.EffectiveAt;
             if (ledger.Length != ledgerIds.Length || moves.Length != moveIds.Length
                 || ledger.Any(x => x.InventoryInvariantVersion != InventoryLedgerKinds.CanonicalCommandInvariantVersion
-                    || !Prefixes(x.InventoryOperationKey ?? "").Contains(command.OperationKey) || x.CreatedAt != command.CommittedAt || x.AdjustmentAt.UtcTicks / 10 != intent.EffectiveAt.UtcTicks / 10)
+                    || !Prefixes(x.InventoryOperationKey ?? "").Contains(command.OperationKey) || x.CreatedAt != command.CommittedAt || x.AdjustmentAt.UtcTicks / 10 != effectiveAt.UtcTicks / 10)
                 || moves.Any(x => !Prefixes(x.OperationKey).Contains(command.OperationKey) || x.CreatedAt != command.CommittedAt
-                    || x.OccurredAt.UtcTicks / 10 != intent.EffectiveAt.UtcTicks / 10 || !ParentPresent(x))) continue;
+                    || x.OccurredAt.UtcTicks / 10 != effectiveAt.UtcTicks / 10 || !ParentPresent(x))) continue;
             var allLedger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.InventoryOperationKey == command.OperationKey
                 || x.InventoryOperationKey!.StartsWith(command.OperationKey + ":")).Select(x => x.Id).ToArrayAsync(ct);
             var allMoves = await db.TreatmentLineageMovements.AsNoTracking().Where(x => x.OperationKey == command.OperationKey

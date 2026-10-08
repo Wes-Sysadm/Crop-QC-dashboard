@@ -34,12 +34,21 @@ public sealed class DynamicProjectionReconstructionTests
     [InlineData("unexpected-current")]
     [InlineData("retired-quantity")]
     [InlineData("retired-metadata")]
+    [InlineData("retired-clock")]
+    [InlineData("replacement-metadata")]
+    [InlineData("original-audit")]
+    [InlineData("original-command")]
     [InlineData("approval")]
     [InlineData("seal")]
     [InlineData("ledger")]
     public async Task Independent_verifier_rejects_tampering_even_after_valid_new_receiving(string mutation)
     {
         await using var f = await Fixture.Create();
+        if (mutation is "original-audit" or "original-command")
+        {
+            await Receive(f, 5, "BEFORE-REPAIR");
+            await AddStaleAlias(f);
+        }
         var request = await f.Request();
         var repaired = await f.Executor.ReconstructProjectionAsync(request, true);
         Assert.Equal("Committed", repaired.Status);
@@ -71,6 +80,15 @@ public sealed class DynamicProjectionReconstructionTests
                 case "unexpected-current": db.TreatmentLineageSegments.Add(Clone(row, 400000, 1)); break;
                 case "retired-quantity": (await db.TreatmentLineageSegments.SingleAsync(x => x.Id == request.Preview.Plan!.Changes[0].Id)).RetiredQuantity++; break;
                 case "retired-metadata": (await db.TreatmentLineageSegments.SingleAsync(x => x.Id == request.Preview.Plan!.Changes[0].Id)).GrowerNameSnapshot = "CHANGED"; break;
+                case "retired-clock":
+                    var retired = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == request.Preview.Plan!.Changes[0].Id);
+                    retired.RetiredAt = retired.UpdatedAt = retired.UpdatedAt.AddMinutes(1); break;
+                case "replacement-metadata": row.GrowerNameSnapshot = "CHANGED"; break;
+                case "original-audit":
+                    (await db.AuditLogs.FirstAsync(x => x.EntityName != "ProjectionReconstruction" && x.Id < request.ApprovalAuditId)).Action = "CHANGED"; break;
+                case "original-command":
+                    var repairClock = await db.InventoryCommands.Where(x => x.OperationKey == request.OperationKey).Select(x => x.CommittedAt).SingleAsync();
+                    (await db.InventoryCommands.FirstAsync(x => x.CommittedAt < repairClock)).IntentHash = "CHANGED"; break;
                 case "approval": (await db.AuditLogs.SingleAsync(x => x.Id == request.ApprovalAuditId)).Action = "CHANGED"; break;
                 case "seal":
                     var command = await db.InventoryCommands.SingleAsync(x => x.OperationKey == request.OperationKey);

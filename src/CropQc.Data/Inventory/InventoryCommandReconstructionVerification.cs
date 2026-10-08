@@ -94,13 +94,31 @@ public sealed partial class InventoryCommandExecutor
             && actualReplacement.TreatmentState == "Untreated" && actualReplacement.TreatmentSignature == "u"
             && actualReplacement.Applications.Count == 0 && actualReplacement.ReceiptId == request.Preview.Plan!.ReplacementReceiptId,
             "Current replacement identity, provenance, treatment state or application links are invalid.");
+        // Projection evidence intentionally contains only resolver fields. Compare
+        // the sealed persisted rows as well so display/origin metadata cannot be
+        // silently rewritten while quantity and treatment still reconcile.
+        using var committedRows = JsonDocument.Parse(committed.CurrentRowsJson);
+        var committedIds = committedRows.RootElement.EnumerateArray().Select(x => x.GetProperty("id").GetInt64()).ToArray();
+        var persistedRows = await db.TreatmentLineageSegments.AsNoTracking().Where(x => committedIds.Contains(x.Id)).ToArrayAsync(ct);
+        string[] mutableLifecycle = ["currentBins", "disposition", "retiredAt", "retiredQuantity", "retiredByCommandKey", "concurrencyVersion", "updatedAt"];
+        Require(persistedRows.Length == committedIds.Length, "A committed current projection was deleted.");
+        foreach (var row in persistedRows)
+        {
+            var original = committedRows.RootElement.EnumerateArray().Single(x => x.GetProperty("id").GetInt64() == row.Id);
+            var actual = JsonSerializer.SerializeToElement(row, ReconstructionJson);
+            Require(original.EnumerateObject().Where(x => !mutableLifecycle.Contains(x.Name))
+                .All(x => x.Value.GetRawText() == actual.GetProperty(x.Name).GetRawText()),
+                $"Committed projection {row.Id} identity or original metadata changed.");
+        }
         // Check historical commit validity before considering any later change.
         // Edits to protected rows are never excused by unrelated subsequent activity.
         var changedTables = new List<string>();
         foreach (var boundary in committed.Boundaries)
             if (boundary.Hash != await BoundaryHashAsync(db, boundary, ct)) changedTables.Add(boundary.Table);
-        Require(!changedTables.Contains("RoomInventoryAdjustments") && !changedTables.Contains("TreatmentLineageMovements"),
-            "Previously committed authoritative ledger or movement history changed.");
+        string[] immutableTables = ["RoomInventoryAdjustments", "TreatmentLineageMovements", "AuditLogs", "InventoryCommands"];
+        Require(!changedTables.Intersect(immutableTables).Any(),
+            "Previously committed immutable ledger, movement, audit or command history changed: "
+                + string.Join(", ", changedTables.Intersect(immutableTables)));
         var resolved = InventoryAvailabilityResolver.Resolve(current!, new());
         Require(resolved.IsOperable && resolved.TreatmentConfidence == InventoryConfidence.Proven
             && resolved.RawProjectionQuantity == resolved.AuthoritativeQuantity
@@ -113,6 +131,12 @@ public sealed partial class InventoryCommandExecutor
                 .All(x => InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: kind)).IsOperable),
                 $"Fresh {kind} custody does not reconcile with recorded dispatch allocations.");
         }
+        if (await ReconstructionReceiptCustodyAcknowledgmentAsync(db, ct) is long acknowledgmentId)
+            return result with
+            {
+                Status = "CommittedEvidenceVerifiedCurrentReviewRequired",
+                Detail = $"Original sealed repair verifies. ReceiptCustodyAcknowledgment {acknowledgmentId} requires the compensation-aware held/placement/reversal proof, which this maintenance verifier does not implement. Current custody allocation is not certified."
+            };
         var unchanged = JsonSerializer.Serialize(current!.Projections, ReconstructionJson)
             == JsonSerializer.Serialize(committed.Position.Projections, ReconstructionJson);
         var sameContributions = JsonSerializer.Serialize(new { current.Ledger, current.Movements, current.Receipts, current.Applications }, ReconstructionJson)
