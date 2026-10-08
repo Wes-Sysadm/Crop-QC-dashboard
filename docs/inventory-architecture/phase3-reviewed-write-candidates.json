@@ -99,7 +99,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
     "Classification": "CLI maintenance",
     "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
-    "Sha256": "F5696DFB3A5902FA9623B8EC9E6BB189F05C63875745A9CB56F5CA1E66BD8A0D"
+    "Sha256": "8FE1F8D0CA8292E92A28EA591463330F6341CEB9CDF4B93BAA685D28C656EC21"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
@@ -130,6 +130,12 @@
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
     "Sha256": "8F9668CECD4E3BE67C912BAAD50E95DD0B20D8799667B4E0CC777BD773EB7304"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandReconstructionVerification.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "6B27B631BE87DE2C5EBCD845F9F27669B91A3B654E374D0F8CCA56A4CE667B2A"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandRestoration.cs",
@@ -189,19 +195,31 @@
     "Path": "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "AsNoTracking evidence reads and local diagnostic collections only; correction arithmetic never grants custody or reconstruction authority.",
-    "Sha256": "990DC528E78BD74C76FE384AFB35BE06B7BD7D8057AE49CD10CA505A80D4D702"
+    "Sha256": "CB166E4643E5813F9C0E09C346D144FF504AC65969C7AD194E3276A02E752E70"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/ReconstructionCommandEvidence.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "444F88B30D6C92DFAB8222DAF05324406D2D98F73BE3ED03B92ADCD2987AEA10"
   },
   {
     "Path": "src/CropQc.Data/Inventory/RecordedInventoryHistory.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Detached read-only history loader and pure maintenance proof; collection Add calls construct evidence, never persist physical entities.",
-    "Sha256": "AA83B81D729DA38E376C8E0DB4926B3786732DAAAF33715D59D8C0851AF4AADC"
+    "Sha256": "5A223358FECE147730957115BCE81D6642957A9AFA0A5E9FA399054888EBBF79"
   },
   {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
     "Sha256": "7CECE62EFC2D39D0BC2EB7C5866747B116CEE290990854A3050DE97A4CFF15E6"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/SelectiveProjectionReconstruction.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "17BD7AECBAE410BB6B10A08266950E236A0268D41C2B1DED9A53CAD91C4CB83B"
   },
   {
     "Path": "src/CropQc.Data/ReceiptQcSampleCoordinator.cs",

@@ -200,7 +200,7 @@ public sealed class ProjectionReconstructionTests
         }
     }
 
-    private sealed class Fixture(string connection) : IDbContextFactory<CropQcDbContext>, IAsyncDisposable
+    internal sealed class Fixture(string connection) : IDbContextFactory<CropQcDbContext>, IAsyncDisposable
     {
         public string Connection => connection;
         public InventoryCommandExecutor Executor => new(this);
@@ -214,7 +214,7 @@ public sealed class ProjectionReconstructionTests
             var f = new Fixture(new NpgsqlConnectionStringBuilder(original) { Database = "cropqc_test_reconstruction_" + Guid.NewGuid().ToString("N") }.ConnectionString);
             await using var db = f.LegacyDb(); await db.Database.EnsureCreatedAsync();
             await InventoryAvailabilityDatabaseTests.SeedAsync(db, 1);
-            db.Users.Add(new() { Id = 8000, Email = "repair@example.invalid", DisplayName = "Maintenance operator" });
+            db.Users.Add(new() { Id = 8000, Email = "canonical-test@example.invalid", DisplayName = "Maintenance operator" });
             db.UserRoles.Add(new() { UserId = 8000, RoleId = 1 });
             var originalRow = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == 100000);
             var alias = new TreatmentLineageSegment

@@ -60,7 +60,8 @@ public static class RecordedInventoryHistoryReconstruction
             || correctionIds.Contains(x.ReceiptInventoryOverrideId ?? Guid.Empty)).ToArrayAsync(ct);
         ledger = ledger.Concat(extra).DistinctBy(x => x.Id).OrderBy(x => x.Id).ToArray();
         var keys = corrections.Select(x => x.Id.ToString()).ToArray();
-        var audits = await db.AuditLogs.AsNoTracking().Where(x => x.EntityName == "ReceiptInventoryOverride" && keys.Contains(x.EntityKey)).ToArrayAsync(ct);
+        var audits = await db.AuditLogs.AsNoTracking().Where(x => keys.Contains(x.EntityKey)
+            && (x.EntityName == "ReceiptInventoryOverride" || x.EntityName == "CanonicalInventory" && x.SourceApplication == "CanonicalInventory/v1")).ToArrayAsync(ct);
         var ledgerIds = ledger.Select(x => x.Id).ToArray();
         var entries = await db.BinsRunEntries.AsNoTracking().Where(x => ledgerIds.Contains(x.InventoryAdjustmentId)
             || rooms.Contains(x.RoomId) && x.CropYear == target.Identity.CropYear && x.GrowerLotId == target.Identity.GrowerLotId
@@ -165,17 +166,30 @@ public static class RecordedInventoryHistoryReconstruction
                         else
                         {
                             var assessment = ReceiptRevisionEvidenceValidator.Evaluate(e, receipt, revisions, history.Ledger, history.Audits, history.Ledger);
-                            if (!assessment.CorrectionChainValid || revisions.Any(x => x.InventoryDelta > 0 || x.CreatedAt < row.CreatedAt))
-                                Fail($"Receipt {receipt.Id}: missing/contradictory revision, audit or compensating ledger event; positive corrections need separate origin evidence.");
+                            if (!assessment.CorrectionChainValid || revisions.Any(x => x.CreatedAt < row.CreatedAt))
+                                Fail($"Receipt {receipt.Id}: missing/contradictory revision, audit or compensating ledger event.");
                             foreach (var revision in revisions) Ref("ReceiptInventoryOverride", revision.Id);
                             foreach (var audit in assessment.AuditIds) Ref("AuditLog", audit);
                         }
+                        var arrivals = e.Movements.Where(x => x.Kind == "Receipt" && x.ReceiptId == receipt.Id && x.Incoming).ToArray();
+                        if (arrivals.Length > 0) MatchMoves(arrivals, row.ChangeAmount, "Receipt", row);
                         break;
                     case "ReceiptAdminOverride":
                         var correction = history.Corrections.SingleOrDefault(x => x.Id == row.ReceiptInventoryOverrideId && x.ReceiptId == row.ReceiptId);
-                        if (correction == null || row.ChangeAmount >= 0 || !rows.Any(x => x.ReceiptId == row.ReceiptId && x.AdjustmentType == "ReceiptAdd")
-                            || row.AdjustmentAt != correction.CreatedAt)
-                            Fail($"Ledger {row.Id}: exact committed negative receipt revision {row.ReceiptInventoryOverrideId} is missing or contradictory.");
+                        if (correction == null || row.ChangeAmount == 0 || !rows.Any(x => x.ReceiptId == row.ReceiptId && x.AdjustmentType == "ReceiptAdd")
+                            || row.InventoryInvariantVersion < 3 && row.AdjustmentAt != correction.CreatedAt)
+                            Fail($"Ledger {row.Id}: exact committed signed receipt revision {row.ReceiptInventoryOverrideId} is missing or contradictory.");
+                        if (correction != null)
+                        {
+                            var correctionMoves = e.Movements.Where(x => x.ReceiptId == row.ReceiptId && x.CreatedAt == correction.CreatedAt
+                                && x.Kind is "ReceiptQuantityCorrection" or "ReceiptVoid").ToArray();
+                            if (correctionMoves.Length > 0)
+                            {
+                                if (correctionMoves.Sum(x => (x.Incoming ? x.Quantity : 0) - (x.Outgoing ? x.Quantity : 0)) != row.ChangeAmount
+                                    || correctionMoves.Any(x => x.At != row.AdjustmentAt)) Fail($"Ledger {row.Id}: signed correction movement allocations disagree.");
+                                foreach (var move in correctionMoves) { matchedMovements.Add(move.Id); Ref("TreatmentLineageMovement", move.Id); }
+                            }
+                        }
                         break;
                     case "BinsRun":
                         var entries = history.Entries.Where(x => x.InventoryAdjustmentId == row.Id).ToArray();

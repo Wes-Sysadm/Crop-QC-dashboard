@@ -1,5 +1,9 @@
 # Recorded-history reconstruction of the three remaining treatment pools
 
+**Historical backup #186 evidence only.** The quantities and projection IDs below
+are not current production targets. See the [dynamic PR #275 follow-up](dynamic-reconstruction-2026-10-08.md)
+for fresh-snapshot reconstruction, preservation of later inventory and independent verification.
+
 Date: 2026-10-08 UTC. **Proposal for approval; no production repair, deployment, merge, or backup operation occurred.**
 
 All three blockers are resolvable by audited projection reconstruction under the authoritative recorded-inventory rule. The complete recorded histories establish **202 bins in DH-15/2350, 10 in WP-5/1084, and 170 in WP-8/2350**, uniformly untreated. Exact surviving receipt allocation remains shared/unresolved. No authoritative quantity changes are required.

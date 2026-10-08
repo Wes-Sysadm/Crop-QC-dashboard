@@ -16,7 +16,8 @@ public static class ReceiptRevisionEvidenceValidator
         var corrections = await db.ReceiptInventoryOverrides.AsNoTracking().Where(x => ids.Contains(x.ReceiptId))
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(ct);
         var keys = corrections.Select(x => x.Id.ToString()).ToArray();
-        var audits = await db.AuditLogs.AsNoTracking().Where(x => x.EntityName == "ReceiptInventoryOverride" && keys.Contains(x.EntityKey))
+        var audits = await db.AuditLogs.AsNoTracking().Where(x => keys.Contains(x.EntityKey)
+            && (x.EntityName == "ReceiptInventoryOverride" || x.EntityName == "CanonicalInventory" && x.SourceApplication == "CanonicalInventory/v1"))
             .OrderBy(x => x.Id).ToListAsync(ct);
         var correctionIds = corrections.Select(x => x.Id).ToArray();
         var ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.ReceiptInventoryOverrideId != null
@@ -52,8 +53,10 @@ public static class ReceiptRevisionEvidenceValidator
                 string[] identityFields = ["id", "cropYear", "warehouseId", "roomId", "fruitProfileId", "growerLotId", "growerNumber", "lotCode", "receiptType", "receivedAt"];
                 var quantity = revision.ActionType == ReceiptInventoryOverrideActionTypes.VoidReceipt
                     ? -before.GetProperty("binCount").GetInt32() : after.GetProperty("binCount").GetInt32() - before.GetProperty("binCount").GetInt32();
-                var matches = audits.Where(x => x.EntityName == "ReceiptInventoryOverride" && x.EntityKey == revision.Id.ToString()
-                    && x.Action == revision.ActionType).ToArray();
+                var matches = audits.Where(x => x.EntityKey == revision.Id.ToString()
+                    && (x.EntityName == "ReceiptInventoryOverride" && x.Action == revision.ActionType
+                        || x.EntityName == "CanonicalInventory" && x.SourceApplication == "CanonicalInventory/v1"
+                        && x.Action == (revision.ActionType == ReceiptInventoryOverrideActionTypes.VoidReceipt ? "CanonicalReceiptVoided" : "CanonicalReceiptQuantityCorrected"))).ToArray();
                 var changes = ledger.Where(x => x.ReceiptInventoryOverrideId == revision.Id).ToArray();
                 if (!revision.IsComplete || revision.ActionType is not (ReceiptInventoryOverrideActionTypes.VoidReceipt or ReceiptInventoryOverrideActionTypes.QuantityCorrection)
                     || string.IsNullOrWhiteSpace(revision.OperationKey) || relevant.Count(x => x.OperationKey == revision.OperationKey) != 1
@@ -75,7 +78,7 @@ public static class ReceiptRevisionEvidenceValidator
                     problems.Add($"Correction {revision.Id} lacks an exact complete quantity-only revision, ledger or audit chain.");
                 else
                 {
-                    using var auditBefore = JsonDocument.Parse(matches[0].BeforeValuesJson!);
+                    using var auditBefore = ParseSnapshot(matches[0].BeforeValuesJson!);
                     using var auditAfter = JsonDocument.Parse(matches[0].AfterValuesJson!);
                     using var recordedAfter = JsonDocument.Parse(auditAfter.RootElement.GetProperty("afterReceiptSnapshotJson").GetString()!);
                     if (before.GetRawText() != auditBefore.RootElement.GetRawText() || after.GetRawText() != recordedAfter.RootElement.GetRawText())
@@ -130,5 +133,11 @@ public static class ReceiptRevisionEvidenceValidator
             pool.IsOperable && pool.TreatmentConfidence == InventoryConfidence.Proven
                 && pool.TreatmentSlices.All(x => x.Signature == "u" && x.State == "Untreated" && x.ApplicationIds.IsEmpty), originalQuantity, current.BinCount,
             problems.ToImmutableArray(), relevant.Select(x => x.Id.ToString()).ToImmutableArray(), auditIds.ToImmutableArray(), current.IsDeleted);
+    }
+
+    private static JsonDocument ParseSnapshot(string json)
+    {
+        using var value = JsonDocument.Parse(json);
+        return JsonDocument.Parse(value.RootElement.ValueKind == JsonValueKind.String ? value.RootElement.GetString()! : json);
     }
 }

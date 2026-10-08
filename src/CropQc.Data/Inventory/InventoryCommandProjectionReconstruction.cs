@@ -107,11 +107,17 @@ public sealed partial class InventoryCommandExecutor
             await db.SaveChangesAsync(ct);
             await Stage("ReconstructionRetired", db, 1, ct);
             var target = before.Target;
-            var replacement = await new CanonicalProjectionFactory(db).CurrentAsync(target.Identity, target.WarehouseId,
-                target.RoomId, "u", "Untreated", null, [], now, ct);
-            Require(replacement.CurrentBins == 0 && replacement.ReceiptId == null, "Replacement is not an empty shared projection.");
-            replacement.CurrentBins = before.AuthoritativeQuantity;
-            replacement.ConcurrencyVersion = 1;
+            TreatmentLineageSegment replacement;
+            if (before.Plan.ReplacementProjectionId is long preservedId)
+                replacement = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == preservedId, ct);
+            else
+            {
+                replacement = await new CanonicalProjectionFactory(db).CurrentAsync(target.Identity, target.WarehouseId,
+                    target.RoomId, "u", "Untreated", null, [], now, ct);
+                Require(replacement.CurrentBins == 0 && replacement.ReceiptId == null, "Replacement is not an empty shared projection.");
+                replacement.CurrentBins = before.Plan.ReplacementQuantity;
+                replacement.ConcurrencyVersion = 1;
+            }
             await db.SaveChangesAsync(ct);
             await Stage("ReconstructionReplaced", db, 1, ct);
 
@@ -120,15 +126,19 @@ public sealed partial class InventoryCommandExecutor
             Require(after.AuthoritativeQuantity == before.AuthoritativeQuantity && after.ProjectedQuantity == before.AuthoritativeQuantity
                 && after.MovementFingerprint == before.MovementFingerprint && after.AuditFingerprint == before.AuditFingerprint,
                 "Post-operation quantity, movement or audit conservation failed.");
-            var protectedAfter = await ReconstructionProtectedHashAsync(db, ids.Append(replacement.Id).ToArray(), ct);
+            var excludedIds = before.Plan.ReplacementProjectionId == null ? ids.Append(replacement.Id).ToArray() : ids;
+            var protectedAfter = await ReconstructionProtectedHashAsync(db, excludedIds, ct);
             Require(protectedAfter == before.ProtectedFingerprint, "Protected or unrelated records changed.");
-            var postEvidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), now, ct))
+            var postEvidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), DateTimeOffset.UtcNow, ct))
                 .Positions.Single(x => x.Identity.Key == target.Identity.Key);
             var post = InventoryAvailabilityResolver.Resolve(postEvidence, new());
             Require(post.IsOperable && post.TreatmentConfidence == InventoryConfidence.Proven
-                && post.TreatmentSlices.All(x => x.Signature == "u" && x.ApplicationIds.IsEmpty)
-                && postEvidence.Projections.Count(x => x.Disposition == "Current" && x.Quantity > 0) == 1,
+                && post.TreatmentSlices.All(x => x.Signature == "u" && x.State == "Untreated" && x.ApplicationIds.IsEmpty)
+                && post.RawProjectionQuantity == before.AuthoritativeQuantity,
                 "Post-operation untreated shared-pool proof failed.");
+            var committedEvidence = new ReconstructionCommitEvidence(postEvidence,
+                await CaptureReconstructionBoundariesAsync(db, ct), protectedAfter, after.BeforeSegmentsJson);
+            var verificationSeal = RepairHash(JsonSerializer.Serialize(committedEvidence, ReconstructionJson));
             var audit = ReconstructionAudit(request.OperatorId, "Reconstruct", request.OperationKey, before.BeforeSegmentsJson,
                 JsonSerializer.Serialize(new
                 {
@@ -136,14 +146,16 @@ public sealed partial class InventoryCommandExecutor
                     before,
                     after = after.BeforeSegmentsJson,
                     replacement.Id,
-                    receiptId = (long?)null,
+                    receiptId = replacement.ReceiptId,
                     authoritativeDelta = 0,
-                    protectedAfter
+                    protectedAfter,
+                    committedEvidence
                 }, ReconstructionJson));
             db.AuditLogs.Add(audit);
             await db.SaveChangesAsync(ct);
             var result = new ProjectionReconstructionResult("Committed", request.OperationKey,
-                "Historical projections superseded; authoritative inventory and treatment evidence preserved.", replacement.Id, audit.Id);
+                "Historical projections superseded; authoritative inventory and treatment evidence preserved.", replacement.Id, audit.Id,
+                VerificationSeal: verificationSeal);
             db.InventoryCommands.Add(new()
             {
                 OperationKey = request.OperationKey,
@@ -193,6 +205,15 @@ public sealed partial class InventoryCommandExecutor
         var request = JsonSerializer.Deserialize<ProjectionReconstructionRequest>(command!.IntentJson, ReconstructionJson)!;
         var result = JsonSerializer.Deserialize<ProjectionReconstructionResult>(command.ResultJson, ReconstructionJson)!;
         Require(request.Preview?.Plan != null && result.ReplacementSegmentId != null, "Operation is not a projection reconstruction.");
+        Require(command.ActorId == request.OperatorId && command.OperationKey == request.OperationKey, "Execution journal identity is inconsistent.");
+        var approvalRow = await db.AuditLogs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ApprovalAuditId, ct);
+        Require(approvalRow != null && approvalRow.EntityName == ReconstructionEntity && approvalRow.Action == "Approve"
+            && approvalRow.SourceApplication == ReconstructionSource && approvalRow.BeforeValuesJson == null,
+            "Independent approval audit is missing or inconsistent.");
+        var approval = JsonSerializer.Deserialize<ProjectionReconstructionApprovalRequest>(approvalRow!.AfterValuesJson!, ReconstructionJson)!;
+        Require(approval.ExplicitlyApprove && approval.ApprovalKey == approvalRow.EntityKey && approval.ApproverId == approvalRow.UserId
+            && !string.IsNullOrWhiteSpace(approval.ApprovalReference) && !string.IsNullOrWhiteSpace(approval.Reason)
+            && SamePreview(approval.Preview, request.Preview!), "Approval does not bind the immutable committed intent.");
         var audit = await db.AuditLogs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == result.RepairAuditId, ct);
         Require(audit != null && audit.EntityName == ReconstructionEntity && audit.Action == "Reconstruct"
             && audit.EntityKey == operationKey && audit.UserId == request.OperatorId && audit.SourceApplication == ReconstructionSource
@@ -219,20 +240,19 @@ public sealed partial class InventoryCommandExecutor
             && auditAfter.RootElement.GetProperty("protectedAfter").GetString() == request.Preview.ProtectedFingerprint
             && SamePreview(auditAfter.RootElement.GetProperty("before").Deserialize<ProjectionReconstructionPreview>(ReconstructionJson)!, request.Preview),
             "Repair audit does not match the approved evidence.");
-        var replacementId = result.ReplacementSegmentId ?? throw new InvalidOperationException("Replacement ID is missing.");
-        var hash = await ReconstructionProtectedHashAsync(db, ids.Append(replacementId).ToArray(), ct, operationKey);
-        var current = await ReadReconstructionAsync(db, request.Preview.Target, ct);
-        var replacement = await db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == result.ReplacementSegmentId, ct);
-        if (hash != request.Preview.ProtectedFingerprint || current.AuthoritativeQuantity != request.Preview.AuthoritativeQuantity
-            || current.ProjectedQuantity != request.Preview.AuthoritativeQuantity || replacement.ReceiptId != null
-            || replacement.CurrentBins != request.Preview.AuthoritativeQuantity || replacement.TreatmentSignature != "u")
-            return result with { Status = "EvidenceChanged", Detail = "Current evidence differs from the committed repair; inspect subsequent operations before concluding corruption." };
-        return result with { Status = "Verified", Detail = "Independent read confirms conservation, preserved history and the exact shared projection." };
+        Require(auditAfter.RootElement.GetProperty("id").GetInt64() == result.ReplacementSegmentId
+            && auditAfter.RootElement.GetProperty("receiptId").Deserialize<long?>() == request.Preview.Plan.ReplacementReceiptId
+            && auditAfter.RootElement.TryGetProperty("committedEvidence", out _), "Committed verification evidence is missing or inconsistent.");
+        var committed = auditAfter.RootElement.GetProperty("committedEvidence").Deserialize<ReconstructionCommitEvidence>(ReconstructionJson)!;
+        Require(auditAfter.RootElement.GetProperty("after").GetString() == committed.CurrentRowsJson,
+            "Execution audit after-state differs from sealed commit evidence.");
+        VerifyCommittedReconstruction(request, result, committed);
+        return await VerifyCurrentReconstructionAsync(db, request, result, committed, ct);
     }
 
     private static bool ValidRepairKey(string key) => !string.IsNullOrWhiteSpace(key) && key.Length <= 60;
     private static bool SamePreview(ProjectionReconstructionPreview a, ProjectionReconstructionPreview b) =>
-        JsonSerializer.Serialize(a, ReconstructionJson) == JsonSerializer.Serialize(b, ReconstructionJson);
+        JsonSerializer.Serialize(a with { SnapshotCapturedAt = null }, ReconstructionJson) == JsonSerializer.Serialize(b with { SnapshotCapturedAt = null }, ReconstructionJson);
     private static string RepairHash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     private static AuditLog ReconstructionAudit(int actor, string action, string key, string? before, string after) => new()
     {
@@ -332,11 +352,16 @@ public sealed partial class InventoryCommandExecutor
         ProjectionReconstructionTarget target, CancellationToken ct)
     {
         Require(target.Identity.IsComplete && target.RoomId > 0 && target.WarehouseId > 0, "Exact complete room identity required.");
-        var batch = await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), DateTimeOffset.UtcNow, ct);
+        var capturedAt = DateTimeOffset.UtcNow;
+        var batch = await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId]), capturedAt, ct);
         var evidence = batch.Positions.SingleOrDefault(x => x.Identity.Key == target.Identity.Key);
         Require(evidence != null, "Target identity is absent.");
         var result = InventoryAvailabilityResolver.Resolve(evidence!, new());
+        var canonical = await ReconstructionCommandEvidence.ValidateAsync(db, evidence!, ct);
+        var known = await SelectiveProjectionReconstruction.PreservedCanonicalPopulationsAsync(db, evidence!, canonical, ct);
         var (category, blockers, plan) = AssessProjectionReconstruction(evidence!);
+        var represented = SelectiveProjectionReconstruction.FullyRepresented(evidence!, known);
+        if (represented != null) { category = "ProvenReconstructionCandidate"; blockers = []; plan = represented; }
         RecordedHistoryAssessment? recordedHistory = null;
         if (plan == null && result.AuthoritativeQuantity > 0 && result.RawProjectionQuantity > result.AuthoritativeQuantity)
         {
@@ -349,14 +374,50 @@ public sealed partial class InventoryCommandExecutor
                 category = "ProvenReconstructionCandidate";
             }
         }
-        var ids = evidence!.Projections.Where(x => x.Disposition == "Current" && x.Quantity > 0).Select(x => x.Id).Order().ToArray();
+        if (plan != null)
+        {
+            var selective = SelectiveProjectionReconstruction.Refine(evidence!, plan, known);
+            plan = selective.Plan;
+            if (plan == null) { category = "AdditionalReconciliationEvidence"; blockers = selective.Blockers; }
+        }
+        if (!canonical.InvalidCommands.IsEmpty)
+        {
+            plan = null; category = "AdditionalReconciliationEvidence";
+            blockers = blockers.AddRange(canonical.InvalidCommands.Select(x => $"Canonical command {x}: journal, parent, ledger or movement effects are missing, contradictory or unsupported."));
+        }
+        var custody = ImmutableArray.CreateBuilder<InventoryPositionEvidence>();
+        foreach (var kind in new[] { InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor })
+        {
+            var other = await new InventoryEvidenceLoader(db).LoadAsync(new(target.WarehouseId, [target.RoomId], kind), DateTimeOffset.UtcNow, ct);
+            custody.AddRange(other.Positions.Where(x => x.Identity.Key == target.Identity.Key));
+        }
+        if (custody.Any(x => !InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: x.Location.Custody)).IsOperable))
+        {
+            plan = null; category = "AdditionalReconciliationEvidence";
+            blockers = blockers.AddRange(custody.Select(x => new { Evidence = x, Result = InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: x.Location.Custody)) })
+                .Where(x => !x.Result.IsOperable).Select(x => $"{x.Evidence.Location.Custody} parent {x.Evidence.Location.CustodyRecordId}: "
+                    + string.Join("; ", x.Result.Blockers.Select(b => $"{b.Code}: {b.Detail}"))));
+        }
+        var unsupportedReceipts = await db.InterCrewTransfers.AsNoTracking().Where(x => x.CropYear == target.Identity.CropYear
+            && x.GrowerLotId == target.Identity.GrowerLotId && x.FruitProfileId == target.Identity.FruitProfileId
+            && (x.SourceRoomId == target.RoomId || x.DestinationRoomId == target.RoomId)
+            && (x.Status != InterCrewTransferStatuses.InTransit && x.Status != InterCrewTransferStatuses.Received
+                && x.Status != InterCrewTransferStatuses.Reversed || x.Status == InterCrewTransferStatuses.InTransit && x.BinsReceived != null
+                || x.Status == InterCrewTransferStatuses.Received && x.BinsReceived != x.BinsLoaded)).ToArrayAsync(ct);
+        if (unsupportedReceipts.Length > 0)
+        {
+            plan = null; category = "AdditionalReconciliationEvidence";
+            blockers = blockers.AddRange(unsupportedReceipts.Select(x => $"InterCrewTransfer {x.Id}: status {x.Status}, dispatched {x.BinsLoaded}, acknowledged {x.BinsReceived}; this branch cannot prove partial/held settlement allocations. Acknowledgement is not room placement."));
+        }
+        var ids = plan?.Changes.Select(x => x.Id).Order().ToArray()
+            ?? evidence!.Projections.Where(x => x.Disposition == "Current" && x.Quantity > 0).Select(x => x.Id).Order().ToArray();
         var rows = await db.TreatmentLineageSegments.AsNoTracking().Where(x => ids.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(ct);
         var beforeJson = JsonSerializer.Serialize(rows, ReconstructionJson);
         var movementHash = await TableFingerprintAsync(db, "TreatmentLineageMovements", "", ct);
         var auditHash = await TableFingerprintAsync(db, "AuditLogs",
             "WHERE NOT (\"EntityName\"='ProjectionReconstruction' AND \"SourceApplication\"='CanonicalProjectionReconstruction/v1')", ct);
         var protectedHash = await ReconstructionProtectedHashAsync(db, ids, ct);
-        var revisions = await ReceiptRevisionEvidenceValidator.EvaluateAsync(db, evidence, ct);
+        var revisions = await ReceiptRevisionEvidenceValidator.EvaluateAsync(db, evidence!, ct);
         if (recordedHistory?.Proven == true)
             revisions = revisions.Select(x => x with
             {
@@ -364,8 +425,8 @@ public sealed partial class InventoryCommandExecutor
                 ExactRemainingAllocationProven = false,
                 MissingEvidence = ["Exact surviving receipt allocation remains unresolved; preserve the shared pool. Correction reasons do not assign bins."]
             }).ToImmutableArray();
-        var fingerprint = RepairHash(JsonSerializer.Serialize(new { evidence, beforeJson, movementHash, auditHash, protectedHash }, ReconstructionJson));
+        var fingerprint = RepairHash(JsonSerializer.Serialize(new { evidence, beforeJson, movementHash, auditHash, protectedHash, custody }, ReconstructionJson));
         return new(target, category, blockers.ToImmutableArray(), result.AuthoritativeQuantity, result.RawProjectionQuantity,
-            "u", plan, fingerprint, movementHash, auditHash, protectedHash, beforeJson, revisions);
+            "u", plan, fingerprint, movementHash, auditHash, protectedHash, beforeJson, revisions, evidence, custody.ToImmutable(), capturedAt);
     }
 }
