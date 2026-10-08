@@ -782,6 +782,12 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
     return;
 }
 
+if (args.Contains(ProjectionReconstructionCommand.Flag, StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await ProjectionReconstructionCommand.RunAsync(args, app.Services, CancellationToken.None);
+    return;
+}
+
 if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommandName, StringComparer.OrdinalIgnoreCase))
 {
     const string releaseMigration = "20260906025535_AddHarvestWatchDeployments";

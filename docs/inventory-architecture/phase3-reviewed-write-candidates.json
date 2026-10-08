@@ -96,6 +96,12 @@
     "Sha256": "882FC08115192D803F5B72D518406D56F19219C7C82AFD14C9E37CD1895C6E04"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
+    "Classification": "CLI maintenance",
+    "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
+    "Sha256": "0CCFEF6AF8F7FA834D49D63512BAC57C118E4D1AC32DFA4F6F3ABEB9D260E774"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
@@ -180,6 +186,12 @@
     "Sha256": "A5FB3F170E783B7511B76C1980755ADE213BBF39D0B08191A68B8CE952CC6581"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "AsNoTracking evidence reads and local diagnostic collections only; correction arithmetic never grants custody or reconstruction authority.",
+    "Sha256": "C9DB32745CD03049A35B434414B8C7C9121296DCFF2C02F6BAC7DC21CC5E540A"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
@@ -213,7 +225,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "51303BF0924830C491A17A82E3C61A5196A12A1AE14E5087174D5DB056F971F5"
+    "Sha256": "F1F590CCDC24238EF4791E10AE82DFD1B9C8F25BC19DBA6FE5CA411CDB9896D6"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
@@ -276,16 +288,16 @@
     "Sha256": "6663C4D36AD35FB822C4ADA560C43094AF328C6CB3AFF29EB0598357CD3EC2FD"
   },
   {
-    "Path": "src/CropQc.Web/Services/DataCleanupService.cs",
-    "Classification": "Nonphysical or read-only",
-    "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "94C2F8FA083EBCC64D427EB40B7521BB40EB7295A87E94223E41B173C6A03F64"
-  },
-  {
     "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Schema existence inspection only; matching UpdatedAt/Add strings are descriptions or local collection construction, not row repair.",
     "Sha256": "47C4FD72B09F7C33187CAD5CCFE3FB74FB71A65E2B64BCD0C96C3F70F8DE2A88"
+  },
+  {
+    "Path": "src/CropQc.Web/Services/DataCleanupService.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
+    "Sha256": "94C2F8FA083EBCC64D427EB40B7521BB40EB7295A87E94223E41B173C6A03F64"
   },
   {
     "Path": "src/CropQc.Web/Services/EmailOptions.cs",
