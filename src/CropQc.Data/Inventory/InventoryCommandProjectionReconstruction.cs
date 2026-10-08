@@ -203,6 +203,22 @@ public sealed partial class InventoryCommandExecutor
             && x.RetiredByCommandKey == operationKey && request.Preview.Plan.Changes.Any(c => c.Id == x.Id
                 && c.BeforeQuantity == x.RetiredQuantity && c.AfterVersion == x.ConcurrencyVersion && c.ReceiptId == x.ReceiptId
                 && c.RawIdentityKey == x.IdentityKey && c.Signature == x.TreatmentSignature)), "Historical supersession evidence changed.");
+        using var originalRows = JsonDocument.Parse(request.Preview.BeforeSegmentsJson);
+        string[] retirementFields = ["currentBins", "disposition", "retiredAt", "retiredQuantity", "retiredByCommandKey", "concurrencyVersion", "updatedAt"];
+        foreach (var row in rows)
+        {
+            var original = originalRows.RootElement.EnumerateArray().Single(x => x.GetProperty("id").GetInt64() == row.Id);
+            var actual = JsonSerializer.SerializeToElement(row, ReconstructionJson);
+            Require(row.RetiredAt != null && row.RetiredAt == row.UpdatedAt
+                && original.EnumerateObject().Where(x => !retirementFields.Contains(x.Name))
+                    .All(x => x.Value.GetRawText() == actual.GetProperty(x.Name).GetRawText()), "Historical projection metadata changed.");
+        }
+        using var auditAfter = JsonDocument.Parse(audit!.AfterValuesJson!);
+        Require(auditAfter.RootElement.GetProperty("approvalAuditId").GetInt64() == request.ApprovalAuditId
+            && auditAfter.RootElement.GetProperty("authoritativeDelta").GetInt32() == 0
+            && auditAfter.RootElement.GetProperty("protectedAfter").GetString() == request.Preview.ProtectedFingerprint
+            && SamePreview(auditAfter.RootElement.GetProperty("before").Deserialize<ProjectionReconstructionPreview>(ReconstructionJson)!, request.Preview),
+            "Repair audit does not match the approved evidence.");
         var replacementId = result.ReplacementSegmentId ?? throw new InvalidOperationException("Replacement ID is missing.");
         var hash = await ReconstructionProtectedHashAsync(db, ids.Append(replacementId).ToArray(), ct, operationKey);
         var current = await ReadReconstructionAsync(db, request.Preview.Target, ct);
