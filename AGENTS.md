@@ -2,6 +2,37 @@
 
 These instructions apply to all Codex work in this repository unless the user explicitly overrides them for a specific request.
 
+## Start every task with current repository knowledge
+
+The [canonical business rules](docs/governance/CROP_QC_BUSINESS_RULES.md) and
+[architectural decisions](docs/governance/ARCHITECTURAL_DECISIONS.md) are authoritative.
+Business rules define the system. Authoritative transactions establish physical
+truth. Code implements those rules. Tests verify the implementation. Historical
+projections never redefine authoritative inventory.
+
+Before designing or editing, identify the Git root, branch, HEAD and current
+`origin/main`. Verify the remote is `Wes-Sysadm/Crop-QC-dashboard`, fetch current
+main explicitly, and compare local instructions using
+`./scripts/Sync-CropQcKnowledge.ps1` (report-only by default). Follow the
+[Windows setup and synchronization guide](docs/governance/WINDOWS_SETUP.md).
+Report stale, locally changed, divergent or unavailable remote instructions;
+do not silently proceed under outdated policy. Read the fetched canonical rules
+and relevant decisions if the feature branch is behind; integrate safely before
+dependent implementation. Never overwrite work to refresh instructions.
+
+For every task, state the applicable rule/decision IDs and affected invariants,
+then inspect existing implementation and authoritative evidence. Read only the
+directly applicable detailed specifications; unrelated historical reports need
+not be loaded. Preserve approved behavior and the workflow below. Report any
+contradiction between the request, code, tests and established rules. A technical
+discovery does not supersede policy; a genuine new business-policy choice requires
+explicit human approval under the [change procedure](docs/governance/CHANGE_PROCEDURE.md).
+Routine bug fixes do not redefine foundational rules. GitHub's reviewed `main`
+is the shared source; conversations, global files and feature branches are not
+competing authorities. Include specification version and governance commit in
+the opening assessment. Run the [governance checks](docs/governance/VALIDATION.md)
+when governance or its contracts change, alongside change-scoped verification.
+
 ## Repository
 
 - Repository: `Wes-Sysadm/Crop-QC-dashboard`
