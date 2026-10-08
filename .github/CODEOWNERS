@@ -1,0 +1,9 @@
+# Proposed owners; effective mandatory approval requires repository settings.
+/AGENTS.md @Wes-Sysadm
+/.github/ @Wes-Sysadm
+/docs/governance/ @Wes-Sysadm
+/docs/inventory-architecture/ @Wes-Sysadm
+/docs/change-scoped-testing-standard.md @Wes-Sysadm
+/docs/overnight-release-standard.md @Wes-Sysadm
+/scripts/governance/ @Wes-Sysadm
+/tests/CropQc.Api.Tests/ @Wes-Sysadm
