@@ -39,7 +39,11 @@ Approval: Owner requested this governance change; independent review and protect
 
 Contract execution combines nine unchanged writer architecture checks, two reflected mapping checks, five new business/provider cases and selected existing workflow/readiness/concurrency cases (including theory rows). Structural checks do not count as runtime proof. Real-provider tests create fresh UUID-named test databases and clean them up. No other local PostgreSQL instance is used or stopped.
 
-No full application suite is required for this governance/test-only change. No WinForms change or MSI rebuild. No schema migration added. CI execution and required-check context names will be recorded after opening the draft PR.
+No full application suite is required for this governance/test-only change. No WinForms change or MSI rebuild. No schema migration added. Missing PostgreSQL configuration and a nonlocal host were separately rejected before connecting. All UUID test databases were removed by fixture cleanup; the dedicated local cluster was stopped after verification.
+
+## Actual pull-request CI
+
+Draft [PR #274](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/274) triggered [GitHub Actions run 37733764921](https://github.com/Wes-Sysadm/Crop-QC-dashboard/actions/runs/37733764921) via the **pull_request** event, not a manual run. Both observed check contexts, **governance** and **contracts**, succeeded on implementation head `7c821ac9f067fa0e67ec085f0c46311fb5809e61`. This independently exercises the runner on Ubuntu with a disposable PostgreSQL 18 service. Subsequent edits only clarify catalog wording/settings and record this evidence; their fresh PR checks must also pass before handoff.
 
 ## Limits and follow-up
 

@@ -62,11 +62,11 @@ Authorization defines scope, never a waiver of verified backup, strict readiness
 
 ## QC-001 — QC sampling
 
-Preserve partial fruit saves and supported 10/25/50-fruit workflows. QC observation does not create physical inventory. Receipt-backed QC follows supported canonical fruit identity without recreation; preserve sample ownership and original readings. Do not invent readiness or email requirements for optional photos.
+Preserve partial fruit saves and all supported fruit counts, including 10/25/50-fruit workflows. QC observation does not create physical inventory. Receipt-backed QC follows supported canonical fruit identity without recreation; preserve sample ownership and original readings. Do not invent readiness or email requirements for optional photos.
 
 ## FIELD-001 — Field Sample separation
 
-Field Samples are receiptless preharvest observations, not Receiving inventory, Bins Run, room-card stock or Receiving email. Preserve dedicated workflows, canonical block, 30-day same-block trends, partial supported fruit counts, manual/device entry and confirmation of suggested fuzzy matches.
+Field Samples are receiptless preharvest observations, not Receiving inventory, Bins Run, room-card stock or Receiving email. Preserve dedicated list/create/edit/detail workflows, orchard/grower and canonical block, 30-day same-block size/starch/weight/pressure trends, partial supported fruit counts, manual entry, browser scale and station FTA pressure capture, and confirmation of suggested fuzzy matches. Reuse existing photo storage/audit patterns.
 
 ## DEV-001 — Station and device boundaries
 

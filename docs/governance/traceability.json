@@ -127,7 +127,7 @@
           "required": true
         }
       ],
-      "gap": "Post-treatment quantity correction policy is being changed in #269/#271; new receiving coverage does not certify that outstanding correction path."
+      "gap": "Current main's post-treatment quantity correction implementation conflicts with TRT-001; #269/#271 address it. New receiving coverage does not certify that outstanding correction path."
     },
     {
       "id": "TRT-002",
