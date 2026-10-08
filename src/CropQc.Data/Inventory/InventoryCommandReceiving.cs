@@ -55,7 +55,7 @@ public sealed partial class InventoryCommandExecutor
         if (existing != null)
         {
             var resolved = InventoryAvailabilityResolver.Resolve(existing, new());
-            Require(resolved.IsOperable, "Existing inventory identity or treatment requires review before receiving into this position.");
+            Require(resolved.IsOperable, CanonicalInventoryMessages.PlacementBlocker($"Receipt {p.ReceiptNumber}", room!.Code, resolved));
             before = resolved.AuthoritativeQuantity;
             await NormalizePositionAsync(db, factory, command, existing, resolved, now, attempt, ct);
         }

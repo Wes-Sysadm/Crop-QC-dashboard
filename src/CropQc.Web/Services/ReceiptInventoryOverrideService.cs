@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
@@ -137,6 +138,17 @@ public sealed partial class ReceiptInventoryOverrideService(
         CancellationToken cancellationToken)
     {
         var authorizationError = await AuthorizeAsync(principal, cancellationToken);
+        if (authorizationError != null && await userAccessService.HasAccessAsync(principal, ApplicationAreas.Receipts, PageAccessLevel.Create, cancellationToken))
+        {
+            var saved = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
+            if (saved != null && form.CropYear == saved.CropYear
+                && form.GrowerLotId == saved.GrowerLotId && form.FruitProfileId == saved.FruitProfileId
+                && form.WarehouseId == saved.WarehouseId && form.RoomId == saved.RoomId && form.CorrectionSourceRoomId == null
+                && form.ReceivedAt == saved.ReceivedAt && form.CompuTechReceiptId.Trim() == saved.CompuTechReceiptId
+                && form.ReceiptType == saved.ReceiptType && form.GrowerName.Trim() == saved.GrowerName.Trim()
+                && form.GrowerNumber.Trim() == (saved.GrowerNumber ?? saved.LotCode) && form.LotCode.Trim() == saved.LotCode)
+                authorizationError = null;
+        }
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationKey, form.Reason, form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
@@ -288,6 +300,8 @@ public sealed partial class ReceiptInventoryOverrideService(
             {
                 if (form.BinCount > receipt.BinCount)
                 {
+                    if (!form.ConfirmAdditionalBinsUntreated)
+                        return await RollbackAsync(transaction, Failed(ReceiptCorrectionTreatmentPolicy.ConfirmationRequired), cancellationToken);
                     var trueUpState = await GetPositiveTrueUpStateAsync(receipt, cancellationToken);
                     if (string.IsNullOrWhiteSpace(form.ExpectedPositiveTrueUpStateToken)
                         || !string.Equals(form.ExpectedPositiveTrueUpStateToken, trueUpState.StateToken, StringComparison.Ordinal))
@@ -361,9 +375,9 @@ public sealed partial class ReceiptInventoryOverrideService(
 
             if (quantityChanged)
             {
-                if (operation.CurrentInventoryAfter < 0 && !form.AcknowledgeNegativeInventory)
+                if (operation.CurrentInventoryAfter < 0)
                 {
-                    return await RollbackAsync(transaction, Failed("This correction would create negative inventory. Select the separate negative-inventory acknowledgment before saving."), cancellationToken);
+                    return await RollbackAsync(transaction, Failed("This correction exceeds current receipt custody. Acknowledgement cannot authorize negative inventory or recall bins already transferred or consumed."), cancellationToken);
                 }
                 if (operation.InventoryDelta > 0)
                 {
@@ -1020,6 +1034,7 @@ public sealed partial class ReceiptInventoryOverrideService(
                 $"receipt-override:{operation.OperationKey}:treatment:{sequence.ToString(CultureInfo.InvariantCulture)}",
                 now,
                 administrator.Id,
+                confirmedUntreated: true,
                 cancellationToken);
             if (!lineage.Success)
                 return lineage.Error ?? "Treatment lineage could not be assigned to the positive Receipt true-up.";
@@ -1050,8 +1065,7 @@ public sealed partial class ReceiptInventoryOverrideService(
         }
         if (remaining > 0)
         {
-            var target = BalanceFromReceipt(receipt, 0);
-            AddAdjustment(operation, target, -remaining, target.CurrentBins - remaining, administrator, now, "NegativeQuantityCorrection");
+            throw new InvalidOperationException("The reduction exceeds proven current receipt allocations; no negative balancing entry is allowed.");
         }
     }
 
@@ -1297,6 +1311,9 @@ public sealed partial class ReceiptInventoryOverrideService(
             InventoryStatus = snapshot.InventoryStatus,
             CurrentBins = snapshot.CurrentBins,
             AllocatedBins = allocation.Bins,
+            AdditionalBinsConfirmedUntreated = true,
+            AddedTreatmentState = TreatmentLineageStates.Untreated,
+            AddedTreatmentSignature = "u",
             allocation.Position.TreatmentSegmentId,
             allocation.Position.TreatmentState,
             allocation.Position.TreatmentSignature,
@@ -1398,6 +1415,13 @@ public sealed partial class ReceiptInventoryOverrideService(
                 && root.GetProperty("fruitProfileId").GetInt32() == form.FruitProfileId
                 && string.Equals(root.GetProperty("growerNumber").GetString(), form.GrowerNumber.Trim(), StringComparison.OrdinalIgnoreCase);
             if (!receiptValuesMatch) return false;
+            if (existing.InventoryDelta > 0)
+            {
+                using var addedEvidence = JsonDocument.Parse(existing.AffectedInventorySnapshotJson);
+                var confirmed = addedEvidence.RootElement.ValueKind == JsonValueKind.Array
+                    && addedEvidence.RootElement.EnumerateArray().Any(x => x.TryGetProperty("additionalBinsConfirmedUntreated", out var value) && value.GetBoolean());
+                if (confirmed != form.ConfirmAdditionalBinsUntreated) return false;
+            }
             var requestedAllocations = form.TrueUpAllocations.Where(x => x.Bins > 0)
                 .OrderBy(x => x.TargetKey, StringComparer.Ordinal)
                 .Select(x => $"{x.TargetKey}:{x.Bins}")

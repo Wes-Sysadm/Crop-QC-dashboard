@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
@@ -133,6 +134,7 @@ public interface IRoomTreatmentService
         string operationKey,
         DateTimeOffset occurredAt,
         int actorUserId,
+        bool confirmedUntreated,
         CancellationToken cancellationToken) =>
         Task.FromResult(new TreatmentLineageWriteResult(false, "Receipt treatment-lineage true-up is not supported by this implementation."));
 }
@@ -416,7 +418,7 @@ public sealed partial class RoomTreatmentService(
 
             foreach (var snapshot in snapshotResult.Snapshots)
             {
-                var segments = await MaterializeAsync(snapshot, cancellationToken);
+                var segments = await MaterializeAsync(snapshot, cancellationToken, application.Id, application.AppliedAt);
                 foreach (var segment in segments.Where(x => x.CurrentBins > 0).ToList())
                 {
                     var treatedBins = segment.CurrentBins;
@@ -1597,6 +1599,8 @@ public sealed partial class RoomTreatmentService(
         if (binsReceived <= 0) return new(false, "Received bins must be positive.");
         var transfer = await dbContext.InterCrewTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == transferId, cancellationToken);
         if (transfer is null) return new(false, "The inter-crew transfer was not found.");
+        if (binsReceived != transfer.BinsLoaded)
+            return new(false, "Receiving must preserve outstanding dispatch allocations. Use partial receipt custody for a quantity variance.");
         InventoryIdentityResolution? resolvedIdentity = null;
         if (transfer.CropYear is not null && transfer.GrowerLotId is not null && transfer.FruitProfileId is not null)
         {
@@ -2232,9 +2236,11 @@ public sealed partial class RoomTreatmentService(
         string operationKey,
         DateTimeOffset occurredAt,
         int actorUserId,
+        bool confirmedUntreated,
         CancellationToken cancellationToken)
     {
         if (bins <= 0) return new(false, "Receipt inventory true-up bins must be positive.");
+        if (!confirmedUntreated) return new(false, ReceiptCorrectionTreatmentPolicy.ConfirmationRequired);
         if (await dbContext.TreatmentLineageMovements.AsNoTracking()
             .AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
             return new(true, null);
@@ -2271,9 +2277,9 @@ public sealed partial class RoomTreatmentService(
 
         var now = businessTime.UtcNow;
         var destination = await GetOrCreateSegmentAsync(
-            snapshot, selected.TreatmentState, selected.TreatmentSignature, now, cancellationToken, receiptId);
-        if (source is not null && source.Id != destination.Id)
-            await CopyApplicationLinksAsync(source, destination, cancellationToken);
+            snapshot, TreatmentLineageStates.Untreated, "u", now, cancellationToken, receiptId);
+        // Selecting existing fruit identifies a location; it is not evidence that
+        // newly recorded bins were present during that fruit's past treatments.
         destination.CurrentBins += bins;
         destination.UpdatedAt = now;
         destination.ConcurrencyVersion++;
@@ -2410,7 +2416,7 @@ public sealed partial class RoomTreatmentService(
         return new(receipt, matches[0], balance.Bins, null);
     }
 
-    private async Task<List<TreatmentLineageSegment>> MaterializeAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken)
+    private async Task<List<TreatmentLineageSegment>> MaterializeAsync(RoomInventoryLedgerSnapshot snapshot, CancellationToken cancellationToken, long? pendingApplicationId = null, DateTimeOffset? asOf = null)
     {
         await using var transaction = dbContext.Database.IsRelational() && dbContext.Database.CurrentTransaction is null
             ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
@@ -2462,6 +2468,8 @@ public sealed partial class RoomTreatmentService(
         var missing = snapshot.CurrentBins - explicitBins;
         if (missing > 0)
         {
+            if (!await ProveUntreatedGapAsync(snapshot, segments, missing, cancellationToken, pendingApplicationId, asOf))
+                throw new TreatmentLineageReviewException("Missing projection quantity is not proof of untreated fruit. Review original receiving and treatment evidence before moving this inventory.");
             var untreated = segments.SingleOrDefault(x => x.IdentityKey == key && x.TreatmentSignature == "u" && x.ReceiptId == null)
                 ?? await GetOrCreateSegmentAsync(snapshot, TreatmentLineageStates.Untreated, "u", businessTime.UtcNow, cancellationToken);
             untreated.CurrentBins += missing;
@@ -2541,9 +2549,11 @@ public sealed partial class RoomTreatmentService(
             }
             if (implicitBins > 0)
             {
+                var proven = await ProveUntreatedGapAsync(snapshot, positionSegments, implicitBins, cancellationToken);
                 output.Add(new CurrentTreatmentSegmentViewModel(null, key, snapshot.GrowerNumber ?? snapshot.Lot, snapshot.Grower,
                     snapshot.VarietyName, snapshot.ProductionType, snapshot.IsOrganic, implicitBins,
-                    TreatmentLineageStates.Untreated, "u", []));
+                    proven ? TreatmentLineageStates.Untreated : "NeedsReview", proven ? "u" : "needs-review", [],
+                    null, proven, proven ? null : "Missing treatment projection requires original arrival evidence; untreated history cannot be assumed."));
             }
         }
         return result;

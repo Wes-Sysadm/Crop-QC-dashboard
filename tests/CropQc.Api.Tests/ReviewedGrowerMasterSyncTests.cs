@@ -133,7 +133,7 @@ public sealed class ReviewedGrowerMasterSyncTests
     }
 
     [Fact]
-    public async Task ApiReceiptCreate_UsesAuthoritativeNameForKnownNumberAndPreservesUnknownName()
+    public async Task Legacy_api_cannot_create_unbacked_receipts_for_known_or_unknown_growers()
     {
         await using var db = InMemoryDb();
         AddMappedGrower(db, "1080", "WP ORCHARD ORG CHIL", "WINDY POINT");
@@ -161,11 +161,12 @@ public sealed class ReviewedGrowerMasterSyncTests
             "7777",
             5), CancellationToken.None);
 
-        Assert.Null(known.Error);
-        Assert.Equal("WP ORCHARD ORG CHIL", known.Receipt?.GrowerName);
-        Assert.Equal("WP ORCHARD ORG CHIL", (await db.Receipts.SingleAsync(x => x.CompuTechReceiptId == "KNOWN-1080")).GrowerName);
-        Assert.Null(unknown.Error);
-        Assert.Equal("Unmapped Grower", unknown.Receipt?.GrowerName);
+        Assert.Contains("authoritative custody", known.Error);
+        Assert.Contains("authoritative custody", unknown.Error);
+        Assert.Null(known.Receipt);
+        Assert.Null(unknown.Receipt);
+        Assert.Empty(await db.Receipts.ToListAsync());
+        Assert.Empty(await db.RoomInventoryAdjustments.ToListAsync());
     }
 
     [Fact]

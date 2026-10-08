@@ -34,7 +34,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         if (string.IsNullOrWhiteSpace(key) || key.Length > 60 || command.ActorId <= 0 || !Enum.IsDefined(command.Kind)
             || string.IsNullOrWhiteSpace(command.Reason) || command.Lines.IsDefault
             || command.Lines.IsEmpty && command.Kind is not (InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory or InventoryCommandKind.ReverseLoss or InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion
-                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity or InventoryCommandKind.CorrectOrasDefinition) || command.Lines.Length > 100
+                or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.VoidReceipt or InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ImportBaseline or InventoryCommandKind.CorrectReceiptLocation or InventoryCommandKind.CorrectReceiptIdentity or InventoryCommandKind.CorrectOrasDefinition or InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody or InventoryCommandKind.ReverseReceiptAcknowledgment or InventoryCommandKind.ReverseReceiptPlacement) || command.Lines.Length > 100
             || command.EffectiveAt > DateTimeOffset.UtcNow || command.Lines.Any(x => x.Quantity <= 0
                 || !x.Source.Identity.IsComplete || string.IsNullOrWhiteSpace(x.Source.ExpectedFingerprint)
                 || string.IsNullOrWhiteSpace(x.TreatmentSignature)))
@@ -47,6 +47,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             await using var db = await contexts.CreateDbContextAsync(cancellationToken);
             Require(db.Database.IsNpgsql(), "Canonical writes require PostgreSQL Serializable transactions.");
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            // The migration's physical-write fence rejects older binaries after custody is used.
+            await db.Database.ExecuteSqlRawAsync("SELECT set_config('cropqc.receipt_custody_writer', 'compensations-v1', true)", cancellationToken);
             db.CanonicalCommandTransaction = true;
             try
             {
@@ -94,7 +96,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     var e = batch.Positions.SingleOrDefault(x => x.Identity.Key == source.Result.Identity.Key);
                     if (e == null || destinations.Any(x => x.Result.Identity.Key == e.Identity.Key && x.Result.Location.RoomId == dest.RoomId)) continue;
                     var r = InventoryAvailabilityResolver.Resolve(e, new());
-                    Require(r.IsOperable, "Destination evidence is not proven; no stock may be merged into it.");
+                    Require(r.IsOperable, CanonicalInventoryMessages.PlacementBlocker(
+                        $"{command.Kind} {command.PhysicalParentId?.ToString() ?? command.OperationKey}", e.Location.Name, r));
                     destinations.Add((source.Line, e, r));
                 }
                 if (command.Kind == InventoryCommandKind.TreatmentAssignment)
@@ -114,6 +117,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                 await Stage("Normalized", db, attempt, cancellationToken);
                 var effects = command.Kind switch
                 {
+                    InventoryCommandKind.AcknowledgeTransfer or InventoryCommandKind.PlaceReceiptCustody or InventoryCommandKind.ReverseReceiptAcknowledgment or InventoryCommandKind.ReverseReceiptPlacement => await ChangeReceiptCustodyAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReceiveStock or InventoryCommandKind.ActivateReceiptInventory => await ReceiveStockAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.ReverseLoss => await ReverseLossAsync(db, factory, command, readAt, attempt, cancellationToken),
                     InventoryCommandKind.CancelRun or InventoryCommandKind.ReverseRunEntry or InventoryCommandKind.ReverseDepletion => await ReverseRunAsync(db, factory, command, readAt, attempt, cancellationToken),
@@ -150,7 +154,11 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             }
             catch (Exception ex)
             {
-                await tx.RollbackAsync(CancellationToken.None);
+                // A PostgreSQL serialization failure can abort COMMIT itself.
+                // That transaction is already complete; another Rollback throws
+                // and hides the retryable server error. Disposal rolls back only
+                // pending work and also handles an already-completed transaction.
+                await tx.DisposeAsync();
                 db.ChangeTracker.Clear();
                 PostgresException? pg = null;
                 for (Exception? cause = ex; cause != null; cause = cause.InnerException)
@@ -195,16 +203,19 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             CanonicalProjectionFactory.Retire(row, command.OperationKey, readAt);
         }
         await db.SaveChangesAsync(cancellationToken); // release current-only uniqueness, still inside outer transaction
-        var replacement = await factory.CurrentAsync(result.Identity, result.Location.WarehouseId,
-            result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
-        Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
-        replacement.CurrentBins = plan.ReplacementQuantity;
-        await db.SaveChangesAsync(cancellationToken);
-        plan = plan with { ReplacementProjectionId = replacement.Id };
+        if (plan.ReplacementQuantity > 0)
+        {
+            var replacement = await factory.CurrentAsync(result.Identity, result.Location.WarehouseId,
+                result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
+            Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
+            replacement.CurrentBins = plan.ReplacementQuantity;
+            await db.SaveChangesAsync(cancellationToken);
+            plan = plan with { ReplacementProjectionId = replacement.Id };
+        }
         AddAudit(db, command, "CanonicalInventoryNormalization", result.PositionKey, plan.Changes, plan, readAt);
         await Stage("NormalizationAudit", db, attempt, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        var balance = await PhysicalAsync(db, result.Identity, result.Location.WarehouseId, result.Location.RoomId.Value, cancellationToken);
+        var balance = await PhysicalAsync(db, result.Identity, result.Location.WarehouseId, result.Location.RoomId!.Value, cancellationToken);
         Require(balance == result.AuthoritativeQuantity, "Normalization changed physical inventory.");
     }
 

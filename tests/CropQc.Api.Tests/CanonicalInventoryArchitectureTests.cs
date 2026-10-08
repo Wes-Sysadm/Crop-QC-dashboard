@@ -72,7 +72,7 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
 
     private static bool IsWriteCandidate(string source)
     {
-        string[] entities = "RoomInventoryAdjustment TreatmentLineageSegment TreatmentLineageMovement TreatmentLineageSegmentApplication RoomTreatmentApplication RoomTreatmentApplicationSource RoomTransfer RoomDepletion RoomInventoryLoss ReceiptInventoryOverride InventoryIdentityCorrection InventoryCommandRecord ActualRunRevision BinsRunEntry OutsideWarehouseTransfer ProcessorShipmentLine ProcessorShipment ActualRun InterCrewTransfer Receipt".Split(' ');
+        string[] entities = "ReceiptCustodyAcknowledgment ReceiptCustodyPlacement ReceiptCustodyReversal RoomInventoryAdjustment TreatmentLineageSegment TreatmentLineageMovement TreatmentLineageSegmentApplication RoomTreatmentApplication RoomTreatmentApplicationSource RoomTransfer RoomDepletion RoomInventoryLoss ReceiptInventoryOverride InventoryIdentityCorrection InventoryCommandRecord ActualRunRevision BinsRunEntry OutsideWarehouseTransfer ProcessorShipmentLine ProcessorShipment ActualRun InterCrewTransfer Receipt".Split(' ');
         var names = entities.Concat(entities.Select(x => x.EndsWith('y') ? x[..^1] + "ies" : x + "s")).Append("InventoryCommands");
         return Regex.IsMatch(source, @"\b(?:" + string.Join("|", names) + @")\b")
             && Regex.IsMatch(source, "\\.\\s*(?:Add(?:Async|Range|RangeAsync)?|Remove(?:Range)?|Update(?:Range)?|ExecuteUpdate(?:Async)?|ExecuteDelete(?:Async)?|ExecuteSql\\w*|SaveChanges(?:Async)?)\\s*[(<]|\\b(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+[\"\\[]");

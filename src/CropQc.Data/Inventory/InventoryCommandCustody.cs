@@ -150,6 +150,8 @@ public sealed partial class InventoryCommandExecutor
             if (loc.Custody == InventoryCustody.InTransit)
             {
                 crew = await db.InterCrewTransfers.Include(x => x.SourceWarehouse).SingleAsync(x => x.Id == id, ct);
+                Require(!await db.ReceiptCustodyAcknowledgments.AnyAsync(x => x.InterCrewTransferId == id, ct),
+                    "This load has receipt-held custody. Use allocation placement; whole-load receiving or reversal is blocked.");
                 var first = completedParents.Add(crew.Id);
                 var parentQuantity = c.Lines.Where(x => x.Source.Location.CustodyRecordId == crew.Id).Sum(x => x.Quantity);
                 Require((!first || crew.Status == InterCrewTransferStatuses.InTransit) && crew.BinsLoaded == parentQuantity, "Transfer custody changed.", InventoryCommandStatus.Stale);
@@ -276,6 +278,8 @@ public sealed partial class InventoryCommandExecutor
         Require(previous == null || previous.Quantity == quantity && previous.Destination?.RoomId == loc.RoomId && previous.Source.Identity.Key == i.Key,
             "Original received identity/quantity mismatch.");
         var transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == (previous == null ? c.PhysicalParentId : previous.Source.Location.CustodyRecordId), ct);
+        Require(!await db.ReceiptCustodyAcknowledgments.AnyAsync(x => x.InterCrewTransferId == transfer.Id, ct),
+            "Acknowledged allocation history requires an allocation-specific correction; whole-load reversal is blocked.");
         var firstReversal = completedParents.Add(transfer.Id);
         var totalReceived = c.Lines.Sum(x => x.Quantity);
         Require(!firstReversal || transfer.Status == InterCrewTransferStatuses.Received && transfer.BinsReceived == totalReceived

@@ -269,16 +269,32 @@ public sealed class InventoryCommandTests
                 [new(new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions), r.AuthoritativeQuantity,
                     r.TreatmentSlices[0].Signature, kind == InventoryCommandKind.ReceiveTransfer ? new(9006, 9007) : null)]);
         }
-        public async Task<InventoryCommand> ReceiveCommand()
+        public async Task<InventoryCommand> ReceiveCommand(int bins = 19, bool treated = false)
         {
             await using var db = CreateDbContext();
+            if (bins != 19)
+            {
+                var opening = await db.RoomInventoryAdjustments.SingleAsync(x => x.Id == 100000);
+                opening.ChangeAmount = bins; opening.NewBinCount = bins;
+                (await db.TreatmentLineageSegments.SingleAsync(x => x.Id == 100000)).CurrentBins = bins;
+                (await db.Receipts.SingleAsync(x => x.Id == 100000)).BinCount = bins;
+            }
             (await db.Warehouses.SingleAsync(x => x.Code == "EBS")).Code = "BASE-EBS";
             await db.SaveChangesAsync();
             (await db.Warehouses.SingleAsync(x => x.Id == 9001)).Code = "WP";
             db.Warehouses.Add(new() { Id = 9006, Code = "EBS", Name = "Receiving site" });
             db.Rooms.Add(new() { Id = 9007, WarehouseId = 9006, Code = "RECV", Name = "Receiving room" });
             await db.SaveChangesAsync();
-            var dispatch = (await Command(InventoryCommandKind.InterCompanyDispatch, 19)) with { CustodyGroup = "EBS" };
+            string signature = "u";
+            if (treated)
+            {
+                var chemical = await db.TreatmentChemicals.FirstAsync(x => x.IsActive && x.ApplicationLevel == "Room");
+                var treatment = await Execute((await Command(InventoryCommandKind.TreatmentAssignment, bins)) with { TreatmentChemicalId = chemical.Id });
+                Assert.Equal(InventoryCommandStatus.Committed, treatment.Status);
+                signature = $"u|a:{treatment.Effects[0].ParentId}";
+            }
+            var dispatch = (await Command(InventoryCommandKind.InterCompanyDispatch, bins)) with { CustodyGroup = "EBS" };
+            dispatch = dispatch with { Lines = [dispatch.Lines[0] with { TreatmentSignature = signature }] };
             var sent = await Execute(dispatch);
             Assert.True(sent.Status == InventoryCommandStatus.Committed, sent.Detail);
             var receipt = new CropQc.Data.Entities.Receipt
@@ -292,12 +308,12 @@ public sealed class InventoryCommandTests
                 RoomId = 9007,
                 FruitProfileId = 9004,
                 GrowerLotId = 100000,
-                BinCount = 19,
+                BinCount = bins,
                 IsTransferReceipt = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
-            receipt.VarietyLines.Add(new() { FruitProfileId = 9004, BinCount = 19 });
+            receipt.VarietyLines.Add(new() { FruitProfileId = 9004, BinCount = bins });
             var transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == sent.Effects[0].ParentId);
             transfer.ReceivingReceipt = receipt; transfer.ConcurrencyVersion++;
             await db.SaveChangesAsync();

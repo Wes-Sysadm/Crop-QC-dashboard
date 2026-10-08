@@ -128,7 +128,7 @@ public sealed partial class InterCrewTransferService(
             SourceRoom = sourceRoom is null ? null : RoomLabel(sourceRoom),
             SourceSelectionMessage = sourceSelectionMessage,
             InTransitLoads = all.Count(x => x.Status == InterCrewTransferStatuses.InTransit),
-            InTransitBins = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit).Sum(x => x.BinsLoaded)
+            InTransitBins = all.Where(x => x.Status == InterCrewTransferStatuses.InTransit).Sum(x => x.BinsLoaded - (x.BinsReceived ?? 0))
         };
     }
 
@@ -265,6 +265,8 @@ public sealed partial class InterCrewTransferService(
             var oldBalance = current?.CurrentBins ?? 0;
             var now = businessTime.UtcNow;
             var receivedAt = businessTime.PacificLocalToUtc(form.ReceivedAt);
+            if (form.BinsReceived != transfer.BinsLoaded)
+                throw new InvalidOperationException("A variance cannot settle a legacy load. Preserve unresolved custody and reconcile exact allocations before receiving.");
             transfer.DestinationWarehouseId = room.WarehouseId;
             transfer.DestinationRoomId = room.Id;
             transfer.BinsReceived = form.BinsReceived;
@@ -309,6 +311,8 @@ public sealed partial class InterCrewTransferService(
         if (transfer.RequiresTruckReceipt) return "Truck Receipt reconciliation has no quantity override.";
         if (transfer.ReviewOperationKey == key || transfer.Status == InterCrewTransferStatuses.Received) return null;
         if (transfer.Status != InterCrewTransferStatuses.ReceivedNeedsReview) return "Only a received variance can be reviewed.";
+        if (transfer.BinsReceived != transfer.BinsLoaded || transfer.VarianceBins != 0)
+            return "A review note cannot resolve missing or excess inventory. An evidence-backed custody correction is required.";
         transfer.ReviewOperationKey = key; transfer.ReviewNote = form.Note.Trim(); transfer.ReviewedAt = businessTime.UtcNow;
         transfer.ReviewedByUserId = actor.Id; transfer.Status = InterCrewTransferStatuses.Received; transfer.ConcurrencyVersion++;
         AddAudit(actor.Id, "InterCrewTransferVarianceReviewed", transfer, new { transfer.BinsLoaded, transfer.BinsReceived, transfer.VarianceBins, transfer.ReviewNote });
@@ -442,6 +446,7 @@ public sealed partial class InterCrewTransferService(
         IReadOnlyDictionary<long, Receipt> receipts)
     {
         if (transfer.Status != InterCrewTransferStatuses.InTransit) return null;
+        if (transfer.BinsReceived > 0) return $"Incomplete — {transfer.BinsReceived} acknowledged; {transfer.BinsLoaded - transfer.BinsReceived} unresolved. Review receipt-held custody and placement.";
         if (allocations.Count == 0) return "Inventory custody requires review";
         if (!transfer.RequiresTruckReceipt && transfer.ReceivingReceiptId == null) return null;
         if (!TruckReceiptRoutes.RequiresReceiptForGroup(transfer.SourceWarehouse.Code, transfer.DestinationCustodyGroup)) return null;

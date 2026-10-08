@@ -27,6 +27,48 @@ public sealed class ReceiptInventoryOverrideTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-04T19:00:00Z");
 
     [Fact]
+    public async Task Receiver_can_increase_a_mistaken_count_with_audit_and_replay_but_cannot_reclassify_inventory()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(includeReceiptEditor: true, initialBins: 20);
+        fixture.Db.UserRoles.Add(new()
+        {
+            UserId = OverrideFixture.AdminId + 1,
+            RoleId = await fixture.Db.Roles.Where(x => x.Name == BuiltInRoleNames.QcTech).Select(x => x.Id).SingleAsync()
+        });
+        await fixture.Db.SaveChangesAsync();
+        var form = await fixture.PositiveFormAsync(25, Guid.NewGuid().ToString("D"));
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default);
+        Assert.True(result.Succeeded, $"{result.Error} {fixture.OverrideLogger.LastException}");
+        Assert.Equal(25, (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).BinCount);
+        var correction = await fixture.Db.ReceiptInventoryOverrides.SingleAsync();
+        Assert.Equal(20, correction.OldReceiptBinCount); Assert.Equal(25, correction.NewReceiptBinCount);
+        Assert.NotEqual(OverrideFixture.AdminId, correction.AdministratorUserId);
+        Assert.True((await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default)).WasIdempotent);
+        Assert.Single(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        var rejected = fixture.Form(25, Guid.NewGuid().ToString("D"));
+        rejected.RoomId = OverrideFixture.SecondRoomId;
+        Assert.False((await fixture.Service.ApplyEditAsync(rejected, fixture.EditorPrincipal!, default)).Succeeded);
+        Assert.Equal(25, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+    }
+
+    [Fact]
+    public async Task Positive_override_requires_treatment_confirmation_before_any_write()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 20);
+        var form = await fixture.PositiveFormAsync(25, Guid.NewGuid().ToString("D"));
+        form.ConfirmAdditionalBinsUntreated = false;
+        var auditCount = await fixture.Db.AuditLogs.CountAsync();
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default);
+        Assert.False(result.Succeeded);
+        Assert.Contains("untreated", result.Error);
+        Assert.Equal(20, (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).BinCount);
+        Assert.Equal(20, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Empty(await fixture.Db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(auditCount, await fixture.Db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
     public async Task New_receipt_initial_quantity_saves_without_inventory_override()
     {
         await using var fixture = await OverrideFixture.CreateAsync();
@@ -482,15 +524,16 @@ public sealed class ReceiptInventoryOverrideTests
 
         Assert.True(result.Succeeded, result.Error);
         var movement = await fixture.Db.TreatmentLineageMovements.AsNoTracking().SingleAsync();
-        Assert.Equal(("x", 1, OverrideFixture.ReceiptId),
+        Assert.Equal(("u", 1, OverrideFixture.ReceiptId),
             (movement.TreatmentSignatureSnapshot, movement.BinCount, movement.ReceiptId));
         var destination = await fixture.Db.TreatmentLineageSegments.AsNoTracking()
-            .SingleAsync(x => x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "x");
+            .SingleAsync(x => x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u");
         Assert.Equal(1, destination.CurrentBins);
+        Assert.Equal(10, (await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == 8912)).CurrentBins);
     }
 
     [Fact]
-    public async Task Positive_override_inherits_exact_current_treatment_and_keeps_new_bins_receipt_specific()
+    public async Task Positive_override_preserves_existing_treatment_and_adds_separate_untreated_bins()
     {
         await using var fixture = await OverrideFixture.CreateAsync(initialBins: 20);
         var configuration = new ConfigurationBuilder().Build();
@@ -569,10 +612,16 @@ public sealed class ReceiptInventoryOverrideTests
         ledger.Current = initialSnapshot with { PositiveBins = currentBins, CurrentBins = currentBins, TransactionCount = 2, LatestAdjustmentId = 8602 };
         var selections = await treatmentService.GetSelectionsAsync(ledger.Current, CancellationToken.None);
         Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Confirmed && x.CurrentBins == 20);
-        Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Confirmed
-            && x.CurrentBins == 5 && x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u|a:8701");
+        Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Untreated
+            && x.CurrentBins == 5 && x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u");
         Assert.Equal(25, selections.Sum(x => x.CurrentBins));
         Assert.Single(await fixture.Db.RoomTreatmentApplications.ToListAsync());
+        Assert.Equal(20, (await fixture.Db.RoomTreatmentApplications.SingleAsync()).TotalBinsSnapshot);
+        Assert.Single(await fixture.Db.TreatmentLineageSegmentApplications.ToListAsync());
+        Assert.True((await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default)).WasIdempotent);
+        form.ConfirmAdditionalBinsUntreated = false;
+        Assert.False((await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default)).Succeeded);
+        Assert.Single(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
     }
 
     [Fact]
@@ -681,7 +730,7 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
-    public async Task Reduction_below_consumed_quantity_requires_separate_negative_acknowledgment()
+    public async Task Reduction_below_consumed_quantity_is_blocked_even_with_negative_acknowledgment()
     {
         await using var fixture = await OverrideFixture.CreateAsync(consumedBins: 90);
         var rejected = fixture.Form(80, Guid.NewGuid().ToString("D"));
@@ -697,10 +746,10 @@ public sealed class ReceiptInventoryOverrideTests
         accepted.AcknowledgeNegativeInventory = true;
         var withAcknowledgment = await fixture.Service.ApplyEditAsync(accepted, fixture.AdminPrincipal, CancellationToken.None);
 
-        Assert.True(withAcknowledgment.Succeeded);
-        var receiptOverride = await fixture.Db.ReceiptInventoryOverrides.SingleAsync();
-        Assert.True(receiptOverride.NegativeInventoryAcknowledged);
-        Assert.Equal(-10, receiptOverride.CurrentInventoryAfter);
+        Assert.False(withAcknowledgment.Succeeded);
+        Assert.Contains("current receipt custody", withAcknowledgment.Error);
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Equal(2, await fixture.Db.RoomInventoryAdjustments.CountAsync());
         Assert.DoesNotContain(await fixture.Db.RoomInventoryAdjustments.ToListAsync(), x => x.AdjustmentType is "TransferOut" or "ManualTrueUp" or "BinsRun");
     }
 
@@ -1860,7 +1909,7 @@ public sealed class ReceiptInventoryOverrideTests
     }
 
     [Fact]
-    public void Override_endpoints_and_controls_are_server_authorized_and_admin_only()
+    public void Correction_endpoints_and_controls_preserve_server_authorization()
     {
         var controller = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Controllers", "ReceiptsController.cs"));
         var dashboardService = File.ReadAllText(FindRepositoryFile("src", "CropQc.Web", "Services", "DashboardDataService.cs"));
@@ -1871,7 +1920,7 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Contains("Model.CanAdminOverride", editView);
         Assert.Contains("ConfirmInventoryChange", editView);
         Assert.Contains("AcknowledgeNegativeInventory", editView);
-        Assert.Contains("Review Bin Count Override", editView);
+        Assert.Contains("Review bin count correction", editView);
         Assert.Contains("Changing the bin count of a saved Receipt requires an override.", editView);
         Assert.Contains("Changing the Grower/Lot identity of a saved Receipt requires an audited identity correction.", editView);
         Assert.Contains("Receipt Identity Correction Review", editView);
@@ -1979,8 +2028,10 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.True((await service.ApplyEditAsync(reductionForm, principal, CancellationToken.None)).WasIdempotent);
         var increaseForm = PgForm(quantityReceipt, 100, Guid.NewGuid().ToString("D"));
         increaseForm.ExpectedConcurrencyVersion = 1;
+        increaseForm.ConfirmAdditionalBinsUntreated = true;
         increaseForm.ExpectedPositiveTrueUpStateToken = (await service.GetPreviewAsync(quantityReceipt.Id, CancellationToken.None))!.PositiveTrueUpStateToken;
-        Assert.True((await service.ApplyEditAsync(increaseForm, principal, CancellationToken.None)).Succeeded);
+        var increase = await service.ApplyEditAsync(increaseForm, principal, CancellationToken.None);
+        Assert.True(increase.Succeeded, increase.Error);
         var consumed = PgSource(93605, quantityReceipt, -90, "PostgreSqlConsumed");
         consumed.Receipt = null;
         db.RoomInventoryAdjustments.Add(consumed);
@@ -1989,7 +2040,14 @@ public sealed class ReceiptInventoryOverrideTests
         var negativeForm = PgForm(quantityReceipt, 80, Guid.NewGuid().ToString("D"));
         negativeForm.ExpectedConcurrencyVersion = 2;
         negativeForm.AcknowledgeNegativeInventory = true;
-        Assert.True((await service.ApplyEditAsync(negativeForm, principal, CancellationToken.None)).Succeeded);
+        var beforeRejectedReduction = await db.RoomInventoryAdjustments.CountAsync();
+        var negative = await service.ApplyEditAsync(negativeForm, principal, CancellationToken.None);
+        Assert.False(negative.Succeeded);
+        Assert.Contains("exceeds current receipt custody", negative.Error);
+        Assert.Equal(beforeRejectedReduction, await db.RoomInventoryAdjustments.CountAsync());
+        var unchangedReceipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == quantityReceipt.Id);
+        Assert.Equal(100, unchangedReceipt.BinCount);
+        Assert.Equal(2, unchangedReceipt.ConcurrencyVersion);
         var stale = PgForm(quantityReceipt, 70, Guid.NewGuid().ToString("D"));
         Assert.True((await service.ApplyEditAsync(stale, principal, CancellationToken.None)).IsConflict);
 
@@ -2252,6 +2310,7 @@ public sealed class ReceiptInventoryOverrideTests
         Id = receipt.Id,
         OperationKey = key,
         Reason = "PostgreSQL workflow validation",
+        ConfirmAdditionalBinsUntreated = bins > receipt.BinCount,
         ConfirmInventoryChange = true,
         ConfirmCropYear = true,
         CropYear = receipt.CropYear,
@@ -2595,6 +2654,7 @@ public sealed class ReceiptInventoryOverrideTests
         public async Task<AdminReceiptInventoryOverrideForm> PositiveFormAsync(int binCount, string operationKey)
         {
             var form = Form(binCount, operationKey);
+            form.ConfirmAdditionalBinsUntreated = true;
             var preview = await Service.GetPreviewAsync(ReceiptId, CancellationToken.None);
             form.ExpectedPositiveTrueUpStateToken = preview!.PositiveTrueUpStateToken;
             return form;

@@ -23,6 +23,7 @@ public sealed partial class InventoryCommandExecutor
         foreach (var result in results)
         {
             result.Ledger.RoomInventoryLoss = old; result.Ledger.AdjustmentType = InventoryLedgerKinds.DroppedBinsReversal;
+            result.Ledger.GrowerName = old.GrowerName;
             foreach (var move in result.Movements) { move.RoomInventoryLoss = old; move.MovementType = "InventoryLossReversal"; }
         }
         old.IsReversed = true; old.ReversedAt = now; old.ReversedByUserId = c.ActorId; old.ReverseReason = c.Reason;

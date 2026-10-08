@@ -2,6 +2,11 @@ namespace CropQc.Shared.Inventory;
 
 public static class CanonicalInventoryMessages
 {
+    public static string PlacementBlocker(string operation, string destination, InventoryAvailabilityResult result) =>
+        $"{operation}: destination {destination} is blocked by an inventory discrepancy "
+        + $"({string.Join(", ", result.Blockers.Select(x => x.Code).Distinct())}). "
+        + "No changes were saved. An administrator must review the destination's inventory and treatment evidence before retrying.";
+
     public static string? Blocker(InventoryAvailabilityResult result)
     {
         if (result.IsOperable) return null;

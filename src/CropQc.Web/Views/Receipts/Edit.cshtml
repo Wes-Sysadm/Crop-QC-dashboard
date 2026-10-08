@@ -92,8 +92,9 @@
             {
                 <p class="notice warning">@preview.CanonicalBlocker</p>
             }
-            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review Bin Count Override</button>
-            @if (CanonicalMode.Enabled)
+            <p class="notice wide">Receivers may correct a mistaken bin count. Record the reason and review the inventory affected. Identity and location corrections require administrator access.</p>
+            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review bin count correction</button>
+            @if (CanonicalMode.Enabled && Model.CanCorrectInventoryIdentity)
             {
                 <button id="reviewLocationCorrection" type="button" class="wide">Correct current inventory location</button>
             }
@@ -129,7 +130,7 @@
                                 }
                                 @foreach (var location in locations)
                                 {
-                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room — @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
+                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room â€” @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
                                 }
                             </select>
                         }
@@ -162,6 +163,12 @@
                 <section id="positiveTrueUpAllocation" class="wide" hidden>
                     <h3>@(CanonicalMode.Enabled ? "Which current inventory should be corrected?" : "Where is the additional inventory now?")</h3>
                     <p>Allocate the quantity change to current inventory below. The original receiving room and historical movements will not be rewritten.</p>
+                    <div id="additionalBinsTreatment" hidden>
+                        <p>Added bins are recorded as untreated at the correction time. Selecting a treated allocation chooses its current location; its past treatments are not applied to the added bins.</p>
+                        <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalBinsUntreated" value="true" /> I have verified that the additional bins are untreated. Their prior treatment history is not uncertain.</label>
+                        <input type="hidden" name="ConfirmAdditionalBinsUntreated" value="false" />
+                        <p class="muted">If these bins need an earlier treatment attribution, request evidence review before applying this correction.</p>
+                    </div>
                     <p><strong>Current canonical inventory:</strong> @preview.CurrentCanonicalInventory bins</p>
                     @if (preview.TrueUpPositions.Count == 0)
                     {
@@ -218,7 +225,7 @@
                 <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000" placeholder="Incorrect original bin count / buffer bins included"></textarea><p class="muted">Buffer bins included in error are a receipt quantity correction, not fruit loss, a dump or a transfer. The original entered count remains in the audit history.</p></div>
                 <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm this audited Receipt correction and its durable Receipt Admin Override record.</label>
                 <input type="hidden" name="ConfirmInventoryChange" value="false" />
-                <label id="negativeInventoryAcknowledgment" class="checkbox-field wide" hidden><input type="checkbox" name="AcknowledgeNegativeInventory" value="true" /> I understand this correction will create a negative inventory balance that requires review.</label>
+                <p id="negativeInventoryAcknowledgment" class="notice warning wide" hidden>This reduction exceeds current receipt custody and cannot be saved. Review transferred or consumed bins before correcting the count.</p>
                 <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
                 <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Receipt Correction</button>
             </section>
@@ -341,6 +348,11 @@
                 const positiveTrueUp = document.getElementById("positiveTrueUpAllocation");
                 const allocateReduction = @JsonSerializer.Serialize(CanonicalMode.Enabled);
                 if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0 || allocateReduction && delta < 0);
+                const additionalTreatment = document.getElementById("additionalBinsTreatment");
+                if (additionalTreatment) {
+                    additionalTreatment.hidden = !(delta > 0);
+                    additionalTreatment.querySelector('input[type="checkbox"]').disabled = !(delta > 0);
+                }
                 for (const allocation of document.querySelectorAll(".true-up-allocation")) {
                     allocation.disabled = !(delta > 0 || allocateReduction && delta < 0);
                 }

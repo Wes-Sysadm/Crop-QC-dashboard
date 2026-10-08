@@ -231,6 +231,11 @@ public sealed class InventoryDeductionInvariantService(
 
         var interCrewTransferIds = adjustments.Where(x => x.InterCrewTransferId is not null).Select(x => x.InterCrewTransferId!.Value).Distinct().ToList();
         var persistedInterCrewTransfers = interCrewTransferIds.Count == 0 ? [] : await dbContext.InterCrewTransfers.AsNoTracking()
+            .Include(x => x.CustodyAcknowledgments).ThenInclude(x => x.Placements).ThenInclude(x => x.Movement)
+            .Include(x => x.CustodyAcknowledgments).ThenInclude(x => x.Placements).ThenInclude(x => x.InventoryAdjustment)
+            .Include(x => x.CustodyAcknowledgments).ThenInclude(x => x.Reversals).ThenInclude(x => x.Movement)
+            .Include(x => x.CustodyAcknowledgments).ThenInclude(x => x.Reversals).ThenInclude(x => x.InventoryAdjustment)
+            .Include(x => x.CustodyAcknowledgments).ThenInclude(x => x.DispatchMovement)
             .Include(x => x.InventoryAdjustments).Where(x => interCrewTransferIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var trackedInterCrewTransfers = dbContext.ChangeTracker.Entries<InterCrewTransfer>()
             .Where(x => x.State != EntityState.Deleted).Select(x => x.Entity).ToList();
@@ -358,7 +363,9 @@ public sealed class InventoryDeductionInvariantService(
                         .Where(x => x.State != EntityState.Deleted && (ReferenceEquals(x.Entity.InterCrewTransfer, interCrewTransfer) || x.Entity.InterCrewTransferId == interCrewTransfer.Id))
                         .Select(x => x.Entity))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id).ToList();
-                ValidateInterCrewTransfer(adjustment, interCrewTransfer, operationAdjustments, canonicalCorrections, Add);
+                if (persistedInterCrewTransfer?.CustodyAcknowledgments.Count > 0)
+                    ValidateReceiptCustodyLedger(persistedInterCrewTransfer, operationAdjustments, Add);
+                else ValidateInterCrewTransfer(adjustment, interCrewTransfer, operationAdjustments, canonicalCorrections, Add);
             }
             if (identityCorrection is not null)
             {
@@ -658,6 +665,11 @@ public sealed class InventoryDeductionInvariantService(
     private static void ValidateTruckReceiptLedger(InterCrewTransfer transfer,
         IReadOnlyCollection<RoomInventoryAdjustment> rows, Action<string, string> add)
     {
+        if (transfer.CustodyAcknowledgments.Count > 0)
+        {
+            ValidateReceiptCustodyLedger(transfer, rows, add);
+            return;
+        }
         var source = rows.Where(x => x.AdjustmentType is InterCrewTransferAdjustmentTypes.Dispatch or TruckReceiptReconciliationService.ReturnToSource).ToList();
         var destination = rows.Where(x => x.AdjustmentType is InterCrewTransferAdjustmentTypes.Receive or TruckReceiptReconciliationService.ReopenDestination).ToList();
         if (source.Count + destination.Count != rows.Count || (transfer.BinsLoaded < 0 || transfer.BinsLoaded == 0 && transfer.Status != InterCrewTransferStatuses.Reversed) || source.Sum(x => x.ChangeAmount) != -transfer.BinsLoaded)
@@ -878,7 +890,9 @@ public sealed class InventoryDeductionInvariantService(
             && x.AdjustmentType == "InventoryIdentityCorrection");
         if (operationAdjustments.Any(x => x.ReceiptId != receiptOverride.ReceiptId
             || x.CreatedByUserId != receiptOverride.AdministratorUserId
-            || !string.Equals(x.AdjustmentType, canonicalIdentity ? "InventoryIdentityCorrection" : ReceiptInventoryOverrideService.AdjustmentType, StringComparison.Ordinal)
+            || (canonicalIdentity
+                ? x.AdjustmentType != "InventoryIdentityCorrection"
+                : !ValidOverrideAdjustmentType(x, receiptOverride.ActionType))
             || string.IsNullOrWhiteSpace(x.LotNumber)
             || x.FruitProfileId is null))
         {
@@ -1091,15 +1105,11 @@ public sealed class InventoryDeductionInvariantService(
         {
             using var affectedDocument = JsonDocument.Parse(receiptOverride.AffectedInventorySnapshotJson);
             using var afterDocument = JsonDocument.Parse(receiptOverride.AfterReceiptSnapshotJson);
-            var affected = affectedDocument.RootElement.EnumerateArray().Select(x => new OverrideIdentity(
-                x.GetProperty("warehouseId").GetInt32(),
-                x.GetProperty("roomId").GetInt32(),
-                NullableInt(x, "cropYear"),
-                NullableInt(x, "growerLotId"),
-                NullableInt(x, "fruitProfileId"),
-                x.GetProperty("lot").GetString(),
-                x.GetProperty("variety").GetString(),
-                x.GetProperty("inventoryStatus").GetString())).ToList();
+            var canonical = adjustments.Count > 0 && adjustments.All(x => x.InventoryInvariantVersion == 3);
+            var root = affectedDocument.RootElement;
+            var entries = canonical && root.ValueKind == JsonValueKind.Object ? root.GetProperty("allocations") : root;
+            var affected = entries.EnumerateArray().Select(x => ReadOverrideIdentity(x, canonical))
+                .Where(x => x != null).Select(x => x!).ToList();
             var after = afterDocument.RootElement;
             var afterIdentity = new OverrideIdentity(
                 after.GetProperty("warehouseId").GetInt32(),
@@ -1143,6 +1153,66 @@ public sealed class InventoryDeductionInvariantService(
         {
             add("ReceiptOverrideSnapshotInvalid", "Receipt administrator override inventory identity snapshot is unreadable or incomplete.");
         }
+    }
+
+    private static void ValidateReceiptCustodyLedger(InterCrewTransfer transfer,
+        IReadOnlyCollection<RoomInventoryAdjustment> rows, Action<string, string> add)
+    {
+        var acks = transfer.CustodyAcknowledgments;
+        var placements = acks.SelectMany(x => x.Placements).ToArray();
+        var acknowledged = acks.Sum(x => x.NetQuantity);
+        var placed = acks.Sum(x => x.PlacedQuantity);
+        var reversals = acks.SelectMany(x => x.Reversals).Where(x => x.PlacementId != null).ToArray();
+        var source = rows.Where(x => x.AdjustmentType is InterCrewTransferAdjustmentTypes.Dispatch or TruckReceiptReconciliationService.ReturnToSource).ToArray();
+        var destination = rows.Except(source).ToArray();
+        var valid = acknowledged >= 0 && acknowledged <= transfer.BinsLoaded && transfer.BinsReceived == acknowledged
+            && transfer.VarianceBins == acknowledged - transfer.BinsLoaded && placed <= acknowledged
+            && source.Sum(x => x.ChangeAmount) == -transfer.BinsLoaded
+            && source.All(x => x.WarehouseId == transfer.SourceWarehouseId && x.RoomId == transfer.SourceRoomId)
+            && acks.All(x => x.Quantity > 0 && x.ReceiptId == transfer.ReceivingReceiptId && x.InterCrewTransferId == transfer.Id
+                && x.DispatchMovement.InterCrewTransferId == transfer.Id && x.DispatchMovement.MovementType == "InterCrewDispatch"
+                && ReceiptCustodyProof.Valid(x))
+            && acks.GroupBy(x => x.DispatchMovementId).All(g => g.Sum(x => x.NetQuantity) <= g.First().DispatchMovement.BinCount)
+            && destination.All(x => x.AdjustmentType == InterCrewTransferAdjustmentTypes.Receive
+                ? placements.Count(p => p.InventoryAdjustmentId == x.Id && p.Quantity == x.ChangeAmount) == 1
+                : x.AdjustmentType == "ReceiptPlacementReversal" && reversals.Count(r => r.InventoryAdjustmentId == x.Id && -r.Quantity == x.ChangeAmount) == 1)
+            && destination.Sum(x => x.ChangeAmount) == placed
+            && placements.All(p => p.Quantity > 0 && destination.Any(x => x.Id == p.InventoryAdjustmentId && x.ChangeAmount == p.Quantity)
+                && p.Movement.InterCrewTransferId == transfer.Id && p.Movement.MovementType == "InterCrewReceive"
+                && p.Movement.BinCount == p.Quantity && p.Movement.SourceSegmentId == p.Acknowledgment.DispatchMovement.SourceSegmentId)
+            && rows.All(x => x.OldBinCount != null && x.NewBinCount == x.OldBinCount + x.ChangeAmount)
+            && (transfer.Status == InterCrewTransferStatuses.Received
+                ? placed == transfer.BinsLoaded && acknowledged == transfer.BinsLoaded
+                : transfer.Status == InterCrewTransferStatuses.InTransit && placed < transfer.BinsLoaded);
+        if (!valid) add("ReceiptCustodyConservationMismatch", "Dispatch, receipt-held, placed and unresolved allocations do not conserve the original load.");
+    }
+
+    private static bool ValidOverrideAdjustmentType(RoomInventoryAdjustment row, string action) =>
+        row.AdjustmentType == ReceiptInventoryOverrideService.AdjustmentType
+        || row.InventoryInvariantVersion == 3 && (action switch
+        {
+            ReceiptInventoryOverrideActionTypes.InventoryReclassification => row.AdjustmentType == "InventoryIdentityCorrection"
+                && (row.InventoryIdentityCorrectionId != null || row.InventoryIdentityCorrection != null),
+            ReceiptInventoryOverrideActionTypes.LocationCorrection => row.ChangeAmount < 0
+                ? row.AdjustmentType == "CorrectOriginalRoomOut" : row.AdjustmentType == "CorrectOriginalRoomIn",
+            _ => false
+        });
+
+    private static OverrideIdentity? ReadOverrideIdentity(JsonElement entry, bool canonical)
+    {
+        if (canonical && entry.TryGetProperty("position", out var position)) entry = position;
+        if (canonical && entry.TryGetProperty("location", out var location))
+        {
+            // External custody is retained in the audit but does not authorize a room ledger side.
+            if (location.GetProperty("roomId").ValueKind == JsonValueKind.Null) return null;
+            var identity = entry.GetProperty("identity");
+            return new(location.GetProperty("warehouseId").GetInt32(), location.GetProperty("roomId").GetInt32(),
+                NullableInt(identity, "cropYear"), NullableInt(identity, "growerLotId"), NullableInt(identity, "fruitProfileId"),
+                identity.GetProperty("lot").GetString(), identity.GetProperty("variety").GetString(), identity.GetProperty("status").GetString());
+        }
+        return new(entry.GetProperty("warehouseId").GetInt32(), entry.GetProperty("roomId").GetInt32(),
+            NullableInt(entry, "cropYear"), NullableInt(entry, "growerLotId"), NullableInt(entry, "fruitProfileId"),
+            entry.GetProperty("lot").GetString(), entry.GetProperty("variety").GetString(), entry.GetProperty("inventoryStatus").GetString());
     }
 
     private static int? NullableInt(JsonElement element, string propertyName)

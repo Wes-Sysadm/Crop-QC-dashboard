@@ -1712,6 +1712,7 @@ public sealed class EditReceiptPageViewModel
     public IReadOnlyList<FruitProfile> FruitProfiles { get; set; } = [];
     public IReadOnlyList<GrowerLot> GrowerLots { get; set; } = [];
     public bool CanAdminOverride { get; set; }
+    public bool CanCorrectInventoryIdentity { get; set; }
     public ReceiptInventoryOverridePreviewViewModel? AdminOverridePreview { get; set; }
 }
 
@@ -1730,6 +1731,8 @@ public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
     public string ExpectedPositiveTrueUpStateToken { get; set; } = "";
     public string Reason { get; set; } = "";
     public bool ConfirmInventoryChange { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ConfirmAdditionalBinsUntreated { get; set; }
     public bool AcknowledgeNegativeInventory { get; set; }
     public List<ReceiptInventoryTrueUpAllocationForm> TrueUpAllocations { get; set; } = [];
 }

@@ -1617,6 +1617,8 @@ public sealed partial class BinsRunService(
             {
                 return "The user who requested an overdraw cannot approve their own override.";
             }
+            if (shortages.Count > 0)
+                return "A shortage approval cannot create physical inventory. Correct receiving or custody evidence before consuming additional bins.";
             if (string.IsNullOrWhiteSpace(approvalReason))
             {
                 return "An administrator override reason is required.";
