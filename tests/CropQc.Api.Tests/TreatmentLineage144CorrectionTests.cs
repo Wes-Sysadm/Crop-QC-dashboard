@@ -1,6 +1,7 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
 using CropQc.Shared.Time;
+using CropQc.Shared.Inventory;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -116,6 +117,40 @@ public sealed class TreatmentLineage144CorrectionTests
         Assert.True(passed.Success);
         Assert.Equal(0, passed.BlockingIssueCount);
         Assert.Empty(passed.BlockingIssues);
+    }
+
+    [Fact]
+    public async Task Proven_canonical_pool_does_not_clear_the_persisted_projection_gate_or_write_audits()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Ledger.CurrentBins = 1122;
+        foreach (var segment in await fixture.Db.TreatmentLineageSegments.ToListAsync()) segment.CurrentBins = 0;
+        (await fixture.Db.TreatmentLineageSegments.FindAsync(144L))!.CurrentBins = 1568;
+        await fixture.Db.SaveChangesAsync();
+        var evidence = InventoryEvidenceCorpus.Wp7();
+        evidence = evidence with
+        {
+            Identity = new(2026, 98, 2, "9100", "9100", "GALA", "Conventional", false, ""),
+            Location = new(InventoryCustody.Room, 1, 8, "EBS", "LAMB-15")
+        };
+        var before = System.Text.Json.JsonSerializer.Serialize(await fixture.Db.TreatmentLineageSegments.AsNoTracking().OrderBy(x => x.Id).ToListAsync());
+        var readiness = new TreatmentLineageReadinessService(fixture.Ledger, fixture.Db, new FixedEvidence(evidence));
+
+        var result = await readiness.VerifyAsync(default);
+
+        Assert.False(result.Success);
+        Assert.Equal(1, result.BlockingIssueCount);
+        var issue = Assert.Single(result.BlockingIssues);
+        Assert.Equal(446, issue.Difference);
+        Assert.Equal("ProvenPoolRequiresProjectionReview", issue.Evidence!.Assessment);
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(await fixture.Db.TreatmentLineageSegments.AsNoTracking().OrderBy(x => x.Id).ToListAsync()));
+        Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+    }
+
+    private sealed class FixedEvidence(InventoryPositionEvidence evidence) : IInventoryEvidenceLoader
+    {
+        public Task<InventoryEvidenceBatch> LoadAsync(InventoryScope scope, DateTimeOffset asOf, CancellationToken cancellationToken) =>
+            Task.FromResult(new InventoryEvidenceBatch([evidence], 1));
     }
 
     private sealed class Fixture : IAsyncDisposable
