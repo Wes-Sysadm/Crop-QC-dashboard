@@ -129,7 +129,7 @@ No migration/model source changed. The repository-default EF check reports no pe
 
 ## L. Draft PR and commits
 
-Base/main: `e58d73a12c8bf0cc5f0f2333e442497e2b91b807`. Branch: `codex/historical-projection-reconstruction`. Implementation commits include `80ab347` (framework), `b8afc25` (diagnostic classifier), `566b5a8` (independent historical metadata/audit verification), and `446d406` (history-preserving restore fixture). The final PR, documentation commit and GitHub check status are recorded in the delivery response. No MSI is required because WinForms/QC Station code is unchanged.
+Draft [PR #273](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/273) is open into main. Base/main: `e58d73a12c8bf0cc5f0f2333e442497e2b91b807`; the final refresh found no newer main, so no base update was required. Branch: `codex/historical-projection-reconstruction`. Implementation commits are `80ab347` (framework), `b8afc25` (diagnostic classifier), `566b5a8` (independent historical metadata/audit verification), and `446d406` (history-preserving restore fixture); `6e47497` stores the report and evidence package. The delivery response records the final documentation head. GitHub reported an empty check rollup and a clean merge state when the draft was created; an empty check list is not a CI pass. No MSI is required because WinForms/QC Station code is unchanged.
 
 ## M. Separate production approval package
 
