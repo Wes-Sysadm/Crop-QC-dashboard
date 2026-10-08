@@ -1,6 +1,18 @@
 # Crop QC Dashboard — Codex Repository Instructions
 
-These instructions apply to all Codex work in this repository unless the user explicitly overrides them for a specific request.
+## Mandatory first step for every task
+
+Before an investigation, review, implementation, database correction, or release:
+
+1. Read this file and [the canonical business rules](docs/governance/CROP_QC_BUSINESS_RULES.md).
+2. Identify applicable stable rule IDs and authoritative data sources.
+3. Examine the existing architecture and the linked implementation/test evidence in [traceability](docs/governance/traceability.json).
+4. Check the proposed behavior for conflicts; resolve contradictions before implementation.
+5. Record a concise [rule compliance assessment](docs/governance/README.md#rule-compliance-assessment), including for read-only reviews.
+
+Business rules define behavior; source implements it; tests verify it. Legacy projections, a passing test, or a new task prompt do not silently redefine policy. Foundational changes require the [governance change procedure](docs/governance/CHANGE_PROCEDURE.md): explicit human approval, a versioned rule/decision update, and affected contract tests. Higher-priority safety instructions remain binding. Task-specific scope may vary, but authorization never waives production safety gates.
+
+These instructions apply to all work in this repository. Do not ask the owner to re-decide a settled rule; distinguish missing recorded evidence from a genuinely new policy question using the [decision register](docs/governance/DECISIONS.md).
 
 ## Repository
 
@@ -160,39 +172,13 @@ When an MSI is required:
 
 ## Field Sample invariants
 
-Field Samples are a separate preharvest workflow.
-
-They:
-
-- are receiptless
-- do not affect inventory
-- do not affect Bins Run
-- do not affect room Dashboard cards
-- do not enter Receiving email workflows
-- have dedicated list, create, edit, and detail pages
-- track orchard/grower and canonical block
-- show 30-day same-block size, starch, weight, and pressure trends
-- support partial saves
-- support the existing QC fruit-count range, including 10-, 25-, and 50-fruit workflows
-- support manual entry
-- support browser scale capture
-- support FTA pressure capture through QC Station
-- use fuzzy block matches as suggestions only and require user confirmation
-- may use existing photo storage and audit patterns without redesigning Google Drive storage
+The canonical owners are [FIELD-001, QC-001, DEV-001 and PHOTO-001](docs/governance/CROP_QC_BUSINESS_RULES.md). Consult those rules rather than maintaining a second list here.
 
 Keep the normal QC Station Receiving queue receipt-backed unless the user explicitly requests a queue change. Receiptless Field Samples may be exposed through a separate or explicitly distinguished QC Station workflow, but must not silently alter Receiving queue semantics.
 
 ## Data and synchronization safeguards
 
-For browser, API, QC Station, and device-capture work:
-
-- preserve partial samples
-- preserve arbitrary supported fruit counts
-- prevent stale browser forms from overwriting newer device readings
-- prevent one reading from overwriting unrelated fruit or pressure positions
-- record the originating station where existing auditing supports it
-- keep retry and failure states from erasing entered data
-- display actionable user-facing errors while logging technical detail without credentials
+For browser, API, station and device work follow [QC-001, DEV-001 and SYNC-001](docs/governance/CROP_QC_BUSINESS_RULES.md). Display actionable user-facing errors while logging technical detail without credentials. Select affected tests; do not impose unrelated inventory testing on these domains.
 
 ## Database changes
 
