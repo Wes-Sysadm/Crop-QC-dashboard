@@ -32,7 +32,7 @@
    > any stale or overriding instructions before changing files.
 
    Expected: the repository's AGENTS.md and governance paths, current version
-   **1.0.0** initially, and the fetched main SHA. The helper prints the remote
+   **1.0.1** at adoption (or a later approved version), and the fetched main SHA. The helper prints the remote
    specification and last governance commit. Also inspect local content with
    `Get-Content docs/governance/CROP_QC_BUSINESS_RULES.md -TotalCount 3` and
    `git log -1 --format=%H -- AGENTS.md docs/governance`.
@@ -43,6 +43,39 @@ instruction size limit can affect discovery. Links require explicit reading, whi
 the root instructions require. If the prompt reports the wrong files, fix the
 project directory or conflicting overrides and start again; do not claim compliance
 from file presence alone. See [official AGENTS.md discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+
+### Manual actual-install discovery record
+
+An operator must perform this check in a genuinely new task on the actual Windows
+Codex installation, not by asking an existing task to remember its instructions.
+Record date, Codex app/CLI version, Windows version, native Windows versus WSL
+environment, actual project working directory and configured CODEX_HOME location
+(paths only; never authentication contents). Inspect applicable global and
+root-to-working-directory AGENTS/AGENTS.override files and configured instruction
+size/fallback settings. The default instruction limit is 32 KiB; an override or
+size limit may hide expected instructions. Do not delete another project's rules.
+
+Run the setup prompt above and save its response plus local Git/version output in
+the operator's review evidence. Ask the fresh session to name the files actually
+loaded, explain the distinction between task workflow exceptions and documented
+owner approval under GOV-001/ADR-006, and report any overrides. As a read-only
+hypothetical, ask whether an ordinary task saying "skip custody proof" authorizes
+changing approved inventory policy. Expect it to report the conflict and require
+a documented owner policy decision, with no edits or production action. This is
+a behavioral smoke check, not a guarantee about every future response.
+
+Repeat separately on each computer, including after changing Codex environment or
+instruction configuration. Compare actual root, branch, fetched SHA, governance
+commit and canonical version; mismatches must be explained before dependent work.
+Record PASS only when that actual fresh session reports the correct discovery
+and explicitly reads the linked catalog/register. Merely cloning files is not PASS.
+
+The earlier automated networked discovery retry was rejected by automatic
+approval review because it could transmit repository instructions/source to the
+configured external OpenAI API. It was not retried during finalization. This task
+does not authorize that transmission; do not retry it without explicit user
+authorization. The operator may carry out this manual verification in their
+approved installation/session. No live new-session discovery pass is claimed here.
 
 ## Daily operation and after merges
 
@@ -61,6 +94,7 @@ It never copies a documentation subset over a different code version.
 | Divergence / local-only main commits | Exit 2. Preserve commits, review both sides, and integrate through a feature branch/PR. No reset or force push. |
 | Merge/rebase/cherry-pick conflict, detached HEAD or index lock | Exit 2. Finish/abort the operation yourself, then rerun. |
 | Wrong remote, failed fetch, unverifiable state | Exit 1. No claim of current knowledge; fix access/remote deliberately. |
+| Incoming tracked path collides with an ignored local file | Exit 1; `--no-overwrite-ignore` refuses the update and preserves the file. Relocate/preserve it deliberately before retrying. |
 | Governance not yet on main | Exit 2. A local proposal is not the adopted source of truth. |
 
 After synchronizing clean main, start a task branch with `git switch -c codex/<task>`.
@@ -84,6 +118,12 @@ configuration, background jobs or conflict resolution are included. Execution
 policy is not modified; use your organization's approved script-signing/policy setup.
 `-OfflineTestRemote` is reserved for disposable fixture tests; it requires an
 explicitly marked local bare remote and prints that GitHub freshness is unverified.
+
+The fast-forward explicitly disables autostash and merge hooks. Synthetic tests
+compare ignored credential/configuration files, `.git/config`, global Git config
+and unrelated sibling files byte-for-byte. Normal tracked files follow the approved
+Git commit; keep machine secrets/settings outside version control. Synchronization
+does not apply tracked configuration to production or run deployment commands.
 
 ## Optional minimal global bootstrap
 

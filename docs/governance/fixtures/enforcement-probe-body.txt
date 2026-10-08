@@ -1,0 +1,21 @@
+DO NOT MERGE. Disposable documentation-only protection validation after authorized activation. Close without merging after recording check and review blocking evidence.
+
+## Rule compliance assessment
+- Applicable rule IDs: GOV-001, OPS-001.
+- Implementation paths and authoritative records versus projections: Only docs/governance/ENFORCEMENT_PROBE.md; synthetic documentation reference, no inventory records.
+- Proposed behavior and potential conflicts: Deliberately broken local link must fail required governance; a later commit repairs only that link to test the missing-review gate.
+- Authoritative inventory changes: None.
+- Treatment lineage changes: None.
+- Historical records changed/preserved: No database or historical records changed.
+- New origins or writers: None.
+- Exact tests/provider/results proving compliance: Expect governance failure for the negative head, contracts and both Windows sync jobs passing. After repair require all four green, with merge still blocked by absent independent review. Capture exact head/run evidence.
+- Unverified rules, skipped bodies and unresolved assumptions: Protection is unproven until required-check readback and explicit UI blocked reasons are recorded; no semantic inventory certification claimed.
+- Production-data implications and authorization: No production access, no merge, no deployments. This probe must never enter main.
+- Business-policy approval required/reference: No business-policy change. Owner authorization for the post-merge enforcement validation is a prerequisite, recorded in the activation review before creating this PR.
+
+## Governance change
+Previous: No synthetic probe file.
+New: One temporary broken reference, subsequently repaired, solely to observe enforcement.
+Impact: Governance CI rejection and independent-review gate verification; no runtime effect.
+Tests/history: All four jobs checked on each head; no history mutation or production operation.
+Approval: Independent review deliberately absent during the review-gate test. No approval to merge this probe.

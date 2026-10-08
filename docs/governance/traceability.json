@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "specificationVersion": "1.0.0",
+  "specificationVersion": "1.0.1",
   "rules": [
     {
       "id": "INV-001",

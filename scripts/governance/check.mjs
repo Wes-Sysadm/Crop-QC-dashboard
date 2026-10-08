@@ -51,7 +51,7 @@ export function validateBody(body, ids, protectedChange) {
 }
 
 export function protectedPath(p) {
-  return p === 'AGENTS.md' || p.startsWith('docs/governance/') || p.startsWith('docs/inventory-architecture/')
+  return /(^|\/)AGENTS(?:\.override)?\.md$/.test(p) || p.startsWith('docs/governance/') || p.startsWith('docs/inventory-architecture/')
     || ['docs/change-scoped-testing-standard.md', 'docs/overnight-release-standard.md'].includes(p)
     || p.startsWith('.github/') || p.startsWith('scripts/governance/') || p === 'scripts/Sync-CropQcKnowledge.ps1'
     || p.startsWith('tests/CropQc.Api.Tests/');
@@ -60,9 +60,14 @@ export function protectedPath(p) {
 export function validateEvolution(before, after, oldMatrix, matrix, decisionsChanged) {
   if (ruleIds(before).some(id => !ruleIds(after).includes(id))) fail('Stable rule IDs cannot be removed; record supersession instead.');
   const required = m => m.rules.flatMap(r => r.tests.filter(t => t.required).map(t => `${r.id}:${t.type}.${t.member}`));
-  const removed = required(oldMatrix).some(t => !required(matrix).includes(t));
+  const removed = required(oldMatrix).some(t => !required(matrix).includes(t))
+    || (oldMatrix.structuralSuites || []).some(s => !(matrix.structuralSuites || []).includes(s));
   const policyChanged = before.replace(/Specification version:.*$/m, '') !== after.replace(/Specification version:.*$/m, '');
-  if ((removed || policyChanged) && (oldMatrix.specificationVersion === matrix.specificationVersion || !decisionsChanged))
+  const parts = v => /^\d+\.\d+\.\d+$/.test(v) ? v.split('.').map(Number) : fail('Use a numeric major.minor.patch specification version.');
+  const oldVersion = parts(oldMatrix.specificationVersion), version = parts(matrix.specificationVersion);
+  const changedPart = version.findIndex((n, i) => n !== oldVersion[i]);
+  if (changedPart >= 0 && version[changedPart] < oldVersion[changedPart]) fail('Specification versions cannot move backward.');
+  if ((removed || policyChanged) && (changedPart < 0 || !decisionsChanged))
     fail('Policy changes or required-contract removals need a version bump and decision update for human review.');
 }
 
@@ -103,7 +108,9 @@ export function check(root, event) {
     'docs/inventory-architecture/phase3-workflow-registry.json', 'docs/inventory-architecture/phase3-reviewed-write-candidates.json',
     'docs/governance/README.md', 'docs/governance/WINDOWS_SETUP.md', 'docs/governance/CHANGE_PROCEDURE.md',
     'docs/governance/REPOSITORY_SETTINGS.md', 'docs/governance/VALIDATION.md', 'docs/governance/OUTSTANDING_PRS.md',
-    'scripts/Sync-CropQcKnowledge.ps1', 'scripts/governance/sync.test.mjs'])
+    'scripts/Sync-CropQcKnowledge.ps1', 'scripts/governance/sync.test.mjs',
+    'docs/governance/PR274_CONSOLIDATION.md', 'docs/governance/POST_MERGE_ACTIVATION.md',
+    'docs/governance/fixtures/enforcement-probe.patch', 'docs/governance/fixtures/enforcement-probe-body.txt'])
     if (!exists(p)) fail('Missing governance dependency ' + p);
   const requirements = [...spec.matchAll(/^\| (\d+) \|/gm)].map(m => Number(m[1]));
   if (JSON.stringify(requirements) !== JSON.stringify(Array.from({ length: 27 }, (_, i) => i + 1)))

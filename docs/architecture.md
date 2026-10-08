@@ -49,7 +49,7 @@ Google Drive is the backup target. Admin -> Backups reports the configured provi
 
 ## Room Inventory Boundary
 
-Room Summary is a current-state view derived from receipts, samples, fruit readings, and additive room depletion records. Receipts and QC samples remain the historical source of what was received, sampled, photographed, emailed, and captured by QC Station. Depletion records represent bins sent from a room to the packing line and are used to remove those bins/lots from current room rollups without deleting or mutating historical QC data.
+Room Summary quantities and current custody derive from canonical inventory evidence under the phase contracts and governance rules INV-002/INV-004. An original receipt location is not proof of current custody after movement. Receipts, samples and fruit readings retain historical receiving and QC observations; depletion records retain packing history. These observations and projections cannot independently establish current quantity or treatment, and historical QC data must not be deleted or rewritten to make a rollup agree.
 
 Dashboard Room Summary is grouped by facility/location. The default view shows rooms with fruit. Operators can filter by `All`, `MCD`, `WP`, `EBS`, and `DH`; EBS rooms are further grouped/filterable as `Evans`, `Lamb`, and `BM` where room naming identifies those locations. Empty rooms are still available through the Empty/All filter.
 

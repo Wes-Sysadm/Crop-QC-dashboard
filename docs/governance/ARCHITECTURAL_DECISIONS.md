@@ -1,6 +1,6 @@
 # Architectural decision register
 
-Register version: 1.0.0. Policy reaffirmation: permanent-knowledge task, 2026-10-08 America/Los_Angeles. Register adoption awaits PR approval. IDs retain the compatible draft #274 proposal. These decisions consolidate that explicit direction and the linked accepted technical contracts; they do not fabricate prior approval dates or grant release/repair permission.
+Register version: 1.0.1. Policy reaffirmation: permanent-knowledge task, 2026-10-08 America/Los_Angeles. Register adoption awaits PR approval. IDs retain the compatible draft #274 proposal. These decisions consolidate that explicit direction and the linked accepted technical contracts; they do not fabricate prior approval dates or grant release/repair permission.
 
 ## Decision taxonomy
 
@@ -18,7 +18,7 @@ Never request external counts/paperwork by default when recorded history already
 | ADR-003 | Does treatment remain in a room? No; it follows fruit present at application time. | Prevent later arrivals/corrections inheriting treatment; receiving/movement/packing/reversal. | TRT-001, TRT-002, REC-001 | Established policy reaffirmed by owner request, 2026-10-08; consolidation pending PR approval; no prior decision superseded. |
 | ADR-004 | Can 49 received settle 50 dispatched? No; retain the unresolved one and distinguish held/placed. | Conservation and explicit compensation; partial receipts and transfers. | REC-002, MOV-001, INV-002 | Established policy reaffirmed by owner request, 2026-10-08; consolidation pending PR approval; #271 implementation pending; no previous record rewritten. |
 | ADR-005 | Can correction/rollback erase history? No; use reviewed compensation/supersession and data-compatible recovery. | Auditability and current-custody safety; all corrections/releases. | AUD-001, REC-001, OPS-001 | Established policy reaffirmed by owner request, 2026-10-08; consolidation pending PR approval; no prior decision superseded. |
-| ADR-006 | Can code/tests or local knowledge redefine rules? No; GitHub reviewed main distributes the approved rules, and changes require explicit approval, versioned decisions and tests. | Prevent drift; all tasks and reviews. | GOV-001 | Established policy reaffirmed by owner request, 2026-10-08; consolidation pending PR approval; no prior decision superseded. |
+| ADR-006 | Can code/tests, ordinary task overrides or local knowledge redefine foundational rules? No; GitHub reviewed main distributes the approved rules, and genuine policy changes require explicit documented business-owner approval of old/new behavior and affected workflows, versioned decisions and tests. Ordinary task exceptions affect workflow preferences only and never silently waive policy or production safeguards. | Prevent drift; all tasks and reviews. | GOV-001 | Owner request "Finalize PR #276 Governance", item 3, 2026-10-08, explicitly clarifies the task-override boundary; consolidation pending PR approval; no prior decision superseded. |
 
 Implementation detail examples: isolation/lock strategy, evidence batching and index shapes. They must continue satisfying their existing technical contracts until a reviewed compatible replacement is proven.
 

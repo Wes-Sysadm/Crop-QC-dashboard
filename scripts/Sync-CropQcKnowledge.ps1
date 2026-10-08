@@ -110,7 +110,7 @@ try {
             throw 'Repository changed during synchronization; rerun after other Git work finishes.'
         }
         # Disable merge hooks for this invocation; no persistent config changes.
-        Invoke-Git -Arguments @('-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-edit', $remote) | Out-Null
+        Invoke-Git -Arguments @('-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-autostash', '--no-overwrite-ignore', '--no-edit', $remote) | Out-Null
     }
     if (@(Invoke-Git -Arguments @('rev-parse', 'HEAD'))[0] -ne $remote) { throw 'Final HEAD does not match fetched main.' }
     Write-Output "SUCCESS: main and tracked knowledge synchronized at $remote. Start a new Codex session or explicitly reload AGENTS.md and applicable rules."

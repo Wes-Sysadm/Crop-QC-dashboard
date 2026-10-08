@@ -1,6 +1,6 @@
 # Crop QC Dashboard — Codex Repository Instructions
 
-These instructions apply to all Codex work in this repository unless the user explicitly overrides them for a specific request.
+These instructions apply to all Codex work in this repository. Explicit task instructions may override ordinary workflow preferences (for example, continuing an existing PR), but an ordinary request is not approval to change foundational inventory, custody, treatment, conservation or audit rules. Any apparent conflict must be reported before dependent implementation. A genuine policy change requires explicit documented approval from the business owner under the change procedure, including the previous/new rule, affected workflows, approval reference/date, versioned decision and tests. Task authorization does not waive production safeguards or authorize a release, data repair or merge. Read task-specific exceptions below within this boundary.
 
 ## Start every task with current repository knowledge
 
@@ -20,7 +20,7 @@ do not silently proceed under outdated policy. Read the fetched canonical rules
 and relevant decisions if the feature branch is behind; integrate safely before
 dependent implementation. Never overwrite work to refresh instructions.
 
-For every task, state the applicable rule/decision IDs and affected invariants,
+For every task, including read-only reviews, provide the [rule compliance assessment](docs/governance/README.md#rule-compliance-assessment). State the applicable rule/decision IDs and affected invariants,
 then inspect existing implementation and authoritative evidence. Read only the
 directly applicable detailed specifications; unrelated historical reports need
 not be loaded. Preserve approved behavior and the workflow below. Report any

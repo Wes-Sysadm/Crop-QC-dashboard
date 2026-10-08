@@ -43,7 +43,7 @@ test('two computers synchronize through disposable Git without losing local work
     if (update) args.push('-Update');
     const r = spawnSync(shell, args, { encoding: 'utf8', env });
     assert.equal(r.status, expected, `${r.stdout}\n${r.stderr}`);
-    return r.stdout;
+    return r.stdout + r.stderr;
   };
   try {
     git(fixture, ['init', '--bare', '--initial-branch=main', remote]);
@@ -62,15 +62,15 @@ test('two computers synchronize through disposable Git without losing local work
     });
     await t.test('report-only leaves clean main behind; approved rule then reaches second computer', () => {
       const p = 'docs/governance/CROP_QC_BUSINESS_RULES.md';
-      write(a, p, fs.readFileSync(path.join(a, p), 'utf8').replace('**1.0.0**', '**1.0.1**')
+      write(a, p, fs.readFileSync(path.join(a, p), 'utf8').replace(/Specification version: \*\*[^*]+\*\*/, 'Specification version: **99.0.0**')
         + '\n## FIXTURE-001 — Simulated approved rule\nEvery fixture event retains its actor.\n');
       const next = commit(a, 'Simulated human-approved rule revision'); git(a, ['push', 'origin', 'main']);
       const old = git(b, ['rev-parse', 'HEAD']);
       assert.match(sync(b, 2, false), /clean main can fast-forward/);
       assert.equal(git(b, ['rev-parse', 'HEAD']), old);
-      assert.match(sync(b, 0), /1\.0\.1/);
+      assert.match(sync(b, 0), /99\.0\.0/);
       assert.equal(git(b, ['rev-parse', 'HEAD']), next);
-      assert.match(fs.readFileSync(path.join(b, p), 'utf8'), /\*\*1\.0\.1\*\*/);
+      assert.match(fs.readFileSync(path.join(b, p), 'utf8'), /\*\*99\.0\.0\*\*/);
       assert.match(fs.readFileSync(path.join(b, p), 'utf8'), /Every fixture event retains its actor/);
     });
     await t.test('repeated synchronization is idempotent', () => {
@@ -140,11 +140,35 @@ test('two computers synchronize through disposable Git without losing local work
       const r = spawnSync(shell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'scripts/Sync-CropQcKnowledge.ps1'), '-RepositoryPath', c], { env, encoding: 'utf8' });
       assert.equal(r.status, 1); assert.doesNotMatch(r.stdout + r.stderr, /secret-fixture/);
     });
+    await t.test('fast-forward preserves ignored credentials, local configuration and unrelated files', () => {
+      const c = clone('local-config');
+      git(c, ['config', 'merge.autoStash', 'true']);
+      write(c, '.git/info/exclude', 'local-secrets/\nappsettings.Local.json\n');
+      write(c, 'local-secrets/credentials', 'synthetic local credential\n');
+      write(c, 'appsettings.Local.json', '{"synthetic":"local-only"}\n');
+      const sibling = path.join(fixture, 'unrelated-file.txt'); fs.writeFileSync(sibling, 'unrelated\n');
+      const files = [globalConfig, sibling, path.join(c, '.git/config'), path.join(c, '.git/info/exclude'),
+        path.join(c, 'local-secrets/credentials'), path.join(c, 'appsettings.Local.json')];
+      const before = files.map(p => fs.readFileSync(p));
+      write(a, 'safe-update.txt', 'approved update\n'); commit(a, 'Update with local settings present'); git(a, ['push', 'origin', 'main']);
+      sync(c, 0);
+      files.forEach((p, i) => assert.deepEqual(fs.readFileSync(p), before[i]));
+      assert.equal(git(c, ['stash', 'list']), '');
+    });
+    await t.test('incoming tracked file cannot overwrite an ignored local file', () => {
+      const c = clone('ignored-collision'); const head = git(c, ['rev-parse', 'HEAD']);
+      write(c, '.git/info/exclude', 'collision.txt\n'); write(c, 'collision.txt', 'precious ignored local content\n');
+      write(a, 'collision.txt', 'new tracked content\n'); commit(a, 'Incoming path collision'); git(a, ['push', 'origin', 'main']);
+      assert.match(sync(c, 1), /Git\s+command\s+failed/);
+      assert.equal(git(c, ['rev-parse', 'HEAD']), head);
+      assert.equal(fs.readFileSync(path.join(c, 'collision.txt'), 'utf8'), 'precious ignored local content\n');
+      assert.equal(git(c, ['status', '--porcelain']), '');
+    });
     await t.test('failed fetch never reports success or changes HEAD', () => {
       const c = clone('fetch-failure'); const head = git(c, ['rev-parse', 'HEAD']);
       // Valid marked bare repo with its branch temporarily absent: refspec fetch fails.
       git(remote, ['update-ref', '-d', 'refs/heads/main']);
-      assert.doesNotMatch(sync(c, 1), /SUCCESS/); assert.equal(git(c, ['rev-parse', 'HEAD']), head);
+      const output = sync(c, 1); assert.doesNotMatch(output, /SUCCESS/); assert.match(output, /Git\s+command\s+failed \(fetch\)/); assert.equal(git(c, ['rev-parse', 'HEAD']), head);
       git(a, ['push', 'origin', 'main']);
     });
     await t.test('credentials/global config untouched; only local fixture remotes used', () => {

@@ -1,5 +1,7 @@
 # Proposed owners; effective mandatory approval requires repository settings.
 /AGENTS.md @Wes-Sysadm
+AGENTS.md @Wes-Sysadm
+AGENTS.override.md @Wes-Sysadm
 /.github/ @Wes-Sysadm
 /docs/governance/ @Wes-Sysadm
 /docs/inventory-architecture/ @Wes-Sysadm
