@@ -87,12 +87,26 @@ public sealed class CanonicalWorkflowConcurrencyTests
     {
         await using var f = restored ? await CanonicalRestoreFixture.Clone() : await Fixture.Create();
         Dictionary<string, string>? protectedFilters = null; string? protectedBefore = null;
+        long receiptId = 100000;
         if (restored)
         {
             protectedFilters = await CanonicalRestoreFixture.ExistingRows(f);
             protectedFilters["Warehouses"] += " AND \"Code\" NOT IN ('WP','BASE-WP')";
             protectedBefore = await f.Snapshot(protectedFilters);
-            await CanonicalRestoreFixture.SeedIsolatedRooms(f, 1);
+            await CanonicalRestoreFixture.SeedIsolatedRooms(f);
+            await using var masters = f.CreateDbContext();
+            masters.GrowerLots.Add(new() { Id = 100000, Grower = "Corpus", LotNumber = "CORPUS-100000" });
+            await masters.SaveChangesAsync();
+            // Restored history can already contain canonical commands. Seed the
+            // isolated race through a real authorized origin, never a legacy write
+            // or removal of the historical journal to disable its guard.
+            var receiving = new InventoryCommandExecutor(new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection));
+            var ticket = "RESTORED-RACE-" + Guid.NewGuid().ToString("N");
+            var arrival = await receiving.ExecuteAsync(new(Guid.NewGuid().ToString("N"), InventoryCommandKind.ReceiveStock,
+                8000, DateTimeOffset.UtcNow, "Disposable restored race origin", [],
+                Receipt: new(2026, 9001, 9002, 100000, 9004, ticket, 19)));
+            Assert.True(arrival.Status == InventoryCommandStatus.Committed, arrival.Detail);
+            receiptId = await masters.Receipts.Where(x => x.CompuTechReceiptId == ticket).Select(x => x.Id).SingleAsync();
         }
         await using (var seed = f.CreateDbContext())
         {
@@ -113,14 +127,15 @@ public sealed class CanonicalWorkflowConcurrencyTests
         await using var left = factory.CreateDbContext();
         await using var right = factory.CreateDbContext();
         var oldNormalizations = await left.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization");
+        var oldCommands = await left.InventoryCommands.CountAsync();
         var a = await Prepare(first, left, new InventoryCommandExecutor(factory, observer, new CanonicalRunExpectationWriter()));
         var b = await Prepare(second, right, new InventoryCommandExecutor(factory, observer, new CanonicalRunExpectationWriter()));
         var results = await Task.WhenAll(a(), b());
         Assert.True(results.Count(x => x == null) == 1, string.Join("; ", results.Select(x => x ?? "Committed")));
         await using var check = f.CreateDbContext();
-        Assert.Equal(1, await check.InventoryCommands.CountAsync());
-        Assert.Equal(oldNormalizations + 1, await check.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization"));
-        var receiptBins = (await check.Receipts.SingleAsync(x => x.Id == 100000)).BinCount;
+        Assert.Equal(oldCommands + 1, await check.InventoryCommands.CountAsync());
+        Assert.Equal(oldNormalizations + (restored ? 0 : 1), await check.AuditLogs.CountAsync(x => x.Action == "CanonicalInventoryNormalization"));
+        var receiptBins = (await check.Receipts.SingleAsync(x => x.Id == receiptId)).BinCount;
         if (first == "Correction")
         {
             Assert.Equal(results[0] == null ? 17 : 19, receiptBins);

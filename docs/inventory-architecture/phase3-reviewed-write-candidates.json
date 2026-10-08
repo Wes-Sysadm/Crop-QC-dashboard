@@ -96,6 +96,12 @@
     "Sha256": "882FC08115192D803F5B72D518406D56F19219C7C82AFD14C9E37CD1895C6E04"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
+    "Classification": "CLI maintenance",
+    "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
+    "Sha256": "3B06F1C93055B0A7394F4C85BD7F44E9E25CC5984BEBC2FCC49F7E589C02D149"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
@@ -124,6 +130,12 @@
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
     "Sha256": "8F9668CECD4E3BE67C912BAAD50E95DD0B20D8799667B4E0CC777BD773EB7304"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandReconstructionVerification.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "E905C0E68FE287247FF34C32F8085EBEF541FE47C8926889CF1EA62A5E499B07"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandRestoration.cs",
@@ -180,10 +192,34 @@
     "Sha256": "A5FB3F170E783B7511B76C1980755ADE213BBF39D0B08191A68B8CE952CC6581"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "AsNoTracking evidence reads and local diagnostic collections only; correction arithmetic never grants custody or reconstruction authority.",
+    "Sha256": "CB166E4643E5813F9C0E09C346D144FF504AC65969C7AD194E3276A02E752E70"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/ReconstructionCommandEvidence.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "C68F76AE00DF913EB7A63442889B0A7563058E9497D572A25D565CE2305BB0AF"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/RecordedInventoryHistory.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Detached read-only history loader and pure maintenance proof; collection Add calls construct evidence, never persist physical entities.",
+    "Sha256": "5A223358FECE147730957115BCE81D6642957A9AFA0A5E9FA399054888EBBF79"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
     "Sha256": "7CECE62EFC2D39D0BC2EB7C5866747B116CEE290990854A3050DE97A4CFF15E6"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/SelectiveProjectionReconstruction.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "17BD7AECBAE410BB6B10A08266950E236A0268D41C2B1DED9A53CAD91C4CB83B"
   },
   {
     "Path": "src/CropQc.Data/ReceiptQcSampleCoordinator.cs",
@@ -213,7 +249,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "51303BF0924830C491A17A82E3C61A5196A12A1AE14E5087174D5DB056F971F5"
+    "Sha256": "F1F590CCDC24238EF4791E10AE82DFD1B9C8F25BC19DBA6FE5CA411CDB9896D6"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",

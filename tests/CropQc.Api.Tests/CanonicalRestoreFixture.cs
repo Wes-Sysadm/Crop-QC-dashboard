@@ -61,8 +61,12 @@ internal static class CanonicalRestoreFixture
             var newTables = (await Columns(fixture.Connection)).Where(x => !originalColumns.ContainsKey(x.Key)).ToDictionary();
             // Newly added operational tables must be empty; migrations may not backfill.
             foreach (var hash in (await OriginalData(fixture.Connection, newTables)).Values) Assert.Equal("", hash);
-            Assert.False(await db.TreatmentLineageSegments.AnyAsync(x => x.Disposition != "Current" || x.RetiredAt != null
-                || x.RetiredQuantity != null || x.RetiredByCommandKey != null));
+            // Old pre-Phase-2 restores acquire only default metadata. Newer backups
+            // legitimately contain audited retirements; OriginalData above proves
+            // all of those existing fields survive unchanged instead of erasing them.
+            if (!originalColumns["TreatmentLineageSegments"].Contains("Disposition"))
+                Assert.False(await db.TreatmentLineageSegments.AnyAsync(x => x.Disposition != "Current" || x.RetiredAt != null
+                    || x.RetiredQuantity != null || x.RetiredByCommandKey != null));
             Assert.False(db.CanonicalInventoryEnabled);
             return fixture;
         }

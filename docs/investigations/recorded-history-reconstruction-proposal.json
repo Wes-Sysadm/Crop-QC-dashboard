@@ -1,0 +1,1473 @@
+{
+  "executable": false,
+  "productionAuthorization": "NOT GRANTED",
+  "supersedes": "projection-reconstruction-production-proposal.json",
+  "businessRule": "Every inventory origin and subsequent quantity effect is recorded; no unrecorded source is legitimate.",
+  "backup": {
+    "run": 186,
+    "bytes": 17317796,
+    "sha256": "0170afc86576e3c57483ebdf1cc3b431555b545bf1cd9e454e7e020bdf22ccc0",
+    "commit": "e58d73a12c8bf0cc5f0f2333e442497e2b91b807",
+    "snapshot": "2026-10-07T23:53:37.406346+00:00",
+    "database": "pr271_release_recorded186",
+    "restoredAt": "2026-10-08T05:22:25.376056+00:00",
+    "archiveCrc": true,
+    "componentsVerified": 4,
+    "dumpBytes": 311151169,
+    "frozenPhotos": 11768,
+    "restored": true
+  },
+  "warning": "Evidence is bounded to backup #186. IDs/versions must be refreshed against a read-only production preview before separately authorized execution. Local fingerprints are not production approval tokens.",
+  "additionalPools": [
+    {
+      "target": {
+        "warehouseId": 2,
+        "roomId": 47,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 495,
+          "fruitProfileId": 18,
+          "lot": "2350",
+          "growerNumber": "2350",
+          "variety": "DANJ",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 202,
+      "projectedQuantity": 598,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "recorded-history-shared-pool/v1",
+        "evidenceVersion": "recorded-origins-revisions-runs-transfers/v1",
+        "fingerprint": "B00F2BC341FD4F64860660389181795EDB713034B26DC17B1F1E7A8123A7DDBA",
+        "reason": "Closed recorded history proves an untreated shared pool; supersede projections without allocating surviving bins to receipts.",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Exact surviving receipt allocation remains unresolved; correction reasons do not allocate fruit."
+        },
+        "evidence": [
+          {
+            "entity": "AuditLog",
+            "id": "123203"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1288"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1338"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1358"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1373"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1389"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1403"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1539"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1555"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1568"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1569"
+          },
+          {
+            "entity": "ReceiptInventoryOverride",
+            "id": "0f977af1-1376-4fa7-91a4-a56bbf512fb0"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2196"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2316"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2364"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2383"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2399"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2413"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2459"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2460"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2790"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2806"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2821"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2822"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2972"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2973"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3000"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3001"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3002"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "335"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "369"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "370"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "342"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "506"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "516"
+          }
+        ],
+        "changes": [
+          {
+            "id": 407,
+            "beforeQuantity": 396,
+            "afterQuantity": 0,
+            "beforeVersion": 4,
+            "afterVersion": 5,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-09T23:31:49.201204+00:00"
+          },
+          {
+            "id": 557,
+            "beforeQuantity": 202,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-10T20:15:05.899942+00:00"
+          }
+        ],
+        "replacementQuantity": 202,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "A162FFAC3463640DFBBD212688C4E2B1871F701934995759C027D4FE2174188D",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "536E82C4B49B5269998A8451C7B2C559A91FE1C34A90B36F460B131A66199476",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":407,\"warehouseId\":2,\"warehouse\":null,\"roomId\":47,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":495,\"fruitProfileId\":18,\"fruitProfile\":null,\"identityKey\":\"2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"2350\",\"growerNameSnapshot\":\"WHITESTONE PEARS CONV\",\"lotNumberSnapshot\":\"2350\",\"varietyCodeSnapshot\":\"DANJ\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":396,\"createdAt\":\"2026-09-03T18:46:18.428215+00:00\",\"updatedAt\":\"2026-09-09T23:31:49.201204+00:00\",\"concurrencyVersion\":4,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":557,\"warehouseId\":2,\"warehouse\":null,\"roomId\":47,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":495,\"fruitProfileId\":18,\"fruitProfile\":null,\"identityKey\":\"2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":\"2350\",\"growerNameSnapshot\":\"WHITESTONE PEARS CONV\",\"lotNumberSnapshot\":\"2350\",\"varietyCodeSnapshot\":\"DANJ\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":202,\"createdAt\":\"2026-09-10T20:15:05.804867+00:00\",\"updatedAt\":\"2026-09-10T20:15:05.899942+00:00\",\"concurrencyVersion\":3,\"applications\":[]}]",
+      "receiptRevisions": [
+        {
+          "receiptId": 1373,
+          "correctionChainValid": true,
+          "exactRemainingAllocationProven": false,
+          "untreatedPoolProven": true,
+          "originalQuantity": 66,
+          "currentQuantity": 66,
+          "missingEvidence": [
+            "Exact surviving receipt allocation remains unresolved; preserve the shared pool. Correction reasons do not assign bins."
+          ],
+          "correctionIds": [
+            "0f977af1-1376-4fa7-91a4-a56bbf512fb0"
+          ],
+          "auditIds": [
+            123203
+          ],
+          "isDeleted": true,
+          "effectiveReceiptQuantity": 0
+        }
+      ],
+      "eligible": true
+    },
+    {
+      "target": {
+        "warehouseId": 4,
+        "roomId": 2,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 398,
+          "fruitProfileId": 2,
+          "lot": "1084",
+          "growerNumber": "1084",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 10,
+      "projectedQuantity": 130,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "recorded-history-shared-pool/v1",
+        "evidenceVersion": "recorded-origins-revisions-runs-transfers/v1",
+        "fingerprint": "0FA366E6035D6C3B9A81A2F02C40DB4DFB21D37ADB8D31F75AB483B16B38A6A2",
+        "reason": "Closed recorded history proves an untreated shared pool; supersede projections without allocating surviving bins to receipts.",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Exact surviving receipt allocation remains unresolved; correction reasons do not allocate fruit."
+        },
+        "evidence": [
+          {
+            "entity": "ActualRun",
+            "id": "102"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "14"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "38"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "67"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "7"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "125"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "14"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "43"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "7"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "73"
+          },
+          {
+            "entity": "AuditLog",
+            "id": "120803"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "125"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "221"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "357"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "39"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "53"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1069"
+          },
+          {
+            "entity": "Receipt",
+            "id": "132"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1339"
+          },
+          {
+            "entity": "Receipt",
+            "id": "169"
+          },
+          {
+            "entity": "Receipt",
+            "id": "189"
+          },
+          {
+            "entity": "Receipt",
+            "id": "201"
+          },
+          {
+            "entity": "Receipt",
+            "id": "206"
+          },
+          {
+            "entity": "Receipt",
+            "id": "318"
+          },
+          {
+            "entity": "Receipt",
+            "id": "378"
+          },
+          {
+            "entity": "Receipt",
+            "id": "444"
+          },
+          {
+            "entity": "Receipt",
+            "id": "633"
+          },
+          {
+            "entity": "Receipt",
+            "id": "709"
+          },
+          {
+            "entity": "Receipt",
+            "id": "767"
+          },
+          {
+            "entity": "ReceiptInventoryOverride",
+            "id": "61ff4cac-48ce-4331-8306-8d2b0bdd21a8"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "1015"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "1148"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "1205"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "130"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "1303"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "135"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "1870"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "196"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "221"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "223"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2300"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2317"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "235"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "240"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2939"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3132"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "410"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "501"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "651"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "299"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "31"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "573"
+          }
+        ],
+        "changes": [
+          {
+            "id": 65,
+            "beforeQuantity": 120,
+            "afterQuantity": 0,
+            "beforeVersion": 5,
+            "afterVersion": 6,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-01T21:02:40.777355+00:00"
+          },
+          {
+            "id": 597,
+            "beforeQuantity": 10,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-14T14:54:49.543054+00:00"
+          }
+        ],
+        "replacementQuantity": 10,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "9FE70B71E39B025DE313543C91B48AAACED4F7C2ADBE720B17348218FA4E8ABA",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "8618DDEC280C4A52463CD853231264E9CE5FE7CBA73BCF17BF0B2390ACB80914",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":65,\"warehouseId\":4,\"warehouse\":null,\"roomId\":2,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":398,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|398|2|1084|1084|GALA|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1084\",\"growerNameSnapshot\":\"WP ORCHARD CONV\",\"lotNumberSnapshot\":\"1084\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":120,\"createdAt\":\"2026-08-20T17:24:21.31066+00:00\",\"updatedAt\":\"2026-09-01T21:02:40.777355+00:00\",\"concurrencyVersion\":5,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":597,\"warehouseId\":4,\"warehouse\":null,\"roomId\":2,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":398,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|398|2|1084|1084|GALA|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":\"1084\",\"growerNameSnapshot\":\"WP ORCHARD CONV\",\"lotNumberSnapshot\":\"1084\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":10,\"createdAt\":\"2026-09-14T14:54:49.530913+00:00\",\"updatedAt\":\"2026-09-14T14:54:49.543054+00:00\",\"concurrencyVersion\":3,\"applications\":[]}]",
+      "receiptRevisions": [
+        {
+          "receiptId": 1339,
+          "correctionChainValid": true,
+          "exactRemainingAllocationProven": false,
+          "untreatedPoolProven": true,
+          "originalQuantity": 6,
+          "currentQuantity": 6,
+          "missingEvidence": [
+            "Exact surviving receipt allocation remains unresolved; preserve the shared pool. Correction reasons do not assign bins."
+          ],
+          "correctionIds": [
+            "61ff4cac-48ce-4331-8306-8d2b0bdd21a8"
+          ],
+          "auditIds": [
+            120803
+          ],
+          "isDeleted": true,
+          "effectiveReceiptQuantity": 0
+        }
+      ],
+      "eligible": true
+    },
+    {
+      "target": {
+        "warehouseId": 4,
+        "roomId": 5,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 495,
+          "fruitProfileId": 18,
+          "lot": "2350",
+          "growerNumber": "2350",
+          "variety": "DANJ",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 170,
+      "projectedQuantity": 362,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "recorded-history-shared-pool/v1",
+        "evidenceVersion": "recorded-origins-revisions-runs-transfers/v1",
+        "fingerprint": "D843F87FF4465BC3AD518E6ED2EE1BBFAB4E6FC852885DBF12ED4FD48F707DFF",
+        "reason": "Closed recorded history proves an untreated shared pool; supersede projections without allocating surviving bins to receipts.",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Exact surviving receipt allocation remains unresolved; correction reasons do not allocate fruit."
+        },
+        "evidence": [
+          {
+            "entity": "ActualRun",
+            "id": "110"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "115"
+          },
+          {
+            "entity": "ActualRun",
+            "id": "91"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "110"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "133"
+          },
+          {
+            "entity": "ActualRunRevision",
+            "id": "138"
+          },
+          {
+            "entity": "AuditLog",
+            "id": "123203"
+          },
+          {
+            "entity": "AuditLog",
+            "id": "126585"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "313"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "376"
+          },
+          {
+            "entity": "BinsRunEntry",
+            "id": "382"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1288"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1338"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1358"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1373"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1389"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1403"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1532"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1539"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1555"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1568"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1569"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1572"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1587"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1594"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1626"
+          },
+          {
+            "entity": "Receipt",
+            "id": "1754"
+          },
+          {
+            "entity": "ReceiptInventoryOverride",
+            "id": "0f977af1-1376-4fa7-91a4-a56bbf512fb0"
+          },
+          {
+            "entity": "ReceiptInventoryOverride",
+            "id": "95eeef85-d8d8-4da4-a2b2-dfbd68e27656"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2196"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2316"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2364"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2383"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2399"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2413"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2459"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2460"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2677"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2790"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2806"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2821"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2822"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2825"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2843"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2857"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2901"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2972"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2973"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2975"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3000"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3001"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3002"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3138"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3142"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3374"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3380"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "335"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "369"
+          },
+          {
+            "entity": "RoomTransfer",
+            "id": "370"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "342"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "506"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "507"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "516"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "622"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "628"
+          }
+        ],
+        "changes": [
+          {
+            "id": 552,
+            "beforeQuantity": 192,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-09T23:31:49.201204+00:00"
+          },
+          {
+            "id": 553,
+            "beforeQuantity": 170,
+            "afterQuantity": 0,
+            "beforeVersion": 6,
+            "afterVersion": 7,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-21T04:42:41.170619+00:00"
+          }
+        ],
+        "replacementQuantity": 170,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "C322B464A1A44D3DE21A134512A3F769CACB076C2FD5C21423A9FBEF2A13D728",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "56F9CCDB752E58C0BCFD4FB3C38096FB4AD78E0E857349A208627E7962DFFE0B",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":552,\"warehouseId\":4,\"warehouse\":null,\"roomId\":5,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":495,\"fruitProfileId\":18,\"fruitProfile\":null,\"identityKey\":\"2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"2350\",\"growerNameSnapshot\":\"WHITESTONE PEARS CONV\",\"lotNumberSnapshot\":\"2350\",\"varietyCodeSnapshot\":\"DANJ\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":192,\"createdAt\":\"2026-09-09T23:31:49.201204+00:00\",\"updatedAt\":\"2026-09-09T23:31:49.201204+00:00\",\"concurrencyVersion\":2,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":553,\"warehouseId\":4,\"warehouse\":null,\"roomId\":5,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":495,\"fruitProfileId\":18,\"fruitProfile\":null,\"identityKey\":\"2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":\"2350\",\"growerNameSnapshot\":\"WHITESTONE PEARS CONV\",\"lotNumberSnapshot\":\"2350\",\"varietyCodeSnapshot\":\"DANJ\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":170,\"createdAt\":\"2026-09-09T23:45:30.21799+00:00\",\"updatedAt\":\"2026-09-21T04:42:41.170619+00:00\",\"concurrencyVersion\":6,\"applications\":[]}]",
+      "receiptRevisions": [
+        {
+          "receiptId": 1754,
+          "correctionChainValid": true,
+          "exactRemainingAllocationProven": false,
+          "untreatedPoolProven": true,
+          "originalQuantity": 64,
+          "currentQuantity": 0,
+          "missingEvidence": [
+            "Exact surviving receipt allocation remains unresolved; preserve the shared pool. Correction reasons do not assign bins."
+          ],
+          "correctionIds": [
+            "95eeef85-d8d8-4da4-a2b2-dfbd68e27656"
+          ],
+          "auditIds": [
+            126585
+          ],
+          "isDeleted": false,
+          "effectiveReceiptQuantity": 0
+        }
+      ],
+      "eligible": true
+    }
+  ],
+  "previouslyProvenPools": [
+    {
+      "target": {
+        "warehouseId": 1,
+        "roomId": 15,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 511,
+          "fruitProfileId": 2,
+          "lot": "3152",
+          "growerNumber": "3152",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 61,
+      "projectedQuantity": 162,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "canonical-pool-supersession/v1",
+        "evidenceVersion": "ledger-movement-application/v1",
+        "fingerprint": "651B6DEE853B18CEDC30DBA7D5CD697FD3AB7A2F267EDBEADE6E669ED0C4404B",
+        "reason": "Retire exact old projection rows; recreate independently proven untreated pool without per-receipt allocation.",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "evidence": [
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2491"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2509"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2516"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "352"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "361"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "365"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "414"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "426"
+          }
+        ],
+        "changes": [
+          {
+            "id": 414,
+            "beforeQuantity": 101,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:07:31.459524+00:00"
+          },
+          {
+            "id": 426,
+            "beforeQuantity": 61,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:10:39.473749+00:00"
+          }
+        ],
+        "replacementQuantity": 61,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "C8FD8180F176C4A49B5DF0310D1F7418EEAF3D5DC61BB8E3EC0E711231D8A7E3",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "EEBF0C71E7574DD405090DA5E7C4AA04324BC986AF10DACC69566AFF3B81C9EB",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":414,\"warehouseId\":1,\"warehouse\":null,\"roomId\":15,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":511,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|511|2|3152|3152|GALA|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"3152\",\"growerNameSnapshot\":\"MFR - SAMS \\u0026 BRN CONV\",\"lotNumberSnapshot\":\"3152\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":101,\"createdAt\":\"2026-09-04T14:57:43.99909+00:00\",\"updatedAt\":\"2026-09-04T15:07:31.459524+00:00\",\"concurrencyVersion\":3,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":426,\"warehouseId\":1,\"warehouse\":null,\"roomId\":15,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":511,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|511|2|3152|3152|GALA|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":null,\"growerNameSnapshot\":\"MFR - SAMS \\u0026 BRN CONV\",\"lotNumberSnapshot\":\"3152\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":61,\"createdAt\":\"2026-09-04T15:10:39.464615+00:00\",\"updatedAt\":\"2026-09-04T15:10:39.473749+00:00\",\"concurrencyVersion\":3,\"applications\":[]}]",
+      "receiptRevisions": [],
+      "eligible": true
+    },
+    {
+      "target": {
+        "warehouseId": 1,
+        "roomId": 15,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 642,
+          "fruitProfileId": 2,
+          "lot": "9682",
+          "growerNumber": "9682",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 252,
+      "projectedQuantity": 536,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "canonical-pool-supersession/v1",
+        "evidenceVersion": "ledger-movement-application/v1",
+        "fingerprint": "A2D0F5CB14BC9FD65DF3F0161CA353B971B6814C7433EB2961BE93579E23FDAE",
+        "reason": "Retire exact old projection rows; recreate independently proven untreated pool without per-receipt allocation.",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "evidence": [
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2499"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2515"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "2518"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "356"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "364"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "366"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "419"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "428"
+          }
+        ],
+        "changes": [
+          {
+            "id": 419,
+            "beforeQuantity": 284,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:08:26.048562+00:00"
+          },
+          {
+            "id": 428,
+            "beforeQuantity": 252,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:12:12.615589+00:00"
+          }
+        ],
+        "replacementQuantity": 252,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "28690345452643BDD6711EFC4118333E37033BB07FEB381802FB29FF3E5F0DA4",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "414E6AD655ED3DB60A445EECAA95F1CAA538A6DC1695D09B4424828A9BDD1AC2",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":419,\"warehouseId\":1,\"warehouse\":null,\"roomId\":15,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":642,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|642|2|9682|9682|GALA|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"9682\",\"growerNameSnapshot\":\"MFR - JWO-WINESAP CONV\",\"lotNumberSnapshot\":\"9682\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":284,\"createdAt\":\"2026-09-04T15:00:55.020622+00:00\",\"updatedAt\":\"2026-09-04T15:08:26.048562+00:00\",\"concurrencyVersion\":3,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":428,\"warehouseId\":1,\"warehouse\":null,\"roomId\":15,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":642,\"fruitProfileId\":2,\"fruitProfile\":null,\"identityKey\":\"2026|642|2|9682|9682|GALA|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":null,\"growerNameSnapshot\":\"MFR - JWO-WINESAP CONV\",\"lotNumberSnapshot\":\"9682\",\"varietyCodeSnapshot\":\"GALA\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":252,\"createdAt\":\"2026-09-04T15:12:12.603259+00:00\",\"updatedAt\":\"2026-09-04T15:12:12.615589+00:00\",\"concurrencyVersion\":3,\"applications\":[]}]",
+      "receiptRevisions": [],
+      "eligible": true
+    },
+    {
+      "target": {
+        "warehouseId": 4,
+        "roomId": 4,
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 448,
+          "fruitProfileId": 17,
+          "lot": "1372",
+          "growerNumber": "1372",
+          "variety": "BART",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+          "isComplete": true
+        }
+      },
+      "classification": "ProvenReconstructionCandidate",
+      "blockers": [],
+      "authoritativeQuantity": 1122,
+      "projectedQuantity": 1568,
+      "expectedTreatmentSignature": "u",
+      "plan": {
+        "algorithm": "canonical-pool-supersession/v1",
+        "evidenceVersion": "ledger-movement-application/v1",
+        "fingerprint": "5723923FCE9201E72495F7FEA44F94CBE47786E9D1F8873337534E36C46813A6",
+        "reason": "Retire exact old projection rows; recreate independently proven untreated pool without per-receipt allocation.",
+        "receiptProvenance": {
+          "confidence": "Ambiguous",
+          "receiptIds": [
+            626,
+            660,
+            720,
+            774
+          ],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "evidence": [
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3225"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3227"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3228"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3229"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3230"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3231"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3287"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3375"
+          },
+          {
+            "entity": "RoomInventoryAdjustment",
+            "id": "3624"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "601"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "602"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "603"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "604"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "605"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "606"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "607"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "615"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "623"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "703"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "704"
+          },
+          {
+            "entity": "TreatmentLineageMovement",
+            "id": "705"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "617"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "618"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "619"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "630"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "669"
+          },
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "670"
+          },
+          {
+            "entity": "Receipt",
+            "id": "626"
+          },
+          {
+            "entity": "Receipt",
+            "id": "660"
+          },
+          {
+            "entity": "Receipt",
+            "id": "720"
+          },
+          {
+            "entity": "Receipt",
+            "id": "774"
+          }
+        ],
+        "changes": [
+          {
+            "id": 617,
+            "beforeQuantity": 134,
+            "afterQuantity": 0,
+            "beforeVersion": 4,
+            "afterVersion": 5,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 774,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-17T16:30:28.491918+00:00"
+          },
+          {
+            "id": 618,
+            "beforeQuantity": 604,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.420452+00:00"
+          },
+          {
+            "id": 619,
+            "beforeQuantity": 250,
+            "afterQuantity": 0,
+            "beforeVersion": 5,
+            "afterVersion": 6,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 660,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-18T19:13:00.487129+00:00"
+          },
+          {
+            "id": 630,
+            "beforeQuantity": 324,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-21T04:33:20.693509+00:00"
+          },
+          {
+            "id": 669,
+            "beforeQuantity": 72,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 626,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.403441+00:00"
+          },
+          {
+            "id": 670,
+            "beforeQuantity": 184,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 720,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.41405+00:00"
+          }
+        ],
+        "replacementQuantity": 1122,
+        "replacementReceiptId": null,
+        "replacementProjectionId": null
+      },
+      "fingerprint": "8288FA3CBE517ACA8B4E1E9DC0CB997EC94689A48596686D383DCBF2FAF86082",
+      "movementFingerprint": "543a0bb285eb95c4a4e97b9594606bfc",
+      "auditFingerprint": "9cd5c2b7d5ee75318a11a202b68804e4",
+      "protectedFingerprint": "D362AAE0E504F6782EE7904294F4CE1FAA8061B81AFE6DF065AF57AF5263041D",
+      "beforeSegmentsJson": "[{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":617,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":774,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":134,\"createdAt\":\"2026-09-17T16:29:01.533122+00:00\",\"updatedAt\":\"2026-09-17T16:30:28.491918+00:00\",\"concurrencyVersion\":4,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":618,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":604,\"createdAt\":\"2026-09-17T16:29:01.546926+00:00\",\"updatedAt\":\"2026-09-24T16:52:50.420452+00:00\",\"concurrencyVersion\":3,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":619,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":660,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":250,\"createdAt\":\"2026-09-17T16:30:52.825979+00:00\",\"updatedAt\":\"2026-09-18T19:13:00.487129+00:00\",\"concurrencyVersion\":5,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":630,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":null,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|CONVENTIONAL\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":\"Conventional\",\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":324,\"createdAt\":\"2026-09-21T04:33:20.682528+00:00\",\"updatedAt\":\"2026-09-21T04:33:20.693509+00:00\",\"concurrencyVersion\":3,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":669,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":626,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":72,\"createdAt\":\"2026-09-24T16:52:50.39704+00:00\",\"updatedAt\":\"2026-09-24T16:52:50.403441+00:00\",\"concurrencyVersion\":2,\"applications\":[]},{\"disposition\":\"Current\",\"retiredQuantity\":null,\"retiredAt\":null,\"retiredByCommandKey\":null,\"id\":670,\"warehouseId\":4,\"warehouse\":null,\"roomId\":4,\"room\":null,\"receiptId\":720,\"receipt\":null,\"cropYear\":2026,\"growerLotId\":448,\"fruitProfileId\":17,\"fruitProfile\":null,\"identityKey\":\"2026|448|17|1372|1372|BART|CONVENTIONAL|False|\",\"growerNumberSnapshot\":\"1372\",\"growerNameSnapshot\":\"TOP PEAR CONV\",\"lotNumberSnapshot\":\"1372\",\"varietyCodeSnapshot\":\"BART\",\"productionTypeSnapshot\":\"Conventional\",\"isOrganicSnapshot\":false,\"inventoryStatusSnapshot\":null,\"treatmentState\":\"Untreated\",\"treatmentSignature\":\"u\",\"currentBins\":184,\"createdAt\":\"2026-09-24T16:52:50.408119+00:00\",\"updatedAt\":\"2026-09-24T16:52:50.41405+00:00\",\"concurrencyVersion\":2,\"applications\":[]}]",
+      "receiptRevisions": [
+        {
+          "receiptId": 626,
+          "correctionChainValid": true,
+          "exactRemainingAllocationProven": false,
+          "untreatedPoolProven": true,
+          "originalQuantity": 56,
+          "currentQuantity": 64,
+          "missingEvidence": [
+            "Exact surviving receipt allocation is unresolved; retain shared custody unless recorded allocation events establish it. Correction reasons are not allocation evidence."
+          ],
+          "correctionIds": [
+            "31df9866-f113-4da4-909b-cd08473dd910"
+          ],
+          "auditIds": [
+            55448
+          ],
+          "isDeleted": false,
+          "effectiveReceiptQuantity": 64
+        },
+        {
+          "receiptId": 720,
+          "correctionChainValid": false,
+          "exactRemainingAllocationProven": false,
+          "untreatedPoolProven": true,
+          "originalQuantity": 56,
+          "currentQuantity": 56,
+          "missingEvidence": [
+            "Correction 45678062-5b38-470b-ab7e-58f1db8e0415 lacks an exact complete quantity-only revision, ledger or audit chain.",
+            "Original receipt arrival quantity/identity is not uniquely established.",
+            "Exact surviving receipt allocation is unresolved; retain shared custody unless recorded allocation events establish it. Correction reasons are not allocation evidence."
+          ],
+          "correctionIds": [
+            "45678062-5b38-470b-ab7e-58f1db8e0415"
+          ],
+          "auditIds": [],
+          "isDeleted": false,
+          "effectiveReceiptQuantity": 56
+        }
+      ],
+      "eligible": true
+    }
+  ],
+  "authoritativeQuantityDelta": 0,
+  "ledgerWrites": 0,
+  "receiptWrites": 0,
+  "movementWrites": 0,
+  "treatmentApplicationWrites": 0,
+  "remainingReceiptAllocation": "Unresolved/shared; replacement ReceiptId is null. No FIFO, proportional or correction-reason allocation.",
+  "productionSteps": [
+    "Fresh read-only preview of all six exact identities; verify full recorded history and versions.",
+    "Obtain explicit approval of code/release and exact projection reconstruction. This proposal grants neither.",
+    "Before any separately authorized production mutation, satisfy the existing verified backup gate.",
+    "In a bounded maintenance window, refresh and separately approve each pool; serializable NOWAIT locks and fingerprints reject drift.",
+    "Execute each once with a stable operation key; verify immediately, then compare protected hashes and full readiness.",
+    "If acknowledgment is uncertain, inspect the persisted command and retry only the same key/payload. Do not rerun with a new key."
+  ]
+}
