@@ -13,8 +13,11 @@ for (const [label, connection, expected] of [
   ['nonlocal fixture', 'Host=example.invalid;Database=governance_test', /require localhost and a test-marked database/],
   ['unmarked database', 'Host=127.0.0.1;Database=production', /require localhost and a test-marked database/]
 ]) test('contract runner rejects ' + label + ' before running tests', () => {
-  const r = spawnSync('pwsh', ['-NoProfile', '-File', path.join(root, 'scripts/governance/test-contracts.ps1'), '-NoBuild'],
-    { encoding: 'utf8', env: { ...process.env, CANONICAL_INVENTORY_TEST_POSTGRES: connection } });
+  // Inspect the actual exception, not host-dependent colored/wrapped rendering.
+  const r = spawnSync('pwsh', ['-NoProfile', '-Command',
+    'try { & $env:CROPQC_CONTRACT_SCRIPT -NoBuild } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }'],
+    { encoding: 'utf8', env: { ...process.env, CANONICAL_INVENTORY_TEST_POSTGRES: connection,
+      CROPQC_CONTRACT_SCRIPT: path.join(root, 'scripts/governance/test-contracts.ps1') } });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout + r.stderr, expected);
   assert.doesNotMatch(r.stdout + r.stderr, /Mandatory governance contracts PASS|Test run for/);
