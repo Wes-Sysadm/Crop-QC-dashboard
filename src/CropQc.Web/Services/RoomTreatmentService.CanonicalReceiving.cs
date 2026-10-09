@@ -18,7 +18,7 @@ public sealed partial class RoomTreatmentService
         var rooms = await dbContext.TreatmentLineageSegments.Where(x => x.ReceiptId == id).Select(x => x.RoomId).Distinct().ToListAsync(ct);
         rooms.Add(receipt.RoomId);
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms.Distinct().ToImmutableArray()),
-            new(RequireExactReceipt: true, ReceiptId: id), businessTime.UtcNow, ct);
+            new(RequireExactReceipt: true, ReceiptId: id) { AllowIndependentCohorts = true }, businessTime.UtcNow, ct);
         var positions = batch.Positions.Where(x => x.Identity.CropYear == receipt.CropYear && x.Identity.GrowerLotId == receipt.GrowerLotId
             && x.Identity.FruitProfileId == receipt.FruitProfileId && x.AuthoritativeQuantity > 0).ToImmutableArray();
         batch = batch with { Positions = positions };

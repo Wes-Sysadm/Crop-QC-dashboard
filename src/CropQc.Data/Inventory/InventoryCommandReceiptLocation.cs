@@ -45,15 +45,15 @@ public sealed partial class InventoryCommandExecutor
             && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Select an active, unsealed destination room.");
         var loader = new InventoryEvidenceLoader(db);
         var sourceEvidence = (await loader.LoadAsync(new(sourceWarehouse, [sourceRoom]), now, ct)).Positions.Single(x => x.Identity.Key == p.Identity.Key);
-        var exact = InventoryAvailabilityResolver.Resolve(sourceEvidence, new(RequireExactReceipt: true, ReceiptId: receipt.Id));
+        var originFailure = await InventoryOriginGuard.ValidateAsync(db, [sourceEvidence], now, ct);
+        Require(originFailure == null, originFailure ?? "Receipt origin validation failed.");
+        var exact = InventoryAvailabilityResolver.Resolve(sourceEvidence, new(RequireExactReceipt: true, ReceiptId: receipt.Id) { AllowIndependentCohorts = true });
         Require(exact.IsOperable, "Exact receipt inventory or treatment ownership cannot be proven. Review the receipt allocations.");
         await NormalizePositionAsync(db, factory, c, sourceEvidence, p, now, attempt, ct);
         var targetEvidence = (await loader.LoadAsync(new(destination.WarehouseId, [destination.RoomId]), now, ct)).Positions.SingleOrDefault(x => x.Identity.Key == p.Identity.Key);
         if (targetEvidence != null)
         {
-            var resolved = InventoryAvailabilityResolver.Resolve(targetEvidence, new());
-            Require(resolved.IsOperable, "Destination inventory needs review before receiving the correction.");
-            await NormalizePositionAsync(db, factory, c, targetEvidence, resolved, now, attempt, ct);
+            await PrepareDestinationAsync(db, factory, c, targetEvidence, now, attempt, ct);
         }
         var beforeJson = ReceiptValues(receipt);
         var operation = new ReceiptInventoryOverride

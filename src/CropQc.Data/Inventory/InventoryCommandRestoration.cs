@@ -28,8 +28,9 @@ public sealed partial class InventoryCommandExecutor
         old.IsReversed = true; old.ReversedAt = now; old.ReversedByUserId = c.ActorId; old.ReverseReason = c.Reason;
         await db.SaveChangesAsync(ct);
         var after = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(old.WarehouseId, [old.RoomId]), new(), now, ct);
-        Require(results.All(result => after.Positions.Any(x => x.PositionKey == result.Effect.PositionKey && x.IsOperable
-            && x.AuthoritativeQuantity == result.Effect.After && x.RawProjectionQuantity == x.AuthoritativeQuantity)),
+        Require(results.All(result => after.Positions.Any(x => x.PositionKey == result.Effect.PositionKey
+            && x.AuthoritativeQuantity == result.Effect.After && (IsAdmittedDestination(factory, old.RoomId, result.Identity.Key)
+                || x.IsOperable && x.RawProjectionQuantity == x.AuthoritativeQuantity))),
             "Loss restoration does not reconcile authoritative inventory and current treatment.");
         return results.Select(result => result.Effect with { ParentId = old.Id, LedgerIds = [result.Ledger.Id], MovementIds = result.Movements.Select(x => x.Id).ToImmutableArray() }).ToImmutableArray();
     }
@@ -61,6 +62,11 @@ public sealed partial class InventoryCommandExecutor
             && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Restoration room is unavailable or sealed.");
         var identities = await CanonicalIdentityMap.LoadAsync(db, moves.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().ToArray(), ct);
         var roomEvidence = await new InventoryEvidenceLoader(db).LoadAsync(new(original.WarehouseId, [original.RoomId]), now, ct);
+        var historicalSource = roomEvidence.Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
+        Require(historicalSource != null, "Original consumption has no recorded inventory position.");
+        var originFailure = await InventoryOriginGuard.ValidateAsync(db,
+            [historicalSource!], now, ct, includeEmptyHistory: true);
+        Require(originFailure == null, originFailure ?? "Consumption origin validation failed.");
         var appIds = moves.SelectMany(x => x.SourceSegment!.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
         var applications = await db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id))
             .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToArrayAsync(ct);
@@ -70,8 +76,7 @@ public sealed partial class InventoryCommandExecutor
             var current = group.Key;
             var evidence = roomEvidence.Positions.SingleOrDefault(x => x.Identity.Key == current.Key);
             var resolved = evidence == null ? null : InventoryAvailabilityResolver.Resolve(evidence, new());
-            Require(resolved == null || resolved.IsOperable, "Current inventory requires review before restoration.");
-            if (resolved != null) await NormalizePositionAsync(db, factory, c, evidence!, resolved, now, attempt, ct);
+            if (evidence != null) await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
             var before = resolved?.AuthoritativeQuantity ?? 0;
             var amount = group.Sum(x => x.BinCount);
             var ledger = Ledger(c, current, original.WarehouseId, original.RoomId, amount, before,

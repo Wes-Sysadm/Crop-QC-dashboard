@@ -55,9 +55,8 @@ public sealed partial class InventoryCommandExecutor
         if (existing != null)
         {
             var resolved = InventoryAvailabilityResolver.Resolve(existing, new());
-            Require(resolved.IsOperable, "Existing inventory identity or treatment requires review before receiving into this position.");
+            await PrepareDestinationAsync(db, factory, command, existing, now, attempt, ct);
             before = resolved.AuthoritativeQuantity;
-            await NormalizePositionAsync(db, factory, command, existing, resolved, now, attempt, ct);
         }
         var creating = receipt == null;
         receipt ??= new Receipt
@@ -99,8 +98,10 @@ public sealed partial class InventoryCommandExecutor
         await db.SaveChangesAsync(ct);
         var after = InventoryAvailabilityResolver.Resolve((await loader.LoadAsync(new(p.WarehouseId, [p.RoomId]), now, ct))
             .Positions.Single(x => x.Identity.Key == identity.Key), new());
-        Require(after.IsOperable && after.AuthoritativeQuantity == checked(before + p.Quantity)
-            && after.RawProjectionQuantity == after.AuthoritativeQuantity, "Received inventory, provenance and current projections do not reconcile.");
+        Require(after.AuthoritativeQuantity == checked(before + p.Quantity)
+            && (IsAdmittedDestination(factory, p.RoomId, identity.Key)
+                || after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity),
+            "Received inventory, provenance and current projections do not reconcile.");
         AddAudit(db, command, creating ? "CanonicalReceiptCreated" : "CanonicalReceiptInventoryActivated", receipt.Id.ToString(),
             new { Before = before, Receipt = beforeReceipt }, new { Receipt = p, After = after.AuthoritativeQuantity }, now);
         return [new(after.PositionKey, before, after.AuthoritativeQuantity, p.Quantity, receipt.Id, [ledger.Id], [movement.Id])];
