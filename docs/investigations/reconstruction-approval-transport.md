@@ -1,4 +1,7 @@
-# Lossless reconstruction approval handling
+# PR #277 — Lossless Reconstruction Approval Handling
+
+[Pull request #277](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/277)
+contains this separate tooling correction.
 
 Status: **GO FOR REVIEW**. Production reconstruction and deployment remain stopped.
 This is a separate release-tooling correction discovered during the production
