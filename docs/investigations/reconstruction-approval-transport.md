@@ -196,6 +196,10 @@ and contract workflows are retained. GitHub check results and final PR/head iden
 are reported with the pull request. Human review/merge is still pending; automated
 tests do not approve policy or production release.
 
+The initial PR governance disclosure included ADR IDs in the rule-only field and
+was correctly rejected. The disclosure was corrected to list rule IDs separately
+from architecture decisions; the unchanged governance validator then passed.
+
 No production connection, reconstruction, configuration change, backup operation,
 merge or deployment occurred during this tooling task. There is no MSI/hardware
 impact or schema rollback requirement. The application guard was not normalized,

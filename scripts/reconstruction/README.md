@@ -43,6 +43,7 @@ an isolated localhost `pr271_release_*` database and canonical mode must be on.
 Only that environment may use `DisposableRestore`; the application enforces it.
 
 ```powershell
+$ErrorActionPreference = 'Stop'
 $tools = './scripts/reconstruction'
 # BinaryPath, target.json and operator-owned metadata come from the release plan.
 & "$tools/Invoke-ReconstructionMaintenance.ps1" -Mode Preview -BinaryPath $binary `
