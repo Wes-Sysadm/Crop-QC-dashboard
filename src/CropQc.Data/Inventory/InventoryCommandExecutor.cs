@@ -94,7 +94,8 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     var e = batch.Positions.SingleOrDefault(x => x.Identity.Key == source.Result.Identity.Key);
                     if (e == null || destinations.Any(x => x.Result.Identity.Key == e.Identity.Key && x.Result.Location.RoomId == dest.RoomId)) continue;
                     var r = InventoryAvailabilityResolver.Resolve(e, new());
-                    Require(r.IsOperable, "Destination evidence is not proven; no stock may be merged into it.");
+                    Require(r.IsOperable, CanonicalInventoryMessages.PlacementBlocker(
+                        $"{command.Kind} {command.PhysicalParentId?.ToString() ?? command.OperationKey}", e.Location.Name, r));
                     destinations.Add((source.Line, e, r));
                 }
                 if (command.Kind == InventoryCommandKind.TreatmentAssignment)
@@ -150,7 +151,11 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             }
             catch (Exception ex)
             {
-                await tx.RollbackAsync(CancellationToken.None);
+                // A PostgreSQL serialization failure can abort COMMIT itself.
+                // That transaction is already complete; another Rollback throws
+                // and hides the retryable server error. Disposal rolls back only
+                // pending work and also handles an already-completed transaction.
+                await tx.DisposeAsync();
                 db.ChangeTracker.Clear();
                 PostgresException? pg = null;
                 for (Exception? cause = ex; cause != null; cause = cause.InnerException)

@@ -75,7 +75,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "A685DD8C89571E02F5357726ECEEF138D256B7FD20681E15943EE74F1EA93331"
+    "Sha256": "FB48E3B37B9E0A8465EAA402A2A6BA0931D3D83453AD5444F2E8881B1A869D73"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -117,7 +117,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptLocation.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "31CC3D496CF3A03612DA89082E643D279E3419143DC42E084F96F15E5010D424"
+    "Sha256": "C8472815C9C760991AEE42FCF7FF69E47C7C7400E14820BF4AD3FD887633312F"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptMetadata.cs",
@@ -129,7 +129,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "8F9668CECD4E3BE67C912BAAD50E95DD0B20D8799667B4E0CC777BD773EB7304"
+    "Sha256": "1F7B2D27D447ECDC642D559B6E38E4C8D37CBE3FF41C1204B5EF376FAED52683"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReconstructionVerification.cs",
@@ -231,7 +231,7 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "B1BD7A8946EF199F73989D17A1DF7E485811C38B2458A12CB4E02CE71AA36276"
+    "Sha256": "3D005251FF644EBE303DB63DEA6D4B67F83DD68C3DA69669724C63D532573AF6"
   },
   {
     "Path": "src/CropQc.Shared/Storage/GoogleDriveStorageService.cs",
