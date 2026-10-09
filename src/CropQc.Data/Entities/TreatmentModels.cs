@@ -148,6 +148,9 @@ public sealed class RoomTreatmentApplicationSource
 
 public sealed class TreatmentLineageSegment
 {
+    // Derived allocation boundary. The originating command/movement proves this
+    // cohort; this key itself is never an inventory origin or quantity authority.
+    public string CohortKey { get; set; } = "";
     public string Disposition { get; set; } = "Current";
     public int? RetiredQuantity { get; set; }
     public DateTimeOffset? RetiredAt { get; set; }

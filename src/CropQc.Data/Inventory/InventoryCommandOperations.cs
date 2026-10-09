@@ -158,6 +158,7 @@ public sealed partial class InventoryCommandExecutor
                     && x.Disposition == "Current" && x.CurrentBins > 0 && x.TreatmentSignature == line.TreatmentSignature).OrderBy(x => x.Id).ToListAsync(ct);
                 var remaining = qty;
                 foreach (var row in rows.Where(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == i.Key
+                    && (!r.UsesIndependentCohorts || r.TreatmentSlices.Where(s => s.Signature == line.TreatmentSignature).Any(s => s.ProjectionIds.Contains(x.Id)))
                     && (c.Kind is not (InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion) || x.ReceiptId == line.ReceiptId)
                     && (originalRoomTransfer == null || originalRoomMoves.Any(m => m.DestinationSegmentId == x.Id))))
                 {
@@ -494,7 +495,15 @@ public sealed partial class InventoryCommandExecutor
             var check = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db))
                 .ResolveAsync(new(affected.Warehouse, [affected.Room]), new(), DateTimeOffset.UtcNow, ct);
             var position = check.Positions.SingleOrDefault(x => x.Identity.Key == affected.Identity.Key);
-            Require(position != null && position.IsOperable && position.RawProjectionQuantity == position.AuthoritativeQuantity,
+            var independentSource = inputs.FirstOrDefault(x => x.Result.UsesIndependentCohorts
+                && x.Result.Identity.Key == affected.Identity.Key && x.Result.Location.RoomId == affected.Room).Result;
+            if (independentSource != null)
+                Require(position != null && position.RawProjectionQuantity - independentSource.RawProjectionQuantity
+                    == position.AuthoritativeQuantity - independentSource.AuthoritativeQuantity,
+                    "Selected cohort projection and source ledger deltas do not conserve quantity.");
+            Require(position != null && (IsAdmittedDestination(factory, affected.Room, affected.Identity.Key)
+                || independentSource != null
+                || position.IsOperable && position.RawProjectionQuantity == position.AuthoritativeQuantity),
                 "Final current projection, treatment and authoritative inventory do not reconcile.");
         }
         if (run != null && c.Run != null)

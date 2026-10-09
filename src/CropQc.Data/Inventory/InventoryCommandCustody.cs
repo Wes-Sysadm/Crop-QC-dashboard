@@ -232,9 +232,7 @@ public sealed partial class InventoryCommandExecutor
                 .Positions.SingleOrDefault(x => x.Identity.Key == i.Key);
             if (targetEvidence != null)
             {
-                var targetResult = InventoryAvailabilityResolver.Resolve(targetEvidence, new());
-                Require(targetResult.IsOperable, "Current destination inventory needs review before return or receiving.");
-                await NormalizePositionAsync(db, factory, c, targetEvidence, targetResult, now, attempt, ct);
+                await PrepareDestinationAsync(db, factory, c, targetEvidence, now, attempt, ct);
             }
             var credit = Ledger(c, i, destination.WarehouseId, destination.RoomId, quantity, before, key + ":in", now);
             credit.InterCrewTransfer = crew; credit.OutsideWarehouseTransfer = outside; credit.ProcessorShipmentLine = processor;

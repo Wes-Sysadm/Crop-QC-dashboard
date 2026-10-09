@@ -269,7 +269,7 @@ public sealed class InventoryCommandTests
                 [new(new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions), r.AuthoritativeQuantity,
                     r.TreatmentSlices[0].Signature, kind == InventoryCommandKind.ReceiveTransfer ? new(9006, 9007) : null)]);
         }
-        public async Task<InventoryCommand> ReceiveCommand()
+        public async Task<InventoryCommand> ReceiveCommand(Func<Task>? prepareDestination = null)
         {
             await using var db = CreateDbContext();
             (await db.Warehouses.SingleAsync(x => x.Code == "EBS")).Code = "BASE-EBS";
@@ -278,6 +278,7 @@ public sealed class InventoryCommandTests
             db.Warehouses.Add(new() { Id = 9006, Code = "EBS", Name = "Receiving site" });
             db.Rooms.Add(new() { Id = 9007, WarehouseId = 9006, Code = "RECV", Name = "Receiving room" });
             await db.SaveChangesAsync();
+            if (prepareDestination != null) await prepareDestination();
             var dispatch = (await Command(InventoryCommandKind.InterCompanyDispatch, 19)) with { CustodyGroup = "EBS" };
             var sent = await Execute(dispatch);
             Assert.True(sent.Status == InventoryCommandStatus.Committed, sent.Detail);

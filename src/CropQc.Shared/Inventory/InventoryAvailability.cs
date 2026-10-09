@@ -23,7 +23,7 @@ public enum InventoryBlockerCode
 {
     NegativeAuthoritativeBalance, ConflictingIdentity, UnknownTreatment, MixedTreatmentAmbiguity,
     MissingReceiptProvenance, InvalidCustody, UnsupportedHistoricalEvidence, StaleRead,
-    HistoricalSnapshotUnavailable, SelectedTreatmentUnavailable
+    HistoricalSnapshotUnavailable, SelectedTreatmentUnavailable, MissingInventoryOrigin
 }
 [JsonConverter(typeof(JsonStringEnumConverter<ProjectionExclusionReason>))]
 public enum ProjectionExclusionReason { Depleted, DuplicateStatusAlias, ConsumedHistoricalRepresentation, UnprovenProjection, StaleHistoricalPool }
@@ -36,7 +36,12 @@ public sealed record InventoryScope(int? WarehouseId, ImmutableArray<int> RoomId
 // Requirements can constrain eligibility; they cannot supply or override a quantity.
 public sealed record InventoryOperationRequirements(bool RequireKnownTreatment = true,
     bool RequireExactReceipt = false, long? ReceiptId = null, string? TreatmentSignature = null,
-    InventoryCustody AllowedCustody = InventoryCustody.Room, string? ExpectedFingerprint = null);
+    InventoryCustody AllowedCustody = InventoryCustody.Room, string? ExpectedFingerprint = null)
+{
+    // Admit only independently event-backed slices. This never declares an
+    // unresolved remainder treated/untreated or grants full readiness.
+    public bool AllowIndependentCohorts { get; init; }
+}
 
 public sealed record InventoryIdentity(int? CropYear, int? GrowerLotId, int? FruitProfileId,
     string Lot, string? GrowerNumber, string Variety, string ProductionType, bool? IsOrganic, string Status)
@@ -82,6 +87,8 @@ public sealed record InventoryAvailabilityResult(string PositionKey, InventoryId
     ImmutableArray<InventoryBlocker> Blockers, InventoryReadWatermark Watermark,
     ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
 {
+    public bool UsesIndependentCohorts { get; init; }
+    public bool UsesRecordedCohorts { get; init; }
     public ImmutableArray<InventoryCustodyAllocation> CustodyAllocations { get; init; } =
         CustodyAllocations.IsDefault ? [] : CustodyAllocations;
     public bool IsOperable => Blockers.IsEmpty && AuthoritativeQuantity >= 0;
@@ -98,17 +105,37 @@ public interface IInventoryAvailability
 
 // Immutable evidence boundary: the resolver has no DbContext, entity or write API.
 public sealed record InventoryLedgerEvidence(long Id, int Quantity, string Kind, DateTimeOffset At,
-    long? ReceiptId, string? MovementParent, bool ExactIdentity, DateTimeOffset? RecordedAt = null);
+    long? ReceiptId, string? MovementParent, bool ExactIdentity, DateTimeOffset? RecordedAt = null)
+{
+    public string? OperationKey { get; init; }
+    public int InvariantVersion { get; init; }
+}
 public sealed record InventoryProjectionEvidence(long Id, string RawKey, int Quantity, string State,
     string Signature, long? ReceiptId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    long Version, bool ExactIdentity, ImmutableArray<long> ApplicationIds, string Disposition = "Current", int? RetiredQuantity = null);
+    long Version, bool ExactIdentity, ImmutableArray<long> ApplicationIds, string Disposition = "Current", int? RetiredQuantity = null)
+{
+    public string CohortKey { get; init; } = "";
+}
 public sealed record InventoryMovementEvidence(long Id, string Kind, int Quantity, DateTimeOffset At,
     DateTimeOffset CreatedAt, string Signature, string State, long? ReceiptId, long? SourceProjectionId,
-    long? DestinationProjectionId, bool Incoming, bool Outgoing, string? Parent, long? ReversesId, bool ExactIdentity);
+    long? DestinationProjectionId, bool Incoming, bool Outgoing, string? Parent, long? ReversesId, bool ExactIdentity)
+{
+    public string? OperationKey { get; init; }
+}
 public sealed record InventoryReceiptEvidence(long Id, int Quantity, bool ExactIdentity, bool IsDeleted,
-    bool IsTransferReceipt, DateTimeOffset UpdatedAt, long Version);
+    bool IsTransferReceipt, DateTimeOffset UpdatedAt, long Version)
+{
+    public int? OriginalQuantity { get; init; }
+    public bool? OriginalIdentityVerified { get; init; }
+}
 public sealed record InventoryApplicationEvidence(long Id, DateTimeOffset AppliedAt, DateTimeOffset? ReversedAt,
-    long? ReceiptId, int? RoomId = null);
+    long? ReceiptId, int? RoomId = null)
+{
+    public DateTimeOffset? RecordedAt { get; init; }
+    public ImmutableArray<InventoryApplicationAllocation> Allocations { get; init; } = [];
+}
+public sealed record InventoryApplicationAllocation(long Id, int Quantity, long? ReceiptId,
+    string PriorSignature, string ResultSignature, bool ExactIdentity);
 public sealed record InventoryCustodyAllocation(long MovementId, long SourceProjectionId, int Quantity,
     InventoryIdentity Identity, string TreatmentSignature, string TreatmentState, long? ReceiptId);
 public sealed record InventoryPositionEvidence(InventoryIdentity Identity, InventoryLocation Location,
@@ -119,6 +146,7 @@ public sealed record InventoryPositionEvidence(InventoryIdentity Identity, Inven
     bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default,
     ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
 {
+    public bool ApplicationAllocationsLoaded { get; init; }
     public ImmutableArray<InventoryEvidenceReference> IdentityCorrections { get; init; } =
         IdentityCorrections.IsDefault ? [] : IdentityCorrections;
     public ImmutableArray<InventoryCustodyAllocation> CustodyAllocations { get; init; } =

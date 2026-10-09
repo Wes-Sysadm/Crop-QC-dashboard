@@ -40,6 +40,7 @@ internal static class CanonicalRestoreFixture
             const string phase2 = "20261001144023_CanonicalInventoryCommands";
             const string phase3 = "20261001203105_CanonicalIdentityRestorationSides";
             const string backup = "20261002031709_BoundedBackupSnapshotProgress";
+            const string movementCohorts = "20261009150448_IsolatedInventoryMovementCohorts";
             const string truck = "20260923202144_AddTruckReceiptReconciliation";
             Assert.Contains(truck, applied);
             if (!applied.Contains(phase3))
@@ -54,9 +55,15 @@ internal static class CanonicalRestoreFixture
                 var script = db.GetService<IMigrator>().GenerateScript(phase3, backup);
                 await db.Database.ExecuteSqlRawAsync(script);
             }
+            if (!applied.Contains(movementCohorts))
+            {
+                var script = db.GetService<IMigrator>().GenerateScript(backup, movementCohorts);
+                await db.Database.ExecuteSqlRawAsync(script);
+            }
             Assert.Contains(phase2, await db.Database.GetAppliedMigrationsAsync());
             Assert.Contains(phase3, await db.Database.GetAppliedMigrationsAsync());
             Assert.Contains(backup, await db.Database.GetAppliedMigrationsAsync());
+            Assert.Contains(movementCohorts, await db.Database.GetAppliedMigrationsAsync());
             Assert.Equal(before, await OriginalData(fixture.Connection, originalColumns));
             var newTables = (await Columns(fixture.Connection)).Where(x => !originalColumns.ContainsKey(x.Key)).ToDictionary();
             // Newly added operational tables must be empty; migrations may not backfill.

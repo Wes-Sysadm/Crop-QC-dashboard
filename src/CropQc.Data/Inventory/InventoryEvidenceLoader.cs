@@ -72,8 +72,14 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             .Concat(segments.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value))
             .Concat(movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)).Distinct().ToArray();
         var receipts = await Bounded(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct);
-        var appIds = segments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId).Distinct().ToArray();
-        var applications = await Bounded(db.RoomTreatmentApplications.AsNoTracking().Where(x =>
+        var correctedOriginIds = receipts.Where(r => rows.Any(l => l.AdjustmentType == "ReceiptAdd" && l.ReceiptId == r.Id
+            && (l.ChangeAmount != r.BinCount || l.CropYear != r.CropYear || l.GrowerLotId != r.GrowerLotId || l.FruitProfileId != r.FruitProfileId)))
+            .Select(r => r.Id).ToArray();
+        var originRevisions = correctedOriginIds.Length == 0 ? [] : await Bounded(db.ReceiptInventoryOverrides.AsNoTracking()
+            .Where(x => correctedOriginIds.Contains(x.ReceiptId)), ct);
+        var appIds = segments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId)
+            .Concat(movements.SelectMany(x => InventoryEventReplay.ApplicationIds(x.TreatmentSignatureSnapshot))).Distinct().ToArray();
+        var applications = await Bounded(db.RoomTreatmentApplications.AsNoTracking().Include(x => x.Sources).AsSingleQuery().Where(x =>
             appIds.Contains(x.Id) || (x.ReceiptId == null && rooms.Contains(x.RoomId)) || receiptIds.Contains(x.ReceiptId ?? -1)), ct);
         var profileIds = snapshots.Where(x => x.FruitProfileId != null).Select(x => x.FruitProfileId!.Value)
             .Concat(segments.Where(x => x.FruitProfileId != null).Select(x => x.FruitProfileId!.Value)).Distinct().ToArray();
@@ -113,17 +119,29 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
                 .Concat(matchingMovements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)).Distinct().Order().ToArray();
             var matchingReceipts = ids.Where(receiptIndex.ContainsKey).Select(x => receiptIndex[x]).ToArray();
             var matchingApps = roomApps[snapshot.RoomId].Concat(ids.SelectMany(id => receiptApps[id]))
+                .Concat(matchingMovements.SelectMany(x => InventoryEventReplay.ApplicationIds(x.TreatmentSignatureSnapshot))
+                    .Where(appsById.ContainsKey).Select(x => appsById[x]))
                 .Concat(matchingSegments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId).Where(appsById.ContainsKey).Select(x => appsById[x]))
                 .DistinctBy(x => x.Id).OrderBy(x => x.Id).ToArray();
             var ledgerEvidence = matchingRows.Where(x => x.AdjustmentAt <= asOf).Select(x => new InventoryLedgerEvidence(x.Id, x.ChangeAmount,
                 x.AdjustmentType, x.AdjustmentAt, x.ReceiptId, entryByAdjustment.TryGetValue(x.Id, out var entry) ? $"entry:{entry}" : Parent(x), x.WarehouseId == snapshot.WarehouseId && x.CropYear == identity.CropYear
                     && x.GrowerLotId == identity.GrowerLotId && x.FruitProfileId == identity.FruitProfileId
                     && (string.IsNullOrWhiteSpace(x.VarietyCode) || N(x.VarietyCode) == N(identity.Variety))
-                    && InventoryStatusIdentity.Normalize(x.InventoryStatus, identity.ProductionType) == InventoryStatusIdentity.Normalize(identity.Status, identity.ProductionType), x.CreatedAt)).ToImmutableArray();
+                    && InventoryStatusIdentity.Normalize(x.InventoryStatus, identity.ProductionType) == InventoryStatusIdentity.Normalize(identity.Status, identity.ProductionType), x.CreatedAt)
+            { OperationKey = x.InventoryOperationKey, InvariantVersion = x.InventoryInvariantVersion }).ToImmutableArray();
             var projectionEvidence = matchingSegments.Select(x => Projection(x, identity, snapshot.WarehouseId)).ToImmutableArray();
             var movementEvidence = matchingMovements.Select(x => Movement(x, identity, snapshot.RoomId)).ToImmutableArray();
-            var receiptEvidence = matchingReceipts.Select(x => Receipt(x, identity)).ToImmutableArray();
-            var appEvidence = matchingApps.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
+            var receiptEvidence = matchingReceipts.Select(x => OriginalReceipt(Receipt(x, identity), identity,
+                originRevisions.Where(r => r.ReceiptId == x.Id).OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).FirstOrDefault())).ToImmutableArray();
+            var appEvidence = matchingApps.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)
+            {
+                RecordedAt = x.CreatedAt,
+                Allocations = x.Sources.Where(s => InventoryStatusIdentity.NormalizeLineageKey(s.IdentityKey) == identity.Key)
+                    .Select(s => new InventoryApplicationAllocation(s.Id, s.BinsTreated, s.ReceiptId,
+                        s.PriorTreatmentSignature, s.ResultTreatmentSignature,
+                        s.CropYear == identity.CropYear && s.GrowerLotId == identity.GrowerLotId && s.FruitProfileId == identity.FruitProfileId))
+                    .OrderBy(s => s.Id).ToImmutableArray()
+            }).ToImmutableArray();
             profiles.TryGetValue(snapshot.FruitProfileId ?? -1, out var profile);
             var identityVerified = identity.IsComplete && profile != null && N(profile.VarietyCode) == N(identity.Variety)
                 && N(profile.ProductionType) == N(identity.ProductionType) && profile.IsOrganic == identity.IsOrganic;
@@ -144,7 +162,8 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             result.Add(new(identity, new(InventoryCustody.Room, snapshot.WarehouseId, snapshot.RoomId, snapshot.Facility, snapshot.Room),
                 physical, 0, identityVerified, true, ledgerEvidence, projectionEvidence, movementEvidence, receiptEvidence, appEvidence, watermark,
                 matchingRows.Any(x => x.CreatedAt > asOf) || matchingSegments.Any(x => x.UpdatedAt > asOf)
-                    || matchingReceipts.Any(x => x.UpdatedAt > asOf) || matchingApps.Any(x => x.CreatedAt > asOf || x.ReversedAt > asOf)));
+                    || matchingReceipts.Any(x => x.UpdatedAt > asOf) || matchingApps.Any(x => x.CreatedAt > asOf || x.ReversedAt > asOf))
+            { ApplicationAllocationsLoaded = true });
         }
         // Orphan projections are never converted into physical stock or silently dropped.
         var present = result.Select(x => (x.Location.RoomId, x.Identity.Key)).ToHashSet();
@@ -156,29 +175,53 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             result.Add(new(identity, new(InventoryCustody.Room, first.WarehouseId, first.RoomId, "", $"Room {first.RoomId}"),
                 0, 0, false, true, [], projections, [], [], [], Watermark(projections, consistency, [])));
         }
-        return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + applications.Count + profiles.Count + runParents.Count);
+        return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
     }
 
     internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.Lot, x.GrowerNumber, x.Variety, x.ProductionType, x.IsOrganic, x.InventoryStatus);
+    private static InventoryReceiptEvidence OriginalReceipt(InventoryReceiptEvidence receipt, InventoryIdentity identity,
+        ReceiptInventoryOverride? revision)
+    {
+        if (revision == null) return receipt;
+        try
+        {
+            using var json = JsonDocument.Parse(revision.BeforeReceiptSnapshotJson);
+            var original = json.RootElement;
+            return receipt with
+            {
+                OriginalQuantity = original.GetProperty("binCount").GetInt32(),
+                OriginalIdentityVerified = revision.IsComplete && original.GetProperty("id").GetInt64() == receipt.Id
+                    && original.GetProperty("cropYear").GetInt32() == identity.CropYear
+                    && original.GetProperty("growerLotId").GetInt32() == identity.GrowerLotId
+                    && original.GetProperty("fruitProfileId").GetInt32() == identity.FruitProfileId
+            };
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
+        { return receipt with { OriginalIdentityVerified = false }; }
+    }
     private static InventoryIdentity Identity(TreatmentLineageSegment x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,
         x.LotNumberSnapshot, x.GrowerNumberSnapshot, x.VarietyCodeSnapshot, x.ProductionTypeSnapshot, x.IsOrganicSnapshot, x.InventoryStatusSnapshot ?? "");
     private static InventoryProjectionEvidence Projection(TreatmentLineageSegment x, InventoryIdentity identity, int warehouse) =>
         new(x.Id, x.IdentityKey, x.CurrentBins, x.TreatmentState, x.TreatmentSignature, x.ReceiptId, x.CreatedAt, x.UpdatedAt,
             x.ConcurrencyVersion, Identity(x).Key == identity.Key && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identity.Key
-                && x.WarehouseId == warehouse, x.Applications.OrderBy(a => a.Sequence).Select(a => a.RoomTreatmentApplicationId).ToImmutableArray(), x.Disposition, x.RetiredQuantity);
+                && x.WarehouseId == warehouse, x.Applications.OrderBy(a => a.Sequence).Select(a => a.RoomTreatmentApplicationId).ToImmutableArray(), x.Disposition, x.RetiredQuantity)
+        { CohortKey = x.CohortKey };
     private static InventoryMovementEvidence Movement(TreatmentLineageMovement x, InventoryIdentity identity, int room) =>
         new(x.Id, x.MovementType, x.BinCount, x.OccurredAt, x.CreatedAt, x.TreatmentSignatureSnapshot, x.TreatmentStateSnapshot,
             x.ReceiptId, x.SourceSegmentId, x.DestinationSegmentId, x.DestinationRoomId == room, x.SourceRoomId == room,
-            Parent(x), x.ReversesTreatmentLineageMovementId, InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identity.Key);
+            Parent(x), x.ReversesTreatmentLineageMovementId, InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identity.Key)
+        { OperationKey = x.OperationKey };
     private static InventoryReceiptEvidence Receipt(Receipt x, InventoryIdentity identity) => new(x.Id, x.BinCount,
         x.CropYear == identity.CropYear && x.GrowerLotId == identity.GrowerLotId && x.FruitProfileId == identity.FruitProfileId
             && N(x.GrowerNumber ?? x.LotCode) == N(identity.Lot), x.IsDeleted, x.IsTransferReceipt, x.UpdatedAt, x.ConcurrencyVersion);
     private static string? Parent(RoomInventoryAdjustment x) => x.RoomTransferId is long rt ? $"room:{rt}" : x.InterCrewTransferId is long it ? $"crew:{it}"
         : x.OutsideWarehouseTransferId is long ot ? $"outside:{ot}" : x.ProcessorShipmentLineId is long ps ? $"processor:{ps}"
+        : x.RoomInventoryLossId is long loss ? $"loss:{loss}" : x.InventoryIdentityCorrectionId is Guid correction ? $"identity:{correction}"
         : x.ActualRunId is long ar ? $"run:{ar}" : null;
     private static string? Parent(TreatmentLineageMovement x) => x.RoomTransferId is long rt ? $"room:{rt}" : x.InterCrewTransferId is long it ? $"crew:{it}"
         : x.OutsideWarehouseTransferId is long ot ? $"outside:{ot}" : x.ProcessorShipmentLineId is long ps ? $"processor:{ps}"
+        : x.RoomInventoryLossId is long loss ? $"loss:{loss}" : x.InventoryIdentityCorrectionId is Guid correction ? $"identity:{correction}"
         : x.BinsRunEntryId is long br ? $"entry:{br}" : null;
     private static string N(string? x) => (x ?? "").Trim().ToUpperInvariant();
     private static InventoryReadWatermark Watermark<T>(T evidence, string consistency, ImmutableArray<InventoryVersion> versions) =>

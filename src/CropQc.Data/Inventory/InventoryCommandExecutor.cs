@@ -84,7 +84,9 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                         "Duplicate treatment slice in a command.", InventoryCommandStatus.InvalidIntent);
                     resolved.Add((line, e!, r));
                 }
-                var destinations = new List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)>();
+                var originFailure = await InventoryOriginGuard.ValidateAsync(db, resolved.Select(x => x.Evidence), readAt, cancellationToken);
+                Require(originFailure == null, originFailure ?? "Inventory origin validation failed.");
+                var factory = new CanonicalProjectionFactory(db, command.OperationKey);
                 foreach (var source in resolved.Where(x => x.Line.Destination != null))
                 {
                     var dest = source.Line.Destination!;
@@ -92,10 +94,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                         && x.Result.Identity.Key == source.Result.Identity.Key), "A command cannot also consume its own destination.");
                     var batch = await loader.LoadAsync(new(dest.WarehouseId, [dest.RoomId]), readAt, cancellationToken);
                     var e = batch.Positions.SingleOrDefault(x => x.Identity.Key == source.Result.Identity.Key);
-                    if (e == null || destinations.Any(x => x.Result.Identity.Key == e.Identity.Key && x.Result.Location.RoomId == dest.RoomId)) continue;
-                    var r = InventoryAvailabilityResolver.Resolve(e, new());
-                    Require(r.IsOperable, "Destination evidence is not proven; no stock may be merged into it.");
-                    destinations.Add((source.Line, e, r));
+                    if (e != null) AdmitDestination(factory, e);
                 }
                 if (command.Kind == InventoryCommandKind.TreatmentAssignment)
                     foreach (var room in resolved.Select(x => x.Result.Location.RoomId!.Value).Distinct())
@@ -105,8 +104,9 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                             "Room treatment must include every occupied inventory position.");
                     }
                 await Stage("Resolved", db, attempt, cancellationToken);
-                var factory = new CanonicalProjectionFactory(db);
-                foreach (var item in resolved.Concat(destinations).Where(x => x.Evidence.Location.Custody == InventoryCustody.Room).DistinctBy(x => x.Result.PositionKey))
+                foreach (var destination in factory.Destinations.Values.ToArray())
+                    await PrepareDestinationAsync(db, factory, command, destination, readAt, attempt, cancellationToken);
+                foreach (var item in resolved.Where(x => x.Evidence.Location.Custody == InventoryCustody.Room).DistinctBy(x => x.Result.PositionKey))
                 {
                     if (command.Kind == InventoryCommandKind.ManualStockAddition && item.Result.RawProjectionQuantity == item.Result.AuthoritativeQuantity) continue;
                     await NormalizePositionAsync(db, factory, command, item.Evidence, item.Result, readAt, attempt, cancellationToken);
@@ -130,6 +130,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
                     InventoryCommandKind.TreatmentReversal => await ReverseCurrentTreatmentAsync(db, factory, command, resolved.Select(x => x.Result).ToArray(), readAt, cancellationToken),
                     _ => await ApplyAsync(db, factory, command, resolved, readAt, attempt, cancellationToken)
                 };
+                await ValidateDestinationsAsync(db, factory, command, readAt, cancellationToken);
                 AddAudit(db, command, "CanonicalInventoryCommand", key, new { intent, hash }, effects, readAt);
                 await Stage("OperationAudit", db, attempt, cancellationToken);
                 var result = new InventoryCommandResult(InventoryCommandStatus.Committed, key, "Command committed atomically.", effects, attempt);
@@ -179,6 +180,12 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
     private async Task NormalizePositionAsync(CropQcDbContext db, CanonicalProjectionFactory factory, InventoryCommand command,
         InventoryPositionEvidence evidence, InventoryAvailabilityResult result, DateTimeOffset readAt, int attempt, CancellationToken cancellationToken)
     {
+        if (result.UsesIndependentCohorts) return; // Exact incoming cohorts need no rewrite of unrelated projections.
+        if (result.UsesRecordedCohorts)
+        {
+            await ReconstructRecordedCohortsAsync(db, command, evidence, result, readAt, attempt, cancellationToken);
+            return;
+        }
         var plan = InventoryNormalizationPlanner.Plan(evidence, result);
         if (plan == null) return;
         var ids = plan.Changes.Select(x => x.Id).ToArray();
@@ -195,7 +202,7 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             CanonicalProjectionFactory.Retire(row, command.OperationKey, readAt);
         }
         await db.SaveChangesAsync(cancellationToken); // release current-only uniqueness, still inside outer transaction
-        var replacement = await factory.CurrentAsync(result.Identity, result.Location.WarehouseId,
+        var replacement = await new CanonicalProjectionFactory(db).CurrentAsync(result.Identity, result.Location.WarehouseId,
             result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
         Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
         replacement.CurrentBins = plan.ReplacementQuantity;

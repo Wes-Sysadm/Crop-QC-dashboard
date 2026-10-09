@@ -1,0 +1,2235 @@
+{
+  "AsOf": "2026-10-09T14:46:28.269371+00:00",
+  "ReadOnly": "on",
+  "Positions": [
+    {
+      "Evidence": {
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 55,
+          "Facility": "McDougall",
+          "Name": "MCD-03",
+          "CustodyRecordId": null
+        },
+        "AuthoritativeQuantity": 34,
+        "CommittedQuantity": 0,
+        "IdentityVerified": true,
+        "CustodyVerified": true,
+        "Ledger": [
+          {
+            "Id": 4146,
+            "Quantity": 34,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-06T19:44:00+00:00",
+            "ReceiptId": 2472,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-06T19:46:14.288658+00:00"
+          }
+        ],
+        "Projections": [
+          {
+            "Id": 765,
+            "RawKey": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+            "Quantity": 34,
+            "State": "Untreated",
+            "Signature": "u",
+            "ReceiptId": 2472,
+            "CreatedAt": "2026-10-06T19:46:14.288658+00:00",
+            "UpdatedAt": "2026-10-06T19:46:14.288658+00:00",
+            "Version": 2,
+            "ExactIdentity": true,
+            "ApplicationIds": [],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          }
+        ],
+        "Movements": [
+          {
+            "Id": 828,
+            "Kind": "Receipt",
+            "Quantity": 34,
+            "At": "2026-10-06T19:44:00+00:00",
+            "CreatedAt": "2026-10-06T19:46:14.288658+00:00",
+            "Signature": "u",
+            "State": "Untreated",
+            "ReceiptId": 2472,
+            "SourceProjectionId": null,
+            "DestinationProjectionId": 765,
+            "Incoming": true,
+            "Outgoing": false,
+            "Parent": null,
+            "ReversesId": null,
+            "ExactIdentity": true
+          }
+        ],
+        "Receipts": [
+          {
+            "Id": 2472,
+            "Quantity": 34,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-06T19:46:14.288658+00:00",
+            "Version": 1
+          }
+        ],
+        "Applications": [],
+        "Watermark": {
+          "Fingerprint": "1DAC6FE57817F7AED5FCE882954952172370534D46A01F5B49CF22236324BEE8",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "765",
+              "Version": 2,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2472",
+              "Version": 1,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            }
+          ]
+        },
+        "HistoricalSnapshotUnavailable": false,
+        "IdentityCorrections": [],
+        "CustodyAllocations": []
+      },
+      "Result": {
+        "PositionKey": "Room:3:55::2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 55,
+          "Facility": "McDougall",
+          "Name": "MCD-03",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-06T19:46:14.288658+00:00",
+        "AuthoritativeQuantity": 34,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 34,
+        "RawProjectionQuantity": 34,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [
+          {
+            "Signature": "u",
+            "State": "Untreated",
+            "Quantity": 34,
+            "Confidence": "Proven",
+            "ProjectionIds": [
+              765
+            ],
+            "ApplicationIds": [],
+            "ReceiptEvidenceIds": [
+              2472
+            ]
+          }
+        ],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            2472
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4146"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "828"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "765"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2472"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "1DAC6FE57817F7AED5FCE882954952172370534D46A01F5B49CF22236324BEE8",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "765",
+              "Version": 2,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2472",
+              "Version": 1,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      },
+      "QuantityOnly": {
+        "PositionKey": "Room:3:55::2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 55,
+          "Facility": "McDougall",
+          "Name": "MCD-03",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-06T19:46:14.288658+00:00",
+        "AuthoritativeQuantity": 34,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 34,
+        "RawProjectionQuantity": 34,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [
+          {
+            "Signature": "u",
+            "State": "Untreated",
+            "Quantity": 34,
+            "Confidence": "Proven",
+            "ProjectionIds": [
+              765
+            ],
+            "ApplicationIds": [],
+            "ReceiptEvidenceIds": [
+              2472
+            ]
+          }
+        ],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            2472
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4146"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "828"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "765"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2472"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "1DAC6FE57817F7AED5FCE882954952172370534D46A01F5B49CF22236324BEE8",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "765",
+              "Version": 2,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2472",
+              "Version": 1,
+              "UpdatedAt": "2026-10-06T19:46:14.288658+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      }
+    },
+    {
+      "Evidence": {
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 417,
+          "FruitProfileId": 9,
+          "Lot": "1128",
+          "GrowerNumber": "1128",
+          "Variety": "ORGS",
+          "ProductionType": "Organic",
+          "IsOrganic": true,
+          "Status": "Organic",
+          "Key": "2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "AuthoritativeQuantity": 0,
+        "CommittedQuantity": 0,
+        "IdentityVerified": true,
+        "CustodyVerified": true,
+        "Ledger": [
+          {
+            "Id": 3173,
+            "Quantity": 74,
+            "Kind": "ReceiptAdd",
+            "At": "2026-09-16T01:57:00+00:00",
+            "ReceiptId": 1780,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-09-16T01:58:15.656558+00:00"
+          },
+          {
+            "Id": 4064,
+            "Quantity": -74,
+            "Kind": "TransferOut",
+            "At": "2026-10-03T22:27:00+00:00",
+            "ReceiptId": null,
+            "MovementParent": "room:410",
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-03T22:27:57.527665+00:00"
+          }
+        ],
+        "Projections": [
+          {
+            "Id": 732,
+            "RawKey": "2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+            "Quantity": 0,
+            "State": "Untreated",
+            "Signature": "u",
+            "ReceiptId": null,
+            "CreatedAt": "2026-10-03T22:27:57.490807+00:00",
+            "UpdatedAt": "2026-10-03T22:27:57.501573+00:00",
+            "Version": 3,
+            "ExactIdentity": true,
+            "ApplicationIds": [],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          }
+        ],
+        "Movements": [
+          {
+            "Id": 795,
+            "Kind": "Transfer",
+            "Quantity": 74,
+            "At": "2026-10-03T22:27:00+00:00",
+            "CreatedAt": "2026-10-03T22:27:57.501573+00:00",
+            "Signature": "u",
+            "State": "Untreated",
+            "ReceiptId": null,
+            "SourceProjectionId": 732,
+            "DestinationProjectionId": 733,
+            "Incoming": false,
+            "Outgoing": true,
+            "Parent": "room:410",
+            "ReversesId": null,
+            "ExactIdentity": true
+          }
+        ],
+        "Receipts": [
+          {
+            "Id": 1780,
+            "Quantity": 74,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-09-16T01:58:15.646459+00:00",
+            "Version": 0
+          }
+        ],
+        "Applications": [],
+        "Watermark": {
+          "Fingerprint": "7268D299C283DD9A24E74CAF21B50A5B1B4A7F3E8C001FD4048466D62D5E5350",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "732",
+              "Version": 3,
+              "UpdatedAt": "2026-10-03T22:27:57.501573+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "1780",
+              "Version": 0,
+              "UpdatedAt": "2026-09-16T01:58:15.646459+00:00"
+            }
+          ]
+        },
+        "HistoricalSnapshotUnavailable": false,
+        "IdentityCorrections": [],
+        "CustodyAllocations": []
+      },
+      "Result": {
+        "PositionKey": "Room:3:73::2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 417,
+          "FruitProfileId": 9,
+          "Lot": "1128",
+          "GrowerNumber": "1128",
+          "Variety": "ORGS",
+          "ProductionType": "Organic",
+          "IsOrganic": true,
+          "Status": "Organic",
+          "Key": "2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-09-16T01:58:15.656558+00:00",
+        "AuthoritativeQuantity": 0,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 0,
+        "RawProjectionQuantity": 0,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            1780
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [
+          {
+            "ProjectionIds": [
+              732
+            ],
+            "ExcludedQuantity": 0,
+            "Reason": "Depleted",
+            "EvidenceProven": true,
+            "Evidence": [
+              {
+                "Entity": "TreatmentLineageSegment",
+                "Id": "732"
+              }
+            ]
+          }
+        ],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3173"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4064"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "795"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "732"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "1780"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "7268D299C283DD9A24E74CAF21B50A5B1B4A7F3E8C001FD4048466D62D5E5350",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "732",
+              "Version": 3,
+              "UpdatedAt": "2026-10-03T22:27:57.501573+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "1780",
+              "Version": 0,
+              "UpdatedAt": "2026-09-16T01:58:15.646459+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      },
+      "QuantityOnly": {
+        "PositionKey": "Room:3:73::2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 417,
+          "FruitProfileId": 9,
+          "Lot": "1128",
+          "GrowerNumber": "1128",
+          "Variety": "ORGS",
+          "ProductionType": "Organic",
+          "IsOrganic": true,
+          "Status": "Organic",
+          "Key": "2026|417|9|1128|1128|ORGS|ORGANIC|True|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-09-16T01:58:15.656558+00:00",
+        "AuthoritativeQuantity": 0,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 0,
+        "RawProjectionQuantity": 0,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            1780
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [
+          {
+            "ProjectionIds": [
+              732
+            ],
+            "ExcludedQuantity": 0,
+            "Reason": "Depleted",
+            "EvidenceProven": true,
+            "Evidence": [
+              {
+                "Entity": "TreatmentLineageSegment",
+                "Id": "732"
+              }
+            ]
+          }
+        ],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3173"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4064"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "795"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "732"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "1780"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "7268D299C283DD9A24E74CAF21B50A5B1B4A7F3E8C001FD4048466D62D5E5350",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "732",
+              "Version": 3,
+              "UpdatedAt": "2026-10-03T22:27:57.501573+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "1780",
+              "Version": 0,
+              "UpdatedAt": "2026-09-16T01:58:15.646459+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      }
+    },
+    {
+      "Evidence": {
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 22,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "ATGL",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "AuthoritativeQuantity": 63,
+        "CommittedQuantity": 0,
+        "IdentityVerified": true,
+        "CustodyVerified": true,
+        "Ledger": [
+          {
+            "Id": 4210,
+            "Quantity": 63,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-06T19:57:00+00:00",
+            "ReceiptId": 2533,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-08T22:56:34.475533+00:00"
+          }
+        ],
+        "Projections": [
+          {
+            "Id": 829,
+            "RawKey": "2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+            "Quantity": 63,
+            "State": "Untreated",
+            "Signature": "u",
+            "ReceiptId": 2533,
+            "CreatedAt": "2026-10-08T22:56:34.475533+00:00",
+            "UpdatedAt": "2026-10-08T22:56:34.475533+00:00",
+            "Version": 2,
+            "ExactIdentity": true,
+            "ApplicationIds": [],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          }
+        ],
+        "Movements": [
+          {
+            "Id": 893,
+            "Kind": "Receipt",
+            "Quantity": 63,
+            "At": "2026-10-06T19:57:00+00:00",
+            "CreatedAt": "2026-10-08T22:56:34.475533+00:00",
+            "Signature": "u",
+            "State": "Untreated",
+            "ReceiptId": 2533,
+            "SourceProjectionId": null,
+            "DestinationProjectionId": 829,
+            "Incoming": true,
+            "Outgoing": false,
+            "Parent": null,
+            "ReversesId": null,
+            "ExactIdentity": true
+          }
+        ],
+        "Receipts": [
+          {
+            "Id": 2533,
+            "Quantity": 63,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-08T22:56:34.475533+00:00",
+            "Version": 1
+          }
+        ],
+        "Applications": [],
+        "Watermark": {
+          "Fingerprint": "ED5041DBB473539611293A4209DC70D4AFB1808ABA79CA4FCDDD837E76626893",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "829",
+              "Version": 2,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2533",
+              "Version": 1,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            }
+          ]
+        },
+        "HistoricalSnapshotUnavailable": false,
+        "IdentityCorrections": [],
+        "CustodyAllocations": []
+      },
+      "Result": {
+        "PositionKey": "Room:3:73::2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 22,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "ATGL",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-08T22:56:34.475533+00:00",
+        "AuthoritativeQuantity": 63,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 63,
+        "RawProjectionQuantity": 63,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [
+          {
+            "Signature": "u",
+            "State": "Untreated",
+            "Quantity": 63,
+            "Confidence": "Proven",
+            "ProjectionIds": [
+              829
+            ],
+            "ApplicationIds": [],
+            "ReceiptEvidenceIds": [
+              2533
+            ]
+          }
+        ],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            2533
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4210"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "893"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "829"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2533"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "ED5041DBB473539611293A4209DC70D4AFB1808ABA79CA4FCDDD837E76626893",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "829",
+              "Version": 2,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2533",
+              "Version": 1,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      },
+      "QuantityOnly": {
+        "PositionKey": "Room:3:73::2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 22,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "ATGL",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|22|1242|1242|ATGL|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-08T22:56:34.475533+00:00",
+        "AuthoritativeQuantity": 63,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 63,
+        "RawProjectionQuantity": 63,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Proven",
+        "TreatmentSlices": [
+          {
+            "Signature": "u",
+            "State": "Untreated",
+            "Quantity": 63,
+            "Confidence": "Proven",
+            "ProjectionIds": [
+              829
+            ],
+            "ApplicationIds": [],
+            "ReceiptEvidenceIds": [
+              2533
+            ]
+          }
+        ],
+        "ReceiptProvenance": {
+          "Confidence": "Proven",
+          "ReceiptIds": [
+            2533
+          ],
+          "Explanation": "Exact receipt evidence is retained."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4210"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "893"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "829"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2533"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "ED5041DBB473539611293A4209DC70D4AFB1808ABA79CA4FCDDD837E76626893",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "829",
+              "Version": 2,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2533",
+              "Version": 1,
+              "UpdatedAt": "2026-10-08T22:56:34.475533+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      }
+    },
+    {
+      "Evidence": {
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "AuthoritativeQuantity": 652,
+        "CommittedQuantity": 0,
+        "IdentityVerified": true,
+        "CustodyVerified": true,
+        "Ledger": [
+          {
+            "Id": 3821,
+            "Quantity": 56,
+            "Kind": "ReceiptAdd",
+            "At": "2026-09-29T19:30:00+00:00",
+            "ReceiptId": 2252,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-09-29T22:04:03.578072+00:00"
+          },
+          {
+            "Id": 3835,
+            "Quantity": 56,
+            "Kind": "ReceiptAdd",
+            "At": "2026-09-30T00:02:00+00:00",
+            "ReceiptId": 2266,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-09-30T01:00:06.008827+00:00"
+          },
+          {
+            "Id": 3863,
+            "Quantity": 68,
+            "Kind": "ReceiptAdd",
+            "At": "2026-09-30T21:19:00+00:00",
+            "ReceiptId": 2294,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-09-30T21:21:08.575412+00:00"
+          },
+          {
+            "Id": 3931,
+            "Quantity": 68,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-01T17:30:00+00:00",
+            "ReceiptId": 2334,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-01T19:57:24.727542+00:00"
+          },
+          {
+            "Id": 3978,
+            "Quantity": 68,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-01T20:50:00+00:00",
+            "ReceiptId": 2343,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-01T21:29:10.632357+00:00"
+          },
+          {
+            "Id": 4016,
+            "Quantity": 70,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-02T20:11:00+00:00",
+            "ReceiptId": 2378,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-02T20:12:04.053699+00:00"
+          },
+          {
+            "Id": 4024,
+            "Quantity": 70,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-02T21:36:00+00:00",
+            "ReceiptId": 2386,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-02T21:56:05.501489+00:00"
+          },
+          {
+            "Id": 4066,
+            "Quantity": 70,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-03T22:30:00+00:00",
+            "ReceiptId": 2419,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-03T22:30:28.688492+00:00"
+          },
+          {
+            "Id": 4074,
+            "Quantity": 56,
+            "Kind": "TransferIn",
+            "At": "2026-10-03T22:42:00+00:00",
+            "ReceiptId": null,
+            "MovementParent": "room:411",
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-03T22:43:08.929277+00:00"
+          },
+          {
+            "Id": 4100,
+            "Quantity": 70,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-05T20:03:00+00:00",
+            "ReceiptId": 2439,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-05T20:03:28.519678+00:00"
+          }
+        ],
+        "Projections": [
+          {
+            "Id": 729,
+            "RawKey": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+            "Quantity": 372,
+            "State": "Untreated",
+            "Signature": "u",
+            "ReceiptId": null,
+            "CreatedAt": "2026-10-02T20:33:41.749348+00:00",
+            "UpdatedAt": "2026-10-03T22:43:08.913779+00:00",
+            "Version": 4,
+            "ExactIdentity": true,
+            "ApplicationIds": [],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          },
+          {
+            "Id": 730,
+            "RawKey": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+            "Quantity": 70,
+            "State": "Confirmed",
+            "Signature": "u|a:29",
+            "ReceiptId": 2378,
+            "CreatedAt": "2026-10-02T20:33:41.75998+00:00",
+            "UpdatedAt": "2026-10-02T20:33:41.75998+00:00",
+            "Version": 2,
+            "ExactIdentity": true,
+            "ApplicationIds": [
+              29
+            ],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          }
+        ],
+        "Movements": [
+          {
+            "Id": 801,
+            "Kind": "Transfer",
+            "Quantity": 56,
+            "At": "2026-10-03T22:42:00+00:00",
+            "CreatedAt": "2026-10-03T22:43:08.913779+00:00",
+            "Signature": "u",
+            "State": "Untreated",
+            "ReceiptId": null,
+            "SourceProjectionId": 739,
+            "DestinationProjectionId": 729,
+            "Incoming": true,
+            "Outgoing": false,
+            "Parent": "room:411",
+            "ReversesId": null,
+            "ExactIdentity": true
+          }
+        ],
+        "Receipts": [
+          {
+            "Id": 2252,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-09-29T22:04:03.572719+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2266,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-09-30T01:00:06.001712+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2294,
+            "Quantity": 68,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-09-30T21:21:08.566791+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2334,
+            "Quantity": 68,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-01T19:57:24.72128+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2343,
+            "Quantity": 68,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-01T21:29:10.625024+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2378,
+            "Quantity": 70,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-02T20:12:04.046505+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2386,
+            "Quantity": 70,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-02T21:56:05.494613+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2419,
+            "Quantity": 70,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-03T22:30:28.682647+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2439,
+            "Quantity": 70,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-05T20:05:36.172088+00:00",
+            "Version": 1
+          }
+        ],
+        "Applications": [
+          {
+            "Id": 29,
+            "AppliedAt": "2026-10-02T20:33:00+00:00",
+            "ReversedAt": null,
+            "ReceiptId": 2378,
+            "RoomId": 73
+          }
+        ],
+        "Watermark": {
+          "Fingerprint": "F9464ABDE2CC5306430BA010A6F849CE723D717503AB3581F375D7BA0FCA660D",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "729",
+              "Version": 4,
+              "UpdatedAt": "2026-10-03T22:43:08.913779+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "730",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T20:33:41.75998+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2252",
+              "Version": 0,
+              "UpdatedAt": "2026-09-29T22:04:03.572719+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2266",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T01:00:06.001712+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2294",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T21:21:08.566791+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2334",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T19:57:24.72128+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2343",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T21:29:10.625024+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2378",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T20:12:04.046505+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2386",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:56:05.494613+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2419",
+              "Version": 0,
+              "UpdatedAt": "2026-10-03T22:30:28.682647+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2439",
+              "Version": 1,
+              "UpdatedAt": "2026-10-05T20:05:36.172088+00:00"
+            }
+          ]
+        },
+        "HistoricalSnapshotUnavailable": false,
+        "IdentityCorrections": [],
+        "CustodyAllocations": []
+      },
+      "Result": {
+        "PositionKey": "Room:3:73::2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-09-29T22:04:03.578072+00:00",
+        "AuthoritativeQuantity": 652,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 0,
+        "RawProjectionQuantity": 442,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Ambiguous",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Unknown",
+          "ReceiptIds": [],
+          "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3821"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3835"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3863"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3931"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3978"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4016"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4024"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4066"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4074"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4100"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "801"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "729"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "730"
+            },
+            {
+              "Entity": "RoomTreatmentApplication",
+              "Id": "29"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2252"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2266"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2294"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2334"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2343"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2378"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2386"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2419"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2439"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [
+          {
+            "Code": "MixedTreatmentAmbiguity",
+            "Detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+          }
+        ],
+        "Watermark": {
+          "Fingerprint": "F9464ABDE2CC5306430BA010A6F849CE723D717503AB3581F375D7BA0FCA660D",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "729",
+              "Version": 4,
+              "UpdatedAt": "2026-10-03T22:43:08.913779+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "730",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T20:33:41.75998+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2252",
+              "Version": 0,
+              "UpdatedAt": "2026-09-29T22:04:03.572719+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2266",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T01:00:06.001712+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2294",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T21:21:08.566791+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2334",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T19:57:24.72128+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2343",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T21:29:10.625024+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2378",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T20:12:04.046505+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2386",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:56:05.494613+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2419",
+              "Version": 0,
+              "UpdatedAt": "2026-10-03T22:30:28.682647+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2439",
+              "Version": 1,
+              "UpdatedAt": "2026-10-05T20:05:36.172088+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": false,
+        "ProjectionExcess": 0
+      },
+      "QuantityOnly": {
+        "PositionKey": "Room:3:73::2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 430,
+          "FruitProfileId": 14,
+          "Lot": "1242",
+          "GrowerNumber": "1242",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|430|14|1242|1242|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-09-29T22:04:03.578072+00:00",
+        "AuthoritativeQuantity": 652,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 652,
+        "RawProjectionQuantity": 442,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Ambiguous",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Unknown",
+          "ReceiptIds": [],
+          "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3821"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3835"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3863"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3931"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3978"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4016"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4024"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4066"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4074"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4100"
+            },
+            {
+              "Entity": "TreatmentLineageMovement",
+              "Id": "801"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "729"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "730"
+            },
+            {
+              "Entity": "RoomTreatmentApplication",
+              "Id": "29"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2252"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2266"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2294"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2334"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2343"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2378"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2386"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2419"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2439"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "F9464ABDE2CC5306430BA010A6F849CE723D717503AB3581F375D7BA0FCA660D",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "729",
+              "Version": 4,
+              "UpdatedAt": "2026-10-03T22:43:08.913779+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "730",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T20:33:41.75998+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2252",
+              "Version": 0,
+              "UpdatedAt": "2026-09-29T22:04:03.572719+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2266",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T01:00:06.001712+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2294",
+              "Version": 0,
+              "UpdatedAt": "2026-09-30T21:21:08.566791+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2334",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T19:57:24.72128+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2343",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T21:29:10.625024+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2378",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T20:12:04.046505+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2386",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:56:05.494613+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2419",
+              "Version": 0,
+              "UpdatedAt": "2026-10-03T22:30:28.682647+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2439",
+              "Version": 1,
+              "UpdatedAt": "2026-10-05T20:05:36.172088+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      }
+    },
+    {
+      "Evidence": {
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 187,
+          "FruitProfileId": 14,
+          "Lot": "2750",
+          "GrowerNumber": "2750",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "AuthoritativeQuantity": 257,
+        "CommittedQuantity": 0,
+        "IdentityVerified": true,
+        "CustodyVerified": true,
+        "Ledger": [
+          {
+            "Id": 3989,
+            "Quantity": 39,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-01T21:40:00+00:00",
+            "ReceiptId": 2354,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-01T23:26:09.921029+00:00"
+          },
+          {
+            "Id": 3998,
+            "Quantity": 72,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-01T23:51:00+00:00",
+            "ReceiptId": 2361,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-02T01:45:59.900257+00:00"
+          },
+          {
+            "Id": 4001,
+            "Quantity": 72,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-02T01:54:00+00:00",
+            "ReceiptId": 2364,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-02T16:29:17.957227+00:00"
+          },
+          {
+            "Id": 4022,
+            "Quantity": 74,
+            "Kind": "ReceiptAdd",
+            "At": "2026-10-02T20:34:00+00:00",
+            "ReceiptId": 2384,
+            "MovementParent": null,
+            "ExactIdentity": true,
+            "RecordedAt": "2026-10-02T21:27:27.531031+00:00"
+          }
+        ],
+        "Projections": [
+          {
+            "Id": 727,
+            "RawKey": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+            "Quantity": 111,
+            "State": "Untreated",
+            "Signature": "u",
+            "ReceiptId": null,
+            "CreatedAt": "2026-10-02T16:52:00.491017+00:00",
+            "UpdatedAt": "2026-10-02T16:52:00.512595+00:00",
+            "Version": 3,
+            "ExactIdentity": true,
+            "ApplicationIds": [],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          },
+          {
+            "Id": 728,
+            "RawKey": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+            "Quantity": 72,
+            "State": "Confirmed",
+            "Signature": "u|a:28",
+            "ReceiptId": 2364,
+            "CreatedAt": "2026-10-02T16:52:00.512595+00:00",
+            "UpdatedAt": "2026-10-02T16:52:00.512595+00:00",
+            "Version": 2,
+            "ExactIdentity": true,
+            "ApplicationIds": [
+              28
+            ],
+            "Disposition": "Current",
+            "RetiredQuantity": null
+          }
+        ],
+        "Movements": [],
+        "Receipts": [
+          {
+            "Id": 2354,
+            "Quantity": 39,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-01T23:26:09.915182+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2361,
+            "Quantity": 72,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-02T01:45:59.892931+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2364,
+            "Quantity": 72,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-02T16:29:17.950483+00:00",
+            "Version": 0
+          },
+          {
+            "Id": 2384,
+            "Quantity": 74,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-10-02T21:27:27.524476+00:00",
+            "Version": 0
+          }
+        ],
+        "Applications": [
+          {
+            "Id": 28,
+            "AppliedAt": "2026-10-02T16:51:00+00:00",
+            "ReversedAt": null,
+            "ReceiptId": 2364,
+            "RoomId": 73
+          }
+        ],
+        "Watermark": {
+          "Fingerprint": "EF3DBF17909DEE831078076CF86538BA7C53DAFA3507CAD87F29D327133DF2F5",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "727",
+              "Version": 3,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "728",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2354",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T23:26:09.915182+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2361",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T01:45:59.892931+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2364",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T16:29:17.950483+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2384",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:27:27.524476+00:00"
+            }
+          ]
+        },
+        "HistoricalSnapshotUnavailable": false,
+        "IdentityCorrections": [],
+        "CustodyAllocations": []
+      },
+      "Result": {
+        "PositionKey": "Room:3:73::2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 187,
+          "FruitProfileId": 14,
+          "Lot": "2750",
+          "GrowerNumber": "2750",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-01T23:26:09.921029+00:00",
+        "AuthoritativeQuantity": 257,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 0,
+        "RawProjectionQuantity": 183,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Ambiguous",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Unknown",
+          "ReceiptIds": [],
+          "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3989"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3998"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4001"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4022"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "727"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "728"
+            },
+            {
+              "Entity": "RoomTreatmentApplication",
+              "Id": "28"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2354"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2361"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2364"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2384"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [
+          {
+            "Code": "MixedTreatmentAmbiguity",
+            "Detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+          }
+        ],
+        "Watermark": {
+          "Fingerprint": "EF3DBF17909DEE831078076CF86538BA7C53DAFA3507CAD87F29D327133DF2F5",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "727",
+              "Version": 3,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "728",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2354",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T23:26:09.915182+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2361",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T01:45:59.892931+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2364",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T16:29:17.950483+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2384",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:27:27.524476+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": false,
+        "ProjectionExcess": 0
+      },
+      "QuantityOnly": {
+        "PositionKey": "Room:3:73::2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+        "Identity": {
+          "CropYear": 2026,
+          "GrowerLotId": 187,
+          "FruitProfileId": 14,
+          "Lot": "2750",
+          "GrowerNumber": "2750",
+          "Variety": "RED",
+          "ProductionType": "Conventional",
+          "IsOrganic": false,
+          "Status": "",
+          "Key": "2026|187|14|2750|2750|RED|CONVENTIONAL|False|",
+          "IsComplete": true
+        },
+        "Location": {
+          "Custody": "Room",
+          "WarehouseId": 3,
+          "RoomId": 73,
+          "Facility": "McDougall",
+          "Name": "MCD-02",
+          "CustodyRecordId": null
+        },
+        "OccupiedSince": "2026-10-01T23:26:09.921029+00:00",
+        "AuthoritativeQuantity": 257,
+        "CommittedQuantity": 0,
+        "AvailableQuantity": 257,
+        "RawProjectionQuantity": 183,
+        "QuantityConfidence": "Proven",
+        "TreatmentConfidence": "Ambiguous",
+        "TreatmentSlices": [],
+        "ReceiptProvenance": {
+          "Confidence": "Unknown",
+          "ReceiptIds": [],
+          "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "HistoricalProjections": [],
+        "Proof": {
+          "Algorithm": "canonical-inventory-shadow/v1",
+          "EvidenceVersion": "ledger-movement-application/v1",
+          "Evidence": [
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3989"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "3998"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4001"
+            },
+            {
+              "Entity": "RoomInventoryAdjustment",
+              "Id": "4022"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "727"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "728"
+            },
+            {
+              "Entity": "RoomTreatmentApplication",
+              "Id": "28"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2354"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2361"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2364"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2384"
+            }
+          ],
+          "Candidates": [],
+          "ChronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "BackdatedLedgerIds": [],
+          "NormalizationRequired": false
+        },
+        "Blockers": [],
+        "Watermark": {
+          "Fingerprint": "EF3DBF17909DEE831078076CF86538BA7C53DAFA3507CAD87F29D327133DF2F5",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "727",
+              "Version": 3,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "TreatmentLineageSegment",
+              "Id": "728",
+              "Version": 2,
+              "UpdatedAt": "2026-10-02T16:52:00.512595+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2354",
+              "Version": 0,
+              "UpdatedAt": "2026-10-01T23:26:09.915182+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2361",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T01:45:59.892931+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2364",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T16:29:17.950483+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "2384",
+              "Version": 0,
+              "UpdatedAt": "2026-10-02T21:27:27.524476+00:00"
+            }
+          ]
+        },
+        "CustodyAllocations": [],
+        "IsOperable": true,
+        "ProjectionExcess": 0
+      }
+    }
+  ]
+}
