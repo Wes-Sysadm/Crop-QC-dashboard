@@ -85,13 +85,90 @@ This is a constrained compatible fallback, **not** arbitrary pre-cohort main and
 not a promise to revert every PR #278 behavior. If the fault affects the retained
 compatibility layer, use maintenance and a reviewed compatible forward fix.
 
-Freeze the fallback as an explicit commit in this PR's ancestry, publish the full
-Web application locally, and rehearse that source against a disposable #190 clone
-after the normal candidate writes new cohort rows. Retain additive schema; never
-execute Down as rollback. Hash the packaged artifact and loaded inventory assemblies.
-Final frozen commits, artifact hashes, commands and results follow after rehearsal.
+Normal reviewed code was frozen at `aad81a093619c8346f0781be0989d3c0776a8770`.
+The compatible fallback is **`1667de8da158fa6fcc5aeeb3b65ab4e58e532fe3`**, reachable
+in this PR's ancestry. The final PR restores normal reconstruction selection;
+its application source matches the normal reviewed candidate. The intermediate
+fallback commits are deliberate recovery artifacts, not the PR's final behavior.
+
+The full framework-dependent Web publish was packaged locally as
+`CropQc-Web-rollback-1667de8.zip` (16,152,468 bytes), SHA-256
+`322FF276068DA9DD19AEB9EA1233DAAF883636529F0C5D897538AA97DC4BCCB5`.
+The [manifest](pr278-rollback-manifest.json) records the exact inventory assembly
+hashes. Both published assemblies matched the binaries loaded by the rehearsal.
+This is a local publish and PostgreSQL application-engine proof, not a built/tested
+Render Linux container or an authenticated browser/HTTP smoke certification.
+Future release preparation must verify its actual target-runtime packaging and
+affected HTTP health/routes without changing this source or relaxing readiness.
+
+Reproduction is in `scripts/rehearsal/InventoryMovementRollback`. It only accepts
+the explicit disposable localhost database `pr278_rollback_test`, port 55440.
+Clone verified backup #190 to that database; do not connect the harness to a remote
+server. It follows the documented feature-only migration range because the restore
+has the preexisting migration-history mismatch. Normal and fallback modes were run
+from their respective frozen source commits with `dotnet run --project
+scripts/rehearsal/InventoryMovementRollback -c Release --no-restore -- candidate|rollback
+<output.json>`, using `MOVEMENT_ROLLBACK_TEST_POSTGRES` for that local connection.
+
+The normal candidate applies treatment 30 to the existing receipt 2472's 34 RED
+bins, then records a distinct 10-bin local test receipt 2541. It moves 10 untreated
+and 12 treated bins into room 73. The fallback moves 5 untreated and 7 treated bins
+back to room 55. The migration is retained throughout; no Down command runs.
+
+| Final test allocation | Room 55 | Room 73 | Total |
+|---|---:|---:|---:|
+| Original receipt 2472, treatment 30 | 29 | 5 | 34 |
+| New test receipt 2541, untreated | 5 | 5 | 10 |
+| Original room-73 pool | 0 | 652 | 652 |
+| **RED/1242 combined** | **34** | **662** | **696** |
+
+The test's explicit receipt accounts for the only global increase:
+**73,107 + 10 = 73,117**. Rollback movement preserves **73,117** exactly.
+The new 10 never inherit treatment 30; application 29 still covers its original
+70. Separate ATGL remains 63, and room 73's historical gap remains **210**.
+The old shared 56 bins are never relabelled as exact receipt ancestry.
+
+Each executable compared 15 immutable/history table prefixes before/after its
+commands. A separate read-only SQL comparison against the untouched backup passed
+20 checks, including original receipt/ledger/movement/transfer/application/source/
+audit prefixes, original application links, unrelated projection columns, complete
+correction/run/loss/custody tables, and the global total plus the explicit receipt.
+Retry returned Replayed with an identical whole-database hash; a new-key stale
+submission returned Stale with an identical whole-database hash.
+
+The fallback passed 17 focused admission/origin/treatment/correction tests and 12
+architecture checks. Its code-identical preliminary freeze passed those 17 cases;
+the final freeze adds only the reviewed resolver fingerprint and was independently
+published and rehearsed on a fresh clone. The automatic source-reconstruction test
+is intentionally outside fallback behavior, not reported as passing there.
+
+No destructive schema rollback is needed or approved. Existing migration Up and
+indexes are unchanged from the initial PR. The legacy pre-cohort application is
+still not a supported post-use rollback. A compatible fallback may limit operations
+requiring reconstruction of old unresolved stock; new proven cohorts remain usable.
 
 No production write, migration, backup, deployment, merge, or PR #275 action is
 authorized or executed by this review. This rehearsal is not the fresh backup gate
 for a future authorized release. Browser/HTTP, onsite and unrelated feature
 certification are outside this application-engine compatibility proof.
+
+## Final normal-candidate validation
+
+- Solution and rehearsal project restore passed. Release solution build passed,
+  zero errors; five existing package advisories remain in the incremental build.
+- Affected shared-engine workflows: **126 passed, zero failed/skipped**, actual
+  PostgreSQL 18, including restored-data concurrency. The historical 68+104 fixture
+  requires another snapshot and is explicitly excluded, not claimed as passed.
+- Mandatory governance/architecture contracts: **89 passed, zero failed/skipped**;
+  the runner verified every required member and structural suite executed.
+- Governance metadata (20 rules) and **22 Node tests** passed.
+- EF reports no pending model changes. Changed C# and rehearsal project formatting
+  verification and `git diff --check` passed. No unrelated full suite or MSI build.
+
+Relative to reviewed starting head `4907099`, application fixes change only
+`InventoryEventReplay.cs`, `InventoryEvidenceLoader.cs` and `InventoryOriginGuard.cs`.
+Additional files are `InventoryMovementReviewTests.cs`, the two-file local rehearsal
+project, traceability and reviewed writer hashes, this report, rollback manifest,
+separate RED proposal and the existing investigation's cross-reference/results.
+The final normal resolver and all other application source match `aad81a0`.
+Final commit and GitHub checks are recorded in PR #278 and the completion report.

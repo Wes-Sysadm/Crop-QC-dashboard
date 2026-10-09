@@ -215,6 +215,9 @@ same-signature cohorts correctly. **A production release needs a separately froz
 and rehearsed compatible rollback build that retains cohort-aware reads/writes
 and the additive schema. Redeploying arbitrary old main after use is not an
 approved rollback plan.** This draft does not authorize release or waive that gate.
+The subsequent [final review](pr278-final-review.md) now records the frozen,
+rehearsed compatible fallback and its limits. The [separate RED proposal](pr278-red1242-reconstruction-proposal.md)
+remains unexecuted and is not bundled into deployment.
 
 Release preparation must use a fresh verified backup, current full readiness,
 exact candidate rehearsal, maintenance/auto-deploy safeguards, bounded affected
@@ -240,7 +243,7 @@ its skipped development invocation is not claimed as verified by backup #190.
 
 Solution restore and Release build passed (69 existing warnings, including
 ImageSharp advisories). Governance metadata and 22 Node tests passed. No pending
-EF model changes. Final scoped verification: **120 passed, zero failed/skipped** on PostgreSQL 18, including restored-data concurrency. Mandatory governance and architecture contracts: **83 passed, zero failed/skipped**, with required-member execution verified. Changed-file formatting and diff checks passed. GitHub CI and the frozen commit are recorded in the PR. No browser/onsite operation or production release readiness
+EF model changes. Final scoped verification: **126 passed, zero failed/skipped** on PostgreSQL 18, including restored-data concurrency. Mandatory governance and architecture contracts: **89 passed, zero failed/skipped**, with required-member execution verified. Changed-file formatting and diff checks passed. GitHub CI and the frozen commit are recorded in the PR. No browser/onsite operation or production release readiness
 is certified here.
 
 The first mandatory-contract attempt found the named disposable base database missing; it passed after that local fixture was created. No production service was used as a substitute. The final solution build had zero errors and five existing package advisories (the clean build also reported existing compiler warnings).

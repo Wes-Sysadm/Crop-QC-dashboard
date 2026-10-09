@@ -69,9 +69,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             && positive.All(x => provenCohorts.Any(p => p.Id == x.Id) || ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
         var recorded = e.ApplicationAllocationsLoaded && !balanced && (!pool || projectionConflict)
             ? InventoryEventReplay.Replay(e) : null;
-        // Frozen compatible fallback: keep cohort-aware operations and every
-        // transaction guard, but do not select automatic historical reconstruction.
-        var useRecorded = false;
+        var useRecorded = recorded is { QuantityConserved: true, UnresolvedEvents.IsEmpty: true }
+            && recorded.Cohorts.All(x => x.State is "Untreated" or "Confirmed");
         var independent = requirements.AllowIndependentCohorts ? provenCohorts : [];
         var useIndependent = !useRecorded && !balanced && !pool && independent.Length > 0
             && independent.Sum(x => x.Quantity) <= e.AuthoritativeQuantity;
