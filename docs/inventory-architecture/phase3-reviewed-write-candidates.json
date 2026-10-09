@@ -177,13 +177,13 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "664FA116AB31E169F8D267BB6970C549BEF8C824DE82A12902D68F07A1555000"
+    "Sha256": "D99238A7AE76EFA7CD5387789878E67BC029F681103C25B8AD97A71CC0FB1D04"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
-    "Sha256": "1EF3565DCCCB116846F60248302AF5000D8B5FEBBF79A63787A3AA74119D5591"
+    "Sha256": "06AE1F3FD5C122BF6F03A06036B9465EC044290A0F93B25B1F606FAA25BC80EA"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
@@ -249,7 +249,7 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryEventReplay.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
-    "Sha256": "06DF471FF2185FC4D1C46C8C9D8CDAA371AD9325CFF9431171CCF2DF5BD430F7"
+    "Sha256": "B67858A5BEF9B40171CD65B653E42776A6B1E65DC23E95E6B45432E86BA8CAC3"
   },
   {
     "Path": "src/CropQc.Shared/Storage/GoogleDriveStorageService.cs",

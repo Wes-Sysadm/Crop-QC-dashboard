@@ -6,7 +6,10 @@ namespace CropQc.Shared.Inventory;
 // Exact receipt ownership is deliberately nullable, independently of quantity.
 public sealed record InventoryRecordedCohort(int Quantity, string Signature, string State,
     long? ReceiptId, ImmutableArray<long> ApplicationIds, DateTimeOffset ArrivedAt,
-    ImmutableArray<InventoryEvidenceReference> Evidence);
+    ImmutableArray<InventoryEvidenceReference> Evidence)
+{
+    public DateTimeOffset LatestArrivalAt { get; init; } = ArrivedAt;
+}
 public sealed record InventoryEventReplayResult(bool QuantityConserved,
     ImmutableArray<InventoryRecordedCohort> Cohorts, ImmutableArray<string> UnresolvedEvents);
 
@@ -77,10 +80,15 @@ public static class InventoryEventReplay
                         var known = movement.State == "Untreated" && movement.Signature == "u"
                             || movement.State == "Confirmed" && ids.Length > 0
                                 && ids.All(id => applications.Any(x => x.Id == id));
-                        cohorts.Add(new(movement.Quantity, known ? movement.Signature : "x",
-                            known ? movement.State : "Unknown", movement.ReceiptId,
+                        var crossed = applications.Where(a => (a.RoomId == null || a.RoomId == position.Location.RoomId)
+                            && (a.ReceiptId == null || movement.ReceiptId == null || a.ReceiptId == movement.ReceiptId)
+                            && a.AppliedAt >= row.At && (a.RecordedAt ?? a.AppliedAt) < (row.RecordedAt ?? row.At)
+                            && !ids.Contains(a.Id)).ToArray();
+                        cohorts.Add(new(movement.Quantity, known && crossed.Length == 0 ? movement.Signature : "x",
+                            known && crossed.Length == 0 ? movement.State : "Unknown", movement.ReceiptId,
                             known ? ids : [], row.At, [reference, new("TreatmentLineageMovement", movement.Id.ToString())]));
                         if (!known) problems.Add($"Movement {movement.Id}: incoming treatment membership is unresolved.");
+                        if (crossed.Length > 0) problems.Add($"Ledger {row.Id}, movement {movement.Id}: effective arrival crosses already-recorded applications {string.Join(',', crossed.Select(a => a.Id))}; occupancy allocation requires resolution.");
                     }
                 }
                 else
@@ -140,7 +148,8 @@ public static class InventoryEventReplay
             cohorts.Add(new(remaining, known ? signatures[0] : "x", known ? states[0] : "Unknown",
                 exactReceipts.Length == 1 ? exactReceipts[0] : null,
                 known ? selected[0].ApplicationIds : [], selected.Min(x => x.ArrivedAt),
-                selected.SelectMany(x => x.Evidence).Append(reference).Distinct().ToImmutableArray()));
+                selected.SelectMany(x => x.Evidence).Append(reference).Distinct().ToImmutableArray())
+            { LatestArrivalAt = selected.Max(x => x.LatestArrivalAt) });
         }
 
         void Apply(InventoryApplicationEvidence application)
@@ -150,23 +159,34 @@ public static class InventoryEventReplay
                 && (application.ReceiptId == null || x.ReceiptId == application.ReceiptId
                     || x.ReceiptId == null && x.Evidence.Any(reference => reference.Entity == "RoomInventoryAdjustment"
                         && ledger.Any(l => l.Id.ToString() == reference.Id && l.ReceiptId == application.ReceiptId)))).ToArray();
+            if (eligible.Any(x => x.LatestArrivalAt > application.AppliedAt))
+            {
+                problems.Add($"Application {application.Id}: shared surviving inventory spans different arrival times; exact point-in-time occupancy is unresolved.");
+                MarkUnknown(eligible, reference);
+                return;
+            }
             if (!application.Allocations.IsDefaultOrEmpty)
             {
+                var plans = new List<InventoryRecordedCohort[]>();
+                var allocated = new HashSet<InventoryRecordedCohort>();
                 foreach (var group in application.Allocations.GroupBy(x => new { x.ReceiptId, x.PriorSignature, x.ResultSignature }))
                 {
                     var selected = eligible.Where(x => x.Signature == group.Key.PriorSignature
-                        && (group.Key.ReceiptId == null || x.ReceiptId == group.Key.ReceiptId)).ToArray();
+                        && x.ReceiptId == group.Key.ReceiptId).ToArray();
                     var expectedSignature = Signature(ApplicationIds(group.Key.PriorSignature).Append(application.Id).Distinct().Order().ToImmutableArray());
                     if (group.Any(x => !x.ExactIdentity || x.Quantity <= 0)
                         || selected.Sum(x => x.Quantity) != group.Sum(x => x.Quantity)
-                        || group.Key.ResultSignature != expectedSignature)
+                        || group.Key.ResultSignature != expectedSignature || selected.Any(x => !allocated.Add(x)))
                     {
                         problems.Add($"Application {application.Id}, sources {string.Join(',', group.Select(x => x.Id))}: recorded occupancy allocation does not reconcile.");
                         MarkUnknown(eligible, reference);
-                        continue;
+                        return;
                     }
-                    Treat(selected, application.Id, reference);
+                    plans.Add(selected);
                 }
+                // Validate every allocation against one pre-application state.
+                // A null receipt identifies shared stock, not every receipt.
+                foreach (var selected in plans) Treat(selected, application.Id, reference);
             }
             else if (position.ApplicationAllocationsLoaded && eligible.Length > 0)
             {

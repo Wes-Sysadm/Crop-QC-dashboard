@@ -99,6 +99,19 @@ internal static class InventoryOriginGuard
                 {
                     using var before = JsonDocument.Parse(first.BeforeReceiptSnapshotJson);
                     var original = before.RootElement;
+                    // The original typed ReceiptCorrection command recorded a
+                    // scalar bin count. The committed revision proves quantity;
+                    // unchanged receipt identity still proves the origin.
+                    if (original.ValueKind == JsonValueKind.Number)
+                    {
+                        var mapped = identityMap.Resolve(new(row.CropYear, row.GrowerLotId, row.FruitProfileId,
+                            row.LotNumber, row.LotNumber, "", "", null, ""), id).Current;
+                        return first.IsComplete && first.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection
+                            && original.TryGetInt32(out var oldBins) && oldBins == first.OldReceiptBinCount && oldBins == row.ChangeAmount
+                            && mapped.CropYear == receipt.CropYear && mapped.GrowerLotId == receipt.GrowerLotId
+                            && mapped.FruitProfileId == receipt.FruitProfileId && mapped.Lot == receipt.LotCode
+                            || Fail(row, $"receipt {id}'s scalar correction does not prove its original quantity and identity");
+                    }
                     return first.IsComplete && original.GetProperty("id").GetInt64() == id
                         && original.GetProperty("binCount").GetInt32() == row.ChangeAmount
                         && original.GetProperty("cropYear").GetInt32() == row.CropYear

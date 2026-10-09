@@ -188,6 +188,14 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         {
             using var json = JsonDocument.Parse(revision.BeforeReceiptSnapshotJson);
             var original = json.RootElement;
+            if (original.ValueKind == JsonValueKind.Number)
+                return receipt with
+                {
+                    OriginalQuantity = original.TryGetInt32(out var bins) ? bins : null,
+                    OriginalIdentityVerified = revision.IsComplete && receipt.ExactIdentity
+                        && revision.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection
+                        && original.TryGetInt32(out var oldBins) && oldBins == revision.OldReceiptBinCount
+                };
             return receipt with
             {
                 OriginalQuantity = original.GetProperty("binCount").GetInt32(),

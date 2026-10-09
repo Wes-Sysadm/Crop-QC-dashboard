@@ -26,6 +26,12 @@
           "member": "Missing_or_duplicate_origin_is_rejected_even_with_a_balanced_projection",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Committed_scalar_receipt_correction_retains_its_origin_for_subsequent_movement",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Opening-balance authorization remains operation-specific; this gate is not a certification of every historical origin."
@@ -149,6 +155,24 @@
           "member": "Later_receipt_treatment_follows_the_incoming_cohort_without_claiming_older_unknown_stock",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Room_application_keeps_shared_and_receipt_owned_allocations_disjoint",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Backdated_transfer_cannot_be_reconstructed_as_untreated_across_recorded_room_treatment",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Shared_withdrawal_does_not_move_later_arrivals_before_a_backdated_application",
+          "kind": "unit",
+          "required": true
         }
       ],
       "gap": "Current main's post-treatment quantity correction implementation conflicts with TRT-001; #269/#271 address it. New receiving coverage does not certify that outstanding correction path."
@@ -260,6 +284,12 @@
           "type": "CropQc.Api.Tests.CanonicalHistoricalWorkflowTests",
           "member": "Normal_selectors_and_outside_roundtrip_preserve_historical_shapes",
           "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Invalid_application_allocations_are_diagnostics_without_throwing_or_blocking_incoming_inventory",
+          "kind": "unit",
           "required": true
         }
       ],
