@@ -6,11 +6,28 @@ Availability is the primary release gate. Maintenance is the final bounded execu
 
 All validation under this release standard also follows `docs/change-scoped-testing-standard.md`.
 
+Under effective ADR-007, one explicit project-owner release instruction supplies
+approval for normal merge and the complete bounded release lifecycle. Follow the
+[authorization record and transition](governance/RELEASE_AUTHORIZATION.md).
+Do not require the owner to repeat approval in GitHub. Record the original source
+and reviewed head, then verify technical safeguards independently of that approval.
+Actual branch protections and explicit additional review conditions still bind.
+No passing metadata check authenticates the owner. No authorization overrides a
+failed CI, architecture, inventory/custody, treatment/audit, backup, compatibility,
+readiness, rollback, health or post-deployment gate. The executing agent may record
+the already-given instruction; it must never invent or impersonate another review.
+
 The release standard protects production availability and data. It does **not** require recertifying unrelated Crop QC features for every release.
 
 ## 1. Freeze the candidate
 
 - Confirm the exact PR, base, head, reviewed diff, mergeability, and required checks.
+- Record owner authorization once (identity, original reference/date, scope, head,
+  exclusions and revocation status). Reuse it through merge, deployment and
+  verification; bind the merge SHA to the reviewed diff. A changed scope or
+  unexpected candidate requires resolution; a normal merge SHA alone does not
+  require another owner confirmation. Separate repairs remain excluded unless
+  explicitly covered by the original authorization.
 - Do not stack unrelated changes. Resolve a changed head by reviewing only the additional diff.
 - After merge, record and freeze the exact merge/main SHA. Never deploy an unreviewed later commit.
 - Keep Render auto-deploy off unless a separately reviewed release explicitly changes that policy.

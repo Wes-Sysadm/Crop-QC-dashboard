@@ -5,17 +5,16 @@ settings changes, invitations or closing #274. Obtain the owner's explicit
 approval for those actions separately. No changes to pending inventory PRs,
 production configuration, data, backups or deployments are required.
 
-## 1. Adopt and provision review
+## 1. Adopt the approval policy
 
-1. Have a human review the consolidated #276, its final commit and all four CI
-   results. Merge only after explicit authorization. Do not merge both governance
-   drafts. The owner decides separately what to do with #274.
-2. Complete the [reviewer prerequisite](REPOSITORY_SETTINGS.md#reviewer-prerequisite):
-   accepted write access for an independent human and their real login on every
-   protected CODEOWNERS pattern in merged main. Review that access/configuration
-   change separately. Do not turn on code-owner approval with only the PR author
-   available, and do not solve the deadlock by granting routine bypass.
-3. Record merged main SHA, specification version, reviewer identity/access and
+1. Adopt ADR-007 through the currently effective change procedure, including its
+   independent-human review requirement. This proposal cannot approve itself.
+   Record the merged governance SHA; fetch and reload it on executing computers.
+2. Confirm explicit settings authorization and the original owner instruction.
+   Follow the [transition](REPOSITORY_SETTINGS.md#reviewer-prerequisite); retain
+   ownership routing without a mandatory duplicate GitHub approval. Existing live
+   review gates must be changed only through authorized configuration, never bypass.
+3. Record merged main SHA, specification version, authorization evidence and
    CODEOWNERS validation. Wait for successful workflow runs to make all four exact
    contexts selectable. Check that no competing rule or ruleset has appeared.
 
@@ -33,7 +32,7 @@ gh api repos/Wes-Sysadm/Crop-QC-dashboard/collaborators --paginate --jq '.[] | {
 ```
 
 Verify every expected response value, all four contexts with GitHub Actions as
-source, strict branch currency, review/conversation gates and no bypass. A save
+source, strict branch currency, intended review/conversation settings and no bypass. A save
 or green historical run is insufficient proof that noncompliant changes are blocked.
 
 ## 3. Open a disposable negative probe after activation
@@ -84,7 +83,7 @@ capture the explicit failed-required-check reason, separate from missing review.
 If checks are optional or the UI offers a normal merge while a required check
 fails, activation is **NO-GO**: investigate configuration, do not weaken it.
 
-## 4. Separate the human-review gate from the check gate
+## 4. Separate owner authorization from the check gate
 
 Fix only the probe's broken link, as a new commit, without reset/rebase:
 
@@ -97,17 +96,18 @@ git commit -m 'test: repair probe reference while retaining DO NOT MERGE notice'
 git push
 ```
 
-Wait for four green jobs on the new head, but leave the independent review absent:
-GitHub must still require an eligible code-owner approval and show merging blocked.
-If a prior approval existed it must be dismissed. The reviewer can confirm their
-eligibility without approving this throwaway change. Record the explicit missing
-review reason. Owner-approved closure of this probe without merging ends the test;
+Wait for four green jobs on the new head with `Status: Not requested` in the
+release-authorization metadata. GitHub need not show a missing-review block under
+ADR-007. The operator must still refuse merge because the probe is DO NOT MERGE
+and has no owner merge authority. Record that this is an operational authorization
+gate, not server authentication of task messages. Owner-approved closure of this
+probe without merging ends the test;
 keep the evidence, not its broken file, as the validation record. Do not close
 #274 as part of this step. Branch cleanup is optional and must not discard any
 other work. No intentionally failing probe belongs on main.
 
-This proves a noncompliant change is blocked by a mandatory check and a compliant
-head is blocked without review. Required-check readback verifies all four contexts;
+This proves a noncompliant change is blocked by a mandatory check; it does not
+prove server enforcement of off-platform owner identity. Required-check readback verifies all four contexts;
 the probe deliberately fails only governance. It does not simulate every runtime
 defect or prove protection against an administrator changing settings later.
 
@@ -122,6 +122,6 @@ discovery check on **each** actual Windows Codex installation. Record results an
 local overrides. Do not copy credentials, sessions, production data or a parallel
 rule catalog between machines. The optional global bootstrap is local guidance.
 
-Activation is complete only when protection readback, negative-check/review proof
+Activation is complete only when protection readback, negative-check/authorization records
 and per-computer discovery records all pass. Until then, #276 can be technically
-ready for human review while enforced multi-computer operation remains NO-GO.
+ready for review while enforced multi-computer operation remains NO-GO.

@@ -1,6 +1,6 @@
 # Crop QC business rules
 
-Specification version: **1.0.1**. Established policies reaffirmed by the owner's permanent-knowledge request, 2026-10-08 (America/Los_Angeles). This consolidation awaits PR approval; it does not claim merge or deployment. IDs retain the compatible taxonomy proposed in draft #274 to avoid a competing catalog. Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
+Specification version: **1.1.0**. This branch proposes the owner-requested single-approval workflow (2026-10-09); it takes effect only after adoption under the currently effective change procedure. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
 
 This is the single normative business-rule catalog. Existing inventory phase documents remain detailed technical contracts and historical evidence, not competing business-policy owners. Their dated implementation/release status is not current production status. A more specific compatible constraint still applies; contradictions require resolution, not a silent override.
 
@@ -89,6 +89,20 @@ Use existing file-storage abstraction and stable metadata references; do not int
 Every task identifies relevant rules, evidence, tests, gaps and production implications. Ordinary task instructions do not authorize changing foundational inventory, custody, treatment, conservation or audit invariants. Genuine policy changes require explicit documented business-owner approval of the previous/new rule and affected workflows, with identity, reference/date and versioned decisions/tests. Task-level workflow exceptions never silently waive these rules or production safeguards. Structural checks are not runtime proof; concurrency requires real independent PostgreSQL sessions. Test the affected blast radius under [change-scoped testing](../change-scoped-testing-standard.md), not unrelated domains. No test omission, early return, skip or historical run may be reported as executed current coverage.
 
 GitHub's approved main is the shared knowledge authority. Every clone fetches and compares it before relying on local instructions. Identify repository, branch, local/fetched commits and specification version; report discrepancies and integrate safely. Never let local/global configuration or prior conversations silently supersede these rules. See [Windows synchronization](WINDOWS_SETUP.md).
+
+Under ADR-007, explicit project-owner authorization to release an identified PR
+is the normal human approval authority for its complete merge-and-release
+lifecycle. An original owner instruction in the task is sufficient; the executing
+agent records its source, identity, date, scope, exclusions and reviewed head
+without requiring the owner to repeat approval in GitHub or another interface.
+Merge-only authority remains narrower. Independent technical verification is
+mandatory; a second human or code-owner sign-off is not the normal prerequisite.
+An explicit additional review condition or effective repository protection must
+still be satisfied and may not be bypassed. CI validates evidence structure, not
+owner identity or permission. Technical safeguards in OPS-001 and all inventory,
+custody, treatment and historical-audit rules remain mandatory regardless of
+authorization. See [release authority](RELEASE_AUTHORIZATION.md) for scope changes,
+revocation, recording, exclusions and adoption of this proposal.
 
 ### Foundational requirement index
 
