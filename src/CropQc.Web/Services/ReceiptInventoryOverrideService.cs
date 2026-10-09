@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
@@ -288,6 +289,8 @@ public sealed partial class ReceiptInventoryOverrideService(
             {
                 if (form.BinCount > receipt.BinCount)
                 {
+                    if (!form.ConfirmAdditionalBinsUntreated)
+                        return await RollbackAsync(transaction, Failed(ReceiptCorrectionTreatmentPolicy.ConfirmationRequired), cancellationToken);
                     var trueUpState = await GetPositiveTrueUpStateAsync(receipt, cancellationToken);
                     if (string.IsNullOrWhiteSpace(form.ExpectedPositiveTrueUpStateToken)
                         || !string.Equals(form.ExpectedPositiveTrueUpStateToken, trueUpState.StateToken, StringComparison.Ordinal))
@@ -1020,6 +1023,7 @@ public sealed partial class ReceiptInventoryOverrideService(
                 $"receipt-override:{operation.OperationKey}:treatment:{sequence.ToString(CultureInfo.InvariantCulture)}",
                 now,
                 administrator.Id,
+                confirmedUntreated: true,
                 cancellationToken);
             if (!lineage.Success)
                 return lineage.Error ?? "Treatment lineage could not be assigned to the positive Receipt true-up.";
@@ -1297,6 +1301,9 @@ public sealed partial class ReceiptInventoryOverrideService(
             InventoryStatus = snapshot.InventoryStatus,
             CurrentBins = snapshot.CurrentBins,
             AllocatedBins = allocation.Bins,
+            AdditionalBinsConfirmedUntreated = true,
+            AddedTreatmentState = TreatmentLineageStates.Untreated,
+            AddedTreatmentSignature = "u",
             allocation.Position.TreatmentSegmentId,
             allocation.Position.TreatmentState,
             allocation.Position.TreatmentSignature,
@@ -1398,6 +1405,13 @@ public sealed partial class ReceiptInventoryOverrideService(
                 && root.GetProperty("fruitProfileId").GetInt32() == form.FruitProfileId
                 && string.Equals(root.GetProperty("growerNumber").GetString(), form.GrowerNumber.Trim(), StringComparison.OrdinalIgnoreCase);
             if (!receiptValuesMatch) return false;
+            if (existing.InventoryDelta > 0)
+            {
+                using var addedEvidence = JsonDocument.Parse(existing.AffectedInventorySnapshotJson);
+                var confirmed = addedEvidence.RootElement.ValueKind == JsonValueKind.Array
+                    && addedEvidence.RootElement.EnumerateArray().Any(x => x.TryGetProperty("additionalBinsConfirmedUntreated", out var value) && value.GetBoolean());
+                if (confirmed != form.ConfirmAdditionalBinsUntreated) return false;
+            }
             var requestedAllocations = form.TrueUpAllocations.Where(x => x.Bins > 0)
                 .OrderBy(x => x.TargetKey, StringComparer.Ordinal)
                 .Select(x => $"{x.TargetKey}:{x.Bins}")

@@ -27,6 +27,23 @@ public sealed class ReceiptInventoryOverrideTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-04T19:00:00Z");
 
     [Fact]
+    public async Task Positive_override_requires_treatment_confirmation_before_any_write()
+    {
+        await using var fixture = await OverrideFixture.CreateAsync(initialBins: 20);
+        var form = await fixture.PositiveFormAsync(25, Guid.NewGuid().ToString("D"));
+        form.ConfirmAdditionalBinsUntreated = false;
+        var auditCount = await fixture.Db.AuditLogs.CountAsync();
+        var result = await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default);
+        Assert.False(result.Succeeded);
+        Assert.Contains("untreated", result.Error);
+        Assert.Equal(20, (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).BinCount);
+        Assert.Equal(20, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Empty(await fixture.Db.TreatmentLineageMovements.ToListAsync());
+        Assert.Equal(auditCount, await fixture.Db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
     public async Task New_receipt_initial_quantity_saves_without_inventory_override()
     {
         await using var fixture = await OverrideFixture.CreateAsync();
@@ -482,15 +499,16 @@ public sealed class ReceiptInventoryOverrideTests
 
         Assert.True(result.Succeeded, result.Error);
         var movement = await fixture.Db.TreatmentLineageMovements.AsNoTracking().SingleAsync();
-        Assert.Equal(("x", 1, OverrideFixture.ReceiptId),
+        Assert.Equal(("u", 1, OverrideFixture.ReceiptId),
             (movement.TreatmentSignatureSnapshot, movement.BinCount, movement.ReceiptId));
         var destination = await fixture.Db.TreatmentLineageSegments.AsNoTracking()
-            .SingleAsync(x => x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "x");
+            .SingleAsync(x => x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u");
         Assert.Equal(1, destination.CurrentBins);
+        Assert.Equal(10, (await fixture.Db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == 8912)).CurrentBins);
     }
 
     [Fact]
-    public async Task Positive_override_inherits_exact_current_treatment_and_keeps_new_bins_receipt_specific()
+    public async Task Positive_override_preserves_existing_treatment_and_adds_separate_untreated_bins()
     {
         await using var fixture = await OverrideFixture.CreateAsync(initialBins: 20);
         var configuration = new ConfigurationBuilder().Build();
@@ -569,10 +587,16 @@ public sealed class ReceiptInventoryOverrideTests
         ledger.Current = initialSnapshot with { PositiveBins = currentBins, CurrentBins = currentBins, TransactionCount = 2, LatestAdjustmentId = 8602 };
         var selections = await treatmentService.GetSelectionsAsync(ledger.Current, CancellationToken.None);
         Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Confirmed && x.CurrentBins == 20);
-        Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Confirmed
-            && x.CurrentBins == 5 && x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u|a:8701");
+        Assert.Contains(selections, x => x.TreatmentState == TreatmentLineageStates.Untreated
+            && x.CurrentBins == 5 && x.ReceiptId == OverrideFixture.ReceiptId && x.TreatmentSignature == "u");
         Assert.Equal(25, selections.Sum(x => x.CurrentBins));
         Assert.Single(await fixture.Db.RoomTreatmentApplications.ToListAsync());
+        Assert.Equal(20, (await fixture.Db.RoomTreatmentApplications.SingleAsync()).TotalBinsSnapshot);
+        Assert.Single(await fixture.Db.TreatmentLineageSegmentApplications.ToListAsync());
+        Assert.True((await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default)).WasIdempotent);
+        form.ConfirmAdditionalBinsUntreated = false;
+        Assert.False((await fixture.Service.ApplyEditAsync(form, fixture.AdminPrincipal, default)).Succeeded);
+        Assert.Single(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
     }
 
     [Fact]
@@ -2252,6 +2276,7 @@ public sealed class ReceiptInventoryOverrideTests
         Id = receipt.Id,
         OperationKey = key,
         Reason = "PostgreSQL workflow validation",
+        ConfirmAdditionalBinsUntreated = bins > receipt.BinCount,
         ConfirmInventoryChange = true,
         ConfirmCropYear = true,
         CropYear = receipt.CropYear,
@@ -2595,6 +2620,7 @@ public sealed class ReceiptInventoryOverrideTests
         public async Task<AdminReceiptInventoryOverrideForm> PositiveFormAsync(int binCount, string operationKey)
         {
             var form = Form(binCount, operationKey);
+            form.ConfirmAdditionalBinsUntreated = true;
             var preview = await Service.GetPreviewAsync(ReceiptId, CancellationToken.None);
             form.ExpectedPositiveTrueUpStateToken = preview!.PositiveTrueUpStateToken;
             return form;

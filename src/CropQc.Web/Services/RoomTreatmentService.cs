@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
@@ -133,6 +134,7 @@ public interface IRoomTreatmentService
         string operationKey,
         DateTimeOffset occurredAt,
         int actorUserId,
+        bool confirmedUntreated,
         CancellationToken cancellationToken) =>
         Task.FromResult(new TreatmentLineageWriteResult(false, "Receipt treatment-lineage true-up is not supported by this implementation."));
 }
@@ -2232,9 +2234,11 @@ public sealed partial class RoomTreatmentService(
         string operationKey,
         DateTimeOffset occurredAt,
         int actorUserId,
+        bool confirmedUntreated,
         CancellationToken cancellationToken)
     {
         if (bins <= 0) return new(false, "Receipt inventory true-up bins must be positive.");
+        if (!confirmedUntreated) return new(false, ReceiptCorrectionTreatmentPolicy.ConfirmationRequired);
         if (await dbContext.TreatmentLineageMovements.AsNoTracking()
             .AnyAsync(x => x.OperationKey == operationKey, cancellationToken))
             return new(true, null);
@@ -2271,9 +2275,9 @@ public sealed partial class RoomTreatmentService(
 
         var now = businessTime.UtcNow;
         var destination = await GetOrCreateSegmentAsync(
-            snapshot, selected.TreatmentState, selected.TreatmentSignature, now, cancellationToken, receiptId);
-        if (source is not null && source.Id != destination.Id)
-            await CopyApplicationLinksAsync(source, destination, cancellationToken);
+            snapshot, TreatmentLineageStates.Untreated, "u", now, cancellationToken, receiptId);
+        // Selecting existing fruit identifies a location; it is not evidence that
+        // newly recorded bins were present during that fruit's past treatments.
         destination.CurrentBins += bins;
         destination.UpdatedAt = now;
         destination.ConcurrencyVersion++;

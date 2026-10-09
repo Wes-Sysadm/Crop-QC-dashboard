@@ -105,7 +105,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "8D6A659CEB04CC196CB551766444202C24B10E42E780B4D800562B370C1716F7"
+    "Sha256": "0460FC8DFCFFB472A1B17E1114E68955BB7F298E4D2D0D2AA1D9501BBBF9ABAE"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptIdentity.cs",
@@ -459,7 +459,7 @@
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "BB7CB03F3D381EA46FB67BD556CAFF9B0FE2A049E46892BCD74A3A9F370E6B15"
+    "Sha256": "18FA4D0177596E6AF6B76F3572105C6CD6995642AA4AEC8E05D481BF982A7819"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptPurgeService.cs",
@@ -531,7 +531,7 @@
     "Path": "src/CropQc.Web/Services/RoomTreatmentService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "2F098E4B6D5693F978DB63B7AF675A87C2220AFACCBBECE8598192F2BBFBAB8D"
+    "Sha256": "0F921BC20A8F69822B490813BFC4DC795BC1FDF8ED04DB604A2309C1A2A66A4D"
   },
   {
     "Path": "src/CropQc.Web/Services/RunExpectationService.cs",
