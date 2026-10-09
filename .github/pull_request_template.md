@@ -28,6 +28,18 @@ Impact:
 Tests/history:
 Approval:
 
+## Release authorization
+
+Status: Not requested
+
+Use `Owner authorized` only when an original explicit owner instruction exists.
+Record it here without asking the owner to repeat it in GitHub. Required fields:
+Owner, Reference (original message/link and instruction), Date (YYYY-MM-DD),
+Head (full reviewed PR SHA), Scope (`Merge only` or `Merge and production release`),
+and Exclusions. Use `Revoked` after revocation. Policy approval or green CI alone
+is not release authority. Metadata checks do not authenticate the owner, clear
+technical safeguards, or bypass current repository/explicit review requirements.
+
 ## Verification and release limits
 
 Restore/build, focused tests, EF/schema, formatting/diff; justify any broader suite.

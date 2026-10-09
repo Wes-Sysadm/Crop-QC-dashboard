@@ -1,6 +1,6 @@
 # Crop QC Dashboard — Codex Repository Instructions
 
-These instructions apply to all Codex work in this repository. Explicit task instructions may override ordinary workflow preferences (for example, continuing an existing PR), but an ordinary request is not approval to change foundational inventory, custody, treatment, conservation or audit rules. Any apparent conflict must be reported before dependent implementation. A genuine policy change requires explicit documented approval from the business owner under the change procedure, including the previous/new rule, affected workflows, approval reference/date, versioned decision and tests. Task authorization does not waive production safeguards or authorize a release, data repair or merge. Read task-specific exceptions below within this boundary.
+These instructions apply to all Codex work in this repository. Explicit task instructions may override ordinary workflow preferences (for example, continuing an existing PR), but an ordinary request is not approval to change foundational inventory, custody, treatment, conservation or audit rules. Any apparent conflict must be reported before dependent implementation. A genuine policy change requires explicit documented approval from the business owner under the change procedure, including the previous/new rule, affected workflows, approval reference/date, versioned decision and tests. Ordinary development authorization does not authorize release or repair. Explicit project-owner production release authorization covers the merge-and-release lifecycle under the [single-owner policy](docs/governance/RELEASE_AUTHORIZATION.md); it never waives production safeguards.
 
 ## Start every task with current repository knowledge
 
@@ -56,6 +56,21 @@ For each new development request:
 11. Do not merge, deploy, install on production systems, or modify production data unless the user explicitly authorizes it.
 
 When the user explicitly says to continue an existing branch or pull request, update that work instead of creating a new branch or pull request.
+
+Once ADR-007 is effective on approved main, one explicit project-owner instruction
+to "go live", "deploy", or release the identified PR authorizes ready-for-review,
+normal merge, required backup/migration/deployment, independent verification and
+the established safe rollback response within that scope. Preserve exclusions.
+Record the original instruction/reference, owner, date and reviewed head; the
+agent carries that evidence into release records without requesting another
+owner action in GitHub. Do not submit an approval as though a separate reviewer
+provided it. Code review and all technical gates still apply; independent human
+sign-off is optional unless explicitly required for that release or by effective
+repository configuration. Never use an admin bypass to defeat such a requirement.
+Merge-only authorization is not deployment authorization. Stop for revoked,
+ambiguous or materially out-of-scope authority, not merely a different interface.
+This proposed policy cannot authorize its own adoption; follow the transition in
+[the approval record](docs/governance/RELEASE_AUTHORIZATION.md#transition-and-pr-278).
 
 Before creating a new branch or pull request, check current GitHub state. Do not assume that a previously mentioned branch or pull request is still open, unmerged, or current.
 
@@ -258,7 +273,7 @@ Every pull request should explain:
 - known limitations
 - onsite or hardware verification still required
 
-Keep the PR limited to the requested work. Do not merge it unless the user explicitly authorizes the merge.
+Keep the PR limited to the requested work. Merge only under explicit applicable owner authorization, including the merge authority carried by an effective ADR-007 release instruction.
 
 ## Review behavior
 
@@ -271,4 +286,4 @@ When asked to review Codex work or a pull request:
 5. Look specifically for production-data risk, unintended scope expansion, historical-data loss, audit gaps, stale-write risk, partial-save regressions, unsupported fruit-count assumptions, installer omissions, and unverified claims.
 6. Confirm the tests match the actual blast radius; do not reject focused validation merely because unrelated suites were not run.
 7. Distinguish application defects from environment-specific issues that require onsite testing.
-8. Do not approve or merge automatically.
+8. Do not manufacture human approval. Merge only with applicable explicit owner authority and passing effective safeguards; a code review request alone is not merge authority.

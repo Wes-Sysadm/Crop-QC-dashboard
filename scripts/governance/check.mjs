@@ -25,7 +25,35 @@ export function validateCatalog(spec, matrix, exists) {
   }
 }
 
-export function validateBody(body, ids, protectedChange) {
+// Review metadata only. The operator must verify the original owner instruction;
+// PR prose and green CI cannot authenticate a human or authorize execution.
+export function validateReleaseAuthorization(body, head) {
+  const sections = [...body.matchAll(/^## Release authorization\s*\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/gm)];
+  if (sections.length !== 1) fail('Exactly one Release authorization section is required.');
+  const section = sections[0][1];
+  const field = label => {
+    const lines = section.split(/\r?\n/).filter(l => l.startsWith(label + ':'));
+    const value = lines[0]?.slice(label.length + 1).trim();
+    if (lines.length !== 1 || !value || /^(TBD|TODO|<.*>)$/i.test(value))
+      fail('Complete release authorization: ' + label);
+    return value;
+  };
+  const status = field('Status');
+  if (['Not requested', 'Revoked'].includes(status)) return { status, declaredActions: [] };
+  if (status !== 'Owner authorized') fail('Unknown release authorization status.');
+  for (const label of ['Owner', 'Reference', 'Exclusions']) field(label);
+  const date = field('Date');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
+      || new Date(date).toISOString().slice(0, 10) !== date) fail('Use a valid authorization date (YYYY-MM-DD).');
+  const approvedHead = field('Head');
+  if (!/^[a-f0-9]{40}$/.test(approvedHead) || !head || approvedHead !== head)
+    fail('Release authorization must identify the current reviewed PR head.');
+  const scope = field('Scope');
+  if (!['Merge only', 'Merge and production release'].includes(scope)) fail('Unknown authorization scope.');
+  return { status, declaredActions: scope === 'Merge only' ? ['merge'] : ['merge', 'release'] };
+}
+
+export function validateBody(body, ids, protectedChange, head) {
   const fields = ['Applicable rule IDs', 'Implementation paths and authoritative records versus projections',
     'Proposed behavior and potential conflicts', 'Authoritative inventory changes', 'Treatment lineage changes',
     'Historical records changed/preserved', 'New origins or writers', 'Exact tests/provider/results proving compliance',
@@ -48,6 +76,7 @@ export function validateBody(body, ids, protectedChange) {
       if (!section.split(/\r?\n/).some(l => l.startsWith(label) && l.slice(label.length).trim()))
         fail('Governance change must include ' + label);
   }
+  validateReleaseAuthorization(body, head);
 }
 
 export function protectedPath(p) {
@@ -107,6 +136,7 @@ export function check(root, event) {
     '.github/workflows/governance.yml', 'tests/CropQc.Api.Tests/CanonicalInventoryArchitectureTests.cs',
     'docs/inventory-architecture/phase3-workflow-registry.json', 'docs/inventory-architecture/phase3-reviewed-write-candidates.json',
     'docs/governance/README.md', 'docs/governance/WINDOWS_SETUP.md', 'docs/governance/CHANGE_PROCEDURE.md',
+    'docs/governance/RELEASE_AUTHORIZATION.md',
     'docs/governance/REPOSITORY_SETTINGS.md', 'docs/governance/VALIDATION.md', 'docs/governance/OUTSTANDING_PRS.md',
     'scripts/Sync-CropQcKnowledge.ps1', 'scripts/governance/sync.test.mjs',
     'docs/governance/PR274_CONSOLIDATION.md', 'docs/governance/POST_MERGE_ACTIVATION.md',
@@ -119,7 +149,7 @@ export function check(root, event) {
     const base = event.pull_request.base.sha;
     if (!/^[a-f0-9]{40}$/.test(base)) fail('Invalid PR base.');
     const changed = execFileSync('git', ['diff', '--name-only', base, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/);
-    validateBody(event.pull_request.body || '', ruleIds(spec), changed.some(protectedPath));
+    validateBody(event.pull_request.body || '', ruleIds(spec), changed.some(protectedPath), event.pull_request.head?.sha);
     const baseFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'docs/governance'], { cwd: root, encoding: 'utf8' });
     if (baseFiles.includes('docs/governance/CROP_QC_BUSINESS_RULES.md')) {
       const atBase = p => execFileSync('git', ['show', `${base}:${p}`], { cwd: root, encoding: 'utf8' });
