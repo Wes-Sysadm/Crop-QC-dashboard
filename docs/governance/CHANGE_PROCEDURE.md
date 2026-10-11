@@ -30,15 +30,29 @@ genuine policy change. Never weaken policy to fit a test or implementation limit
    historical evidence, test/provider results, coverage gaps, production impact
    and the approval reference. Governance/test/registry/CI changes require the
    template's Governance change section, even if they appear purely editorial.
-6. Obtain explicit human review/approval and merge only through the repository's
-   standard process after authorization. Proposed branch protections are in
-   [repository settings](REPOSITORY_SETTINGS.md); they are not currently enforced.
+6. Under effective ADR-007, obtain explicit project-owner approval and merge only
+   through the standard process. One owner release instruction supplies merge and
+   release authority within its recorded scope; do not request duplicate owner
+   approval in GitHub. Preserve substantive code review and all technical gates.
+   Additional human review is optional unless the owner explicitly requires it or
+   effective configuration enforces it. Proposed protections are in
+   [repository settings](REPOSITORY_SETTINGS.md); never bypass live requirements.
+   For ADR-007 adoption, the owner clarified that human review occurs in the
+   ChatGPT PR conversation: the owner examines Codex's work and approves
+   progression. Record that actual review, not a fictional additional reviewer.
+   The distinction from a separately enforced second-person/GitHub gate and the
+   adoption evidence are in [transition](RELEASE_AUTHORIZATION.md#transition-and-pr-278).
 7. After merge, every computer fetches and synchronizes using
    [Windows setup](WINDOWS_SETUP.md). Report version/SHA differences and reload
    instructions. No separate computer-specific catalog is created.
 
 Routine fixes implement existing rules; they should update technical evidence or
 tests without redefining the foundations. A protected-change disclosure is review
-metadata, not authorization to weaken policy. The checker deliberately cannot
-decide whether prose expresses the owner's approval; independent human review is
-required. No update to knowledge authorizes production repair, release or merge.
+metadata, not authorization to weaken policy. The checker cannot authenticate the
+owner or decide that approval is genuine. The operator verifies and records the
+original owner instruction under [release authority](RELEASE_AUTHORIZATION.md).
+Policy publication alone grants no release or repair authority. Historical rule:
+version 1.0.1 required independent human review of governance changes. For this
+adoption the owner is the human reviewer of the automated implementation; the
+owner's clarification does not assert another reviewer or a GitHub APPROVED event.
+Separate-person requirements, if expressly imposed or enforced, still bind.

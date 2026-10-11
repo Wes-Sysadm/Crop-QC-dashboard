@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateCatalog, validateBody, protectedPath, validateEvolution, validateLinks } from './check.mjs';
+import { validateCatalog, validateBody, protectedPath, validateEvolution, validateLinks, validateReleaseAuthorization } from './check.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,7 +41,8 @@ const fields = ['Applicable rule IDs', 'Implementation paths and authoritative r
   'Proposed behavior and potential conflicts', 'Authoritative inventory changes', 'Treatment lineage changes',
   'Historical records changed/preserved', 'New origins or writers', 'Exact tests/provider/results proving compliance',
   'Unverified rules, skipped bodies and unresolved assumptions', 'Production-data implications and authorization', 'Business-policy approval required/reference'];
-const body = fields.map(f => '- ' + f + ': ' + (f === fields[0] ? 'INV-001' : 'Reviewed; no change.')).join('\n');
+const body = fields.map(f => '- ' + f + ': ' + (f === fields[0] ? 'INV-001' : 'Reviewed; no change.')).join('\n')
+  + '\n## Release authorization\nStatus: Not requested\n';
 test('unknown rule IDs fail', () => assert.throws(() => validateBody(body.replace('INV-001', 'INV-999'), ['INV-001'], false)));
 test('ordinary assessment succeeds', () => validateBody(body, ['INV-001'], false));
 test('protected change cannot claim not applicable', () => assert.throws(() => validateBody(body + '\n## Governance change\nNot applicable', ['INV-001'], true)));
@@ -77,4 +78,45 @@ test('broken files and heading anchors fail reference validation', () => {
     assert.equal(path.dirname(fs.realpathSync(dir)), parent);
     fs.rmSync(dir, { recursive: true });
   }
+});
+
+const reviewedHead = 'a'.repeat(40);
+const ownerRecord = `## Release authorization
+Status: Owner authorized
+Owner: project owner (fixture)
+Reference: retained task instruction: deploy this PR
+Date: 2026-10-09
+Head: ${reviewedHead}
+Scope: Merge and production release
+Exclusions: No historical projection repair
+`;
+test('one owner instruction declares merge and release without another GitHub approval', () => {
+  assert.deepEqual(validateReleaseAuthorization(ownerRecord, reviewedHead).declaredActions, ['merge', 'release']);
+  validateBody(body.replace('## Release authorization\nStatus: Not requested\n', ownerRecord), ['INV-001'], false, reviewedHead);
+});
+test('merge-only approval does not declare deployment authority', () => {
+  assert.deepEqual(validateReleaseAuthorization(ownerRecord.replace('Merge and production release', 'Merge only'), reviewedHead).declaredActions, ['merge']);
+});
+test('missing, revoked and unrequested authority never imply a release', () => {
+  assert.throws(() => validateReleaseAuthorization('CI passed; owner approval assumed', reviewedHead));
+  for (const status of ['Not requested', 'Revoked'])
+    assert.deepEqual(validateReleaseAuthorization('## Release authorization\nStatus: ' + status, reviewedHead).declaredActions, []);
+});
+test('authorization cannot silently follow an unreviewed head', () => {
+  assert.throws(() => validateReleaseAuthorization(ownerRecord, 'b'.repeat(40)), /current reviewed PR head/);
+  assert.throws(() => validateReleaseAuthorization(ownerRecord), /current reviewed PR head/);
+});
+test('owner evidence requires a reference, identity, date, scope and exclusions', () => {
+  for (const label of ['Owner', 'Reference', 'Date', 'Head', 'Scope', 'Exclusions'])
+    assert.throws(() => validateReleaseAuthorization(ownerRecord.replace(new RegExp('^' + label + ':.*$', 'm'), label + ': TODO'), reviewedHead));
+  assert.throws(() => validateReleaseAuthorization(ownerRecord.replace('2026-10-09', '2026-02-30'), reviewedHead));
+  assert.throws(() => validateReleaseAuthorization(ownerRecord.replace('Merge and production release', 'Bypass failed safeguards'), reviewedHead));
+});
+test('duplicate or contradictory authorization records are rejected', () => {
+  assert.throws(() => validateReleaseAuthorization(ownerRecord + ownerRecord, reviewedHead));
+  assert.throws(() => validateReleaseAuthorization(ownerRecord + 'Status: Revoked\n', reviewedHead));
+});
+test('recorded release authority cannot waive a failed governance check', () => {
+  assert.throws(() => validateBody(body.replace('INV-001', 'INV-999').replace('## Release authorization\nStatus: Not requested\n', ownerRecord), ['INV-001'], false, reviewedHead));
+  assert.throws(() => validateBody(body.replace('## Release authorization\nStatus: Not requested\n', ownerRecord), ['INV-001'], true, reviewedHead), /Governance change/);
 });
