@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "specificationVersion": "1.0.1",
+  "specificationVersion": "1.1.0",
   "rules": [
     {
       "id": "INV-001",
@@ -349,6 +349,8 @@
       "code": [
         "AGENTS.md",
         "scripts/governance/check.mjs",
+        "scripts/governance/check.test.mjs",
+        "docs/governance/RELEASE_AUTHORIZATION.md",
         "docs/change-scoped-testing-standard.md",
         "scripts/Sync-CropQcKnowledge.ps1"
       ],

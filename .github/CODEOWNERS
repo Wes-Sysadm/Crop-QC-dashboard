@@ -1,4 +1,5 @@
-# Proposed owners; effective mandatory approval requires repository settings.
+# Owner routing and accountability. Under effective ADR-007 this is not a
+# requirement for duplicate GitHub approval; never bypass actual branch settings.
 /AGENTS.md @Wes-Sysadm
 AGENTS.md @Wes-Sysadm
 AGENTS.override.md @Wes-Sysadm

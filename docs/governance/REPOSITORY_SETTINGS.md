@@ -8,30 +8,32 @@ that does not supply an independent reviewer. No settings or access were changed
 
 ## Reviewer prerequisite
 
-Before requiring CODEOWNERS approval, the owner must choose and invite an
-independent human collaborator, have them accept **write permission**, and add
-their actual GitHub login beside the existing owner on every protected pattern
-in `.github/CODEOWNERS` through a reviewed PR. Verify access and CODEOWNERS errors
-against merged main. Do not insert a placeholder login. The author cannot approve
-their own PR; latest-push approval must come from someone other than that pusher.
-One matching code owner suffices: listing two does not require both. Explicit
-business-owner policy approval remains a separate documented requirement. This
-personal-account repository has no organization team to use instead. See
-[GitHub CODEOWNERS rules](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+Historical version 1.0.1 proposed an independent collaborator with write access,
+one approving review, CODEOWNERS review and latest-push approval. No such settings
+were active at the 2026-10-09 read-only recheck (classic protection: 404 Branch not
+protected; effective rules: []). This section is retained as the transition anchor.
+
+After effective ADR-007 adoption, explicit owner task authorization is sufficient
+for the normal approval workflow. CODEOWNERS routes review and identifies ownership;
+it does not require another owner action. Independent human review is optional
+unless specifically required. Do not invite a collaborator solely to duplicate the
+owner's approval. Existing live review requirements still bind until separately
+authorized configuration changes are applied and verified. Never use a bypass.
+See [authority and transition](RELEASE_AUTHORIZATION.md).
 
 ## Exact main protection to activate after authorization
 
-Use one classic branch protection rule matching exactly `main` (Settings >
+After policy adoption and explicit settings authorization, use one classic branch protection rule matching exactly `main` (Settings >
 Branches > Add classic branch protection rule). Inspect existing rules first;
 update an applicable rule instead of creating overlapping protection.
 
 | Setting | Required value |
 |---|---|
 | Require a pull request before merging | Enabled |
-| Required approving reviews | 1 independent human |
-| Dismiss stale approvals when new commits are pushed | Enabled |
-| Require review from Code Owners | Enabled, only after the prerequisite above |
-| Require approval of the most recent reviewable push | Enabled |
+| Required approving reviews | 0; owner authorization is verified from the original instruction |
+| Dismiss stale approvals when new commits are pushed | Enabled for optional reviews; always recheck authorization scope/head |
+| Require review from Code Owners | Disabled; retain CODEOWNERS for routing |
+| Require approval of the most recent reviewable push | Disabled; retain reviewed-head evidence |
 | Require status checks to pass | Enabled |
 | Require branches to be up to date before merging | Enabled (strict) |
 | Required checks | `governance`, `contracts`, `windows-sync (pwsh)`, `windows-sync (powershell)` |
@@ -66,9 +68,9 @@ Require this response subset, not just a successful settings save:
   "enforce_admins": {"enabled": true},
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": true,
-    "required_approving_review_count": 1,
-    "require_last_push_approval": true
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 0,
+    "require_last_push_approval": false
   },
   "required_conversation_resolution": {"enabled": true},
   "allow_force_pushes": {"enabled": false},
@@ -86,13 +88,15 @@ active until the intentionally noncompliant PR is visibly blocked.
 
 Metadata verifies rule IDs, version/decision evolution, links, mappings and
 disclosure. It cannot authenticate approval or prove arbitrary business semantics.
-A PR can propose weakening its own checks; independent review of the workflow,
-checker, contracts and CODEOWNERS is essential. Review-count settings cannot
-themselves prove the reviewer is human. Administrators can later change settings;
+A PR can propose weakening its own checks; substantive review of the workflow,
+checker, contracts and CODEOWNERS remains essential. The operator verifies original
+owner authority outside CI; no review-count setting authenticates a task message. Administrators can later change settings;
 periodic owner inspection remains an operational responsibility. Merge-group
 events run contracts but have no PR body to validate. A separately controlled
 required-workflow source needs additional organization setup; none is claimed.
 
 CI uses read-only permissions, disposable PostgreSQL and synthetic Git fixtures,
 with no production secrets or privileged `pull_request_target` execution. Green
-CI never authorizes merging, deployment, migrations, repairs or backups.
+CI never authorizes merging, deployment, migrations, repairs or backups. Under
+effective ADR-007, one explicit owner release instruction supplies scope authority;
+all technical gates remain mandatory. This document changes no live settings.
