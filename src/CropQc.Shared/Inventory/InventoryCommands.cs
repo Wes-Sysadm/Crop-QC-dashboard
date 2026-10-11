@@ -66,7 +66,8 @@ public static class InventoryCommandPolicy
     public static InventoryOperationRequirements Requirements(InventoryCommandKind kind, InventoryCommandLine line) =>
         new(RequireKnownTreatment: kind != InventoryCommandKind.ManualStockAddition, RequireExactReceipt: kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion,
             ReceiptId: line.ReceiptId, TreatmentSignature: kind == InventoryCommandKind.ManualStockAddition ? null : line.TreatmentSignature,
-            AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint);
+            AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint)
+        { AllowIndependentCohorts = !IsTreatment(kind) || kind == InventoryCommandKind.ReceiptTreatmentAssignment };
     public static bool IsRoomMove(InventoryCommandKind kind) => kind is InventoryCommandKind.RoomMove
         or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove;
     public static bool IsTreatment(InventoryCommandKind kind) => kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ReceiptTreatmentAssignment;

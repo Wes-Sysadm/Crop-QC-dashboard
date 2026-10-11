@@ -13,7 +13,7 @@ public sealed partial class InventoryCommandExecutor
         Require(c.PhysicalParentId > 0 && c.Lines.Length == 1, "Legacy run correction needs one original entry and replacement allocation.");
         var line = c.Lines.Single();
         var loader = new InventoryEvidenceLoader(db);
-        var batch = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), new(), now, ct);
+        var batch = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(line.Source.Location.WarehouseId, [line.Source.Location.RoomId!.Value]), new() { AllowIndependentCohorts = true }, now, ct);
         var preview = await new InventoryRunCorrectionAvailability(db).ReadLegacyAsync(batch, c.PhysicalParentId!.Value, ct);
         var before = preview.Values.SingleOrDefault(x => x.Current.Identity.Key == line.Source.Identity.Key);
         Require(before != null && before.Current.Watermark.Fingerprint == line.Source.ExpectedFingerprint && before.Blocker == null,
@@ -39,7 +39,7 @@ public sealed partial class InventoryCommandExecutor
         var loader = new InventoryEvidenceLoader(db);
         // Validate the user's pre-restoration view before changing anything. Restoration
         // credit is proved from this run's immutable consumption, never from the caller.
-        var current = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(null, c.Lines.Select(x => x.Source.Location.RoomId!.Value).Distinct().ToImmutableArray()), new(), now, ct);
+        var current = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(null, c.Lines.Select(x => x.Source.Location.RoomId!.Value).Distinct().ToImmutableArray()), new() { AllowIndependentCohorts = true }, now, ct);
         var preview = await new InventoryRunCorrectionAvailability(db).ReadAsync(current, c.PhysicalParentId!.Value, ct);
         foreach (var line in c.Lines)
         {
@@ -173,9 +173,11 @@ public sealed partial class InventoryCommandExecutor
                 foreach (var move in restored.Movements) { move.BinsRunEntry = reversal; move.MovementType = "BinsRunReversal"; }
                 entry.IsReversed = true; entry.ReversedAt = now; entry.ReversedByUserId = c.ActorId; entry.ReverseReason = c.Reason; entry.UpdatedAt = now;
                 await db.SaveChangesAsync(ct);
-                var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(entry.WarehouseId, [entry.RoomId]), new(), now, ct))
+                var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(entry.WarehouseId, [entry.RoomId]), new() { AllowIndependentCohorts = true }, now, ct))
                     .Positions.Single(x => x.PositionKey == restored.Effect.PositionKey);
-                Require(after.IsOperable && after.AuthoritativeQuantity == restored.Effect.After && after.RawProjectionQuantity == after.AuthoritativeQuantity,
+                Require(after.AuthoritativeQuantity == restored.Effect.After
+                    && (IsAdmittedDestination(factory, entry.RoomId, restored.Identity.Key)
+                        || after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity),
                     "Run restoration does not reconcile authoritative quantity and current treatment.");
                 effects.Add(restored.Effect with { ParentId = run?.Id ?? entry.Id, LedgerIds = [restored.Ledger.Id], MovementIds = restored.Movements.Select(x => x.Id).ToImmutableArray() });
             }

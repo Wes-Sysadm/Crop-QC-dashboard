@@ -42,8 +42,7 @@ public sealed partial class InventoryCommandExecutor
             "Whole-load custody is inconsistent.");
         var evidence = (await loader.LoadAsync(new(source.WarehouseId, [source.RoomId]), now, ct)).Positions.SingleOrDefault(x => x.Identity.Key == transit.Identity.Key);
         var destination = evidence == null ? null : InventoryAvailabilityResolver.Resolve(evidence, new());
-        Require(destination == null || destination.IsOperable, "Current source inventory cannot be proven for return.");
-        if (destination != null) await NormalizePositionAsync(db, factory, c, evidence!, destination, now, attempt, ct);
+        if (evidence != null) await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
         var destinationBefore = destination?.AuthoritativeQuantity ?? 0;
         var target = await factory.CurrentAsync(transit.Identity, source.WarehouseId, source.RoomId, treatment.Signature, treatment.State,
             source.ReceiptId, treatment.ApplicationIds, now, ct);
@@ -76,8 +75,10 @@ public sealed partial class InventoryCommandExecutor
         await db.SaveChangesAsync(ct);
         var roomAfter = (await new InventoryAvailabilityResolver(loader).ResolveAsync(new(source.WarehouseId, [source.RoomId]), new(), now, ct)).Positions
             .Single(x => x.Identity.Key == transit.Identity.Key);
-        Require(roomAfter.IsOperable && roomAfter.AuthoritativeQuantity == destinationBefore + line.Quantity
-            && roomAfter.RawProjectionQuantity == roomAfter.AuthoritativeQuantity, "Returned inventory does not reconcile.");
+        Require(roomAfter.AuthoritativeQuantity == destinationBefore + line.Quantity
+            && (IsAdmittedDestination(factory, source.RoomId, transit.Identity.Key)
+                || roomAfter.IsOperable && roomAfter.RawProjectionQuantity == roomAfter.AuthoritativeQuantity),
+            "Returned inventory does not reconcile.");
         var transitAfter = await new InventoryAvailabilityResolver(loader).ResolveAsync(new(source.WarehouseId, [], InventoryCustody.InTransit, transfer.Id),
             new(AllowedCustody: InventoryCustody.InTransit), now, ct);
         if (transfer.BinsLoaded > 0)

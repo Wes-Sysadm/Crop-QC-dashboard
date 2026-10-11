@@ -17,6 +17,14 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
 
     public static InventoryAvailabilityResult Resolve(InventoryPositionEvidence e, InventoryOperationRequirements requirements)
     {
+        e = e with
+        {
+            Ledger = e.Ledger.IsDefault ? [] : e.Ledger,
+            Projections = e.Projections.IsDefault ? [] : e.Projections,
+            Movements = e.Movements.IsDefault ? [] : e.Movements,
+            Receipts = e.Receipts.IsDefault ? [] : e.Receipts,
+            Applications = e.Applications.IsDefault ? [] : e.Applications
+        };
         var retired = e.Projections.Where(x => x.Disposition == "Historical").ToArray();
         e = e with { Projections = e.Projections.Where(x => x.Disposition != "Historical").ToImmutableArray() };
         var blockers = new List<InventoryBlocker>();
@@ -39,6 +47,9 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         if (e.HistoricalSnapshotUnavailable) Block(InventoryBlockerCode.HistoricalSnapshotUnavailable, "Mutable evidence changed after the requested cutoff; historical state cannot be reconstructed from current projections.");
         if (requirements.ExpectedFingerprint is not null && requirements.ExpectedFingerprint != e.Watermark.Fingerprint)
             Block(InventoryBlockerCode.StaleRead, "Read evidence has changed; the fingerprint is not a lock.");
+        // Origin validation follows immutable receipt corrections and custody
+        // parents at command commit. The receipt's current identity alone cannot
+        // disprove an earlier, valid origin under its previous identity.
 
         var positive = e.Projections.Where(x => x.Quantity > 0).ToArray();
         var raw = checked(e.Projections.Sum(x => x.Quantity));
@@ -50,15 +61,50 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         if (replay && epoch.Length > 0) occupied = epoch[0].RecordedAt ?? epoch[0].At;
         var pool = replay && ProveUntreatedPool(e, epoch, out receiptIds);
         var projectionConflict = e.Projections.Any(x => !x.ExactIdentity || x.Quantity < 0);
-        if (projectionConflict) Block(InventoryBlockerCode.ConflictingIdentity, "A projection contradicts the canonical identity or contains a negative quantity.");
 
         // Room authority is the existing ledger. Custody adapters supply verified
         // dispatch-minus-reversal slices and never credit the source room again.
+        var provenCohorts = InventoryCohortEvidence.Proven(e);
         var balanced = raw == e.AuthoritativeQuantity && !projectionConflict
-            && positive.All(x => ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
+            && positive.All(x => provenCohorts.Any(p => p.Id == x.Id) || ValidTreatment(x, e)) && e.AuthoritativeQuantity >= 0;
+        var recorded = e.ApplicationAllocationsLoaded && !balanced && (!pool || projectionConflict)
+            ? InventoryEventReplay.Replay(e) : null;
+        var useRecorded = recorded is { QuantityConserved: true, UnresolvedEvents.IsEmpty: true }
+            && recorded.Cohorts.All(x => x.State is "Untreated" or "Confirmed");
+        var independent = requirements.AllowIndependentCohorts ? provenCohorts : [];
+        var useIndependent = !useRecorded && !balanced && !pool && independent.Length > 0
+            && independent.Sum(x => x.Quantity) <= e.AuthoritativeQuantity;
+        if (projectionConflict && !useIndependent && !useRecorded)
+            Block(InventoryBlockerCode.ConflictingIdentity, "A projection contradicts the canonical identity or contains a negative quantity.");
         var exactRequestedReceipt = balanced && requirements.ReceiptId is long requestedReceipt
-            && ProveCurrentReceipt(e, requestedReceipt);
-        if (pool && !projectionConflict && !exactRequestedReceipt && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
+            && (ProveCurrentReceipt(e, requestedReceipt) || InventoryCohortEvidence.ProvesReceipt(e, requestedReceipt));
+        if (useRecorded)
+        {
+            foreach (var group in recorded!.Cohorts.GroupBy(x => new { x.Signature, x.State, x.ReceiptId }))
+                slices.Add(new(group.Key.Signature, group.Key.State, group.Sum(x => x.Quantity), InventoryConfidence.Proven,
+                    [], group.First().ApplicationIds, group.Key.ReceiptId is long id ? [id] : []));
+            receiptIds = recorded.Cohorts.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().Order().ToImmutableArray();
+            receiptConfidence = recorded.Cohorts.All(x => x.ReceiptId != null) ? InventoryConfidence.Proven : InventoryConfidence.Unknown;
+            treatmentConfidence = InventoryConfidence.Proven;
+            candidates.Add(new(NormalizationCandidateKind.ReconcileHistoricalPool,
+                e.Projections.Select(x => x.Id).ToImmutableArray(), raw, e.AuthoritativeQuantity, false, references));
+        }
+        else if (useIndependent)
+        {
+            foreach (var group in independent.GroupBy(x => new { x.Signature, x.State, x.ReceiptId }))
+                slices.Add(new(group.Key.Signature, group.Key.State, group.Sum(x => x.Quantity), InventoryConfidence.Proven,
+                    group.Select(x => x.Id).ToImmutableArray(), group.SelectMany(x => x.ApplicationIds).Distinct().Order().ToImmutableArray(),
+                    group.Key.ReceiptId is long id ? [id] : []));
+            receiptIds = independent.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value).Distinct().Order().ToImmutableArray();
+            receiptConfidence = requirements.ReceiptId is long exact
+                && (ProveCurrentReceipt(e, exact) || InventoryCohortEvidence.ProvesReceipt(e, exact))
+                ? InventoryConfidence.Proven : InventoryConfidence.Unknown;
+            // This is availability of the independently proven allocations only.
+            // The rest of the position remains explicitly unresolved and readiness
+            // still uses the default complete-position contract.
+            treatmentConfidence = InventoryConfidence.Unknown;
+        }
+        else if (pool && !projectionConflict && !exactRequestedReceipt && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
         {
             treatmentConfidence = InventoryConfidence.Proven;
             receiptConfidence = receiptIds.Length == 1 && e.Receipts.Any(x => x.Id == receiptIds[0] && x.ExactIdentity && !x.IsDeleted)
@@ -149,7 +195,8 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             history.ToImmutableArray(), new(Algorithm, "ledger-movement-application/v1", references, candidates.ToImmutableArray(),
                 "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten", BackdatedRows(e.Ledger)),
             blockers.DistinctBy(x => x.Code).ToImmutableArray(), e.Watermark,
-            blockers.Count == 0 && !e.CustodyAllocations.IsDefault ? e.CustodyAllocations : []);
+            blockers.Count == 0 && !e.CustodyAllocations.IsDefault ? e.CustodyAllocations : [])
+        { UsesIndependentCohorts = useIndependent, UsesRecordedCohorts = useRecorded };
 
         void Block(InventoryBlockerCode code, string detail) => blockers.Add(new(code, detail));
     }

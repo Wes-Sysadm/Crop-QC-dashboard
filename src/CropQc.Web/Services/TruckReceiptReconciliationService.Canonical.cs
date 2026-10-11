@@ -140,7 +140,7 @@ public sealed partial class TruckReceiptReconciliationService
         Require(transfer.Status == InterCrewTransferStatuses.Received && transfer.DestinationRoomId != null, "The transfer is not completed.");
         var allMoves = await db.TreatmentLineageMovements.AsNoTracking().Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync(ct);
         var receives = allMoves.Where(x => x.MovementType == "InterCrewReceive" && !allMoves.Any(r => r.ReversesTreatmentLineageMovementId == x.Id)).ToArray();
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(transfer.DestinationWarehouseId, [transfer.DestinationRoomId!.Value]), new(), time.UtcNow, ct);
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(transfer.DestinationWarehouseId, [transfer.DestinationRoomId!.Value]), new() { AllowIndependentCohorts = true }, time.UtcNow, ct);
         var lines = ImmutableArray.CreateBuilder<InventoryCommandLine>();
         foreach (var group in receives.GroupBy(x => new { Identity = InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey), x.TreatmentSignatureSnapshot }))
         {

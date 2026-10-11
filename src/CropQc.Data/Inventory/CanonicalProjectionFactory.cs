@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore;
 namespace CropQc.Data.Inventory;
 
 // Only the executor calls this factory. It never derives physical quantity from a gap.
-internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
+internal sealed class CanonicalProjectionFactory(CropQcDbContext db, string cohortKey = "")
 {
+    internal Dictionary<(int Room, string Identity), InventoryPositionEvidence> Destinations { get; } = [];
+    internal HashSet<(int Room, string Identity)> PreparedDestinations { get; } = [];
     private readonly Dictionary<(int Room, long Receipt), List<TreatmentLineageSegment>> prepared = [];
     private readonly Dictionary<int, string> growers = [];
 
@@ -15,7 +17,7 @@ internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
     public async Task PrepareReceiptDestinationAsync(InventoryIdentity identity, int room, long receipt, CancellationToken ct)
     {
         var rows = await db.TreatmentLineageSegments.Include(x => x.Applications)
-            .Where(x => x.RoomId == room && x.ReceiptId == receipt && x.Disposition == "Current")
+            .Where(x => x.RoomId == room && x.ReceiptId == receipt && x.Disposition == "Current" && x.CohortKey == cohortKey)
             .Take(InventoryEvidenceLoader.MaximumEvidenceRowsPerTable + 1).ToListAsync(ct);
         if (rows.Count > InventoryEvidenceLoader.MaximumEvidenceRowsPerTable)
             throw new InvalidOperationException("Destination receipt evidence exceeds the safe limit.");
@@ -29,10 +31,10 @@ internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
         var applicationIds = applications.Distinct().Order().ToArray();
         var rows = receiptId is long sourceReceiptId && prepared.TryGetValue((room, sourceReceiptId), out var cached) ? cached
             : await db.TreatmentLineageSegments.Include(x => x.Applications)
-            .Where(x => x.RoomId == room && x.Disposition == "Current" && x.TreatmentSignature == signature && x.ReceiptId == receiptId)
+            .Where(x => x.RoomId == room && x.Disposition == "Current" && x.CohortKey == cohortKey && x.TreatmentSignature == signature && x.ReceiptId == receiptId)
             .ToListAsync(ct);
         var matches = rows.Concat(db.TreatmentLineageSegments.Local)
-            .Distinct().Where(x => x.RoomId == room && x.Disposition == "Current" && x.TreatmentSignature == signature
+            .Distinct().Where(x => x.RoomId == room && x.Disposition == "Current" && x.CohortKey == cohortKey && x.TreatmentSignature == signature
                 && x.ReceiptId == receiptId && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == identity.Key).ToArray();
         if (matches.Length > 1 || matches.Any(x => x.IdentityKey != identity.Key || x.WarehouseId != warehouse
             || x.TreatmentState != state || !x.Applications.Select(a => a.RoomTreatmentApplicationId).Order().SequenceEqual(applicationIds)))
@@ -40,6 +42,7 @@ internal sealed class CanonicalProjectionFactory(CropQcDbContext db)
         if (matches.Length == 1) return matches[0];
         var segment = new TreatmentLineageSegment
         {
+            CohortKey = cohortKey,
             IdentityKey = identity.Key,
             WarehouseId = warehouse,
             RoomId = room,

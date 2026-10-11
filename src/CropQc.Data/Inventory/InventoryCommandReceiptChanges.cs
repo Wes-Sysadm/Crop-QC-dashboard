@@ -45,6 +45,8 @@ public sealed partial class InventoryCommandExecutor
             Require(await db.Rooms.AnyAsync(x => x.Id == p.Location.RoomId && x.WarehouseId == p.Location.WarehouseId && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct),
                 "Correction room is unavailable or sealed.");
             var evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(p.Location.WarehouseId, [p.Location.RoomId!.Value]), now, ct)).Positions.Single(x => x.Identity.Key == p.Identity.Key);
+            var originFailure = await InventoryOriginGuard.ValidateAsync(db, [evidence], now, ct);
+            Require(originFailure == null, originFailure ?? "Receipt origin validation failed.");
             await NormalizePositionAsync(db, factory, c, evidence, p, now, attempt, ct);
         }
         var beforeJson = ReceiptValues(receipt);
@@ -137,7 +139,11 @@ public sealed partial class InventoryCommandExecutor
         {
             var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(p.Location.WarehouseId, [p.Location.RoomId!.Value]), new(), now, ct))
                 .Positions.Single(x => x.PositionKey == p.PositionKey);
-            Require(after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity, "Receipt correction left inconsistent current projections.");
+            Require(p.UsesIndependentCohorts
+                ? after.AuthoritativeQuantity >= 0
+                    && after.RawProjectionQuantity - p.RawProjectionQuantity == after.AuthoritativeQuantity - p.AuthoritativeQuantity
+                : after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity,
+                "Receipt correction left inconsistent current projections.");
         }
         return effects.ToImmutable();
     }

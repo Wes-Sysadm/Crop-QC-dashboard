@@ -2185,6 +2185,7 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
 
         modelBuilder.Entity<TreatmentLineageSegment>(entity =>
         {
+            entity.Property(x => x.CohortKey).HasMaxLength(60).HasDefaultValue("");
             entity.Property(x => x.Disposition).HasMaxLength(20).HasDefaultValue("Current");
             entity.Property(x => x.RetiredByCommandKey).HasMaxLength(100);
 
@@ -2198,11 +2199,11 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
             entity.Property(x => x.TreatmentState).HasMaxLength(25).IsRequired();
             entity.Property(x => x.TreatmentSignature).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.ConcurrencyVersion).IsConcurrencyToken();
-            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature })
+            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature, x.CohortKey })
                 .HasDatabaseName("UX_TreatmentLineageSegments_Unassigned")
                 .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NULL AND \"Disposition\" = 'Current'" : "[ReceiptId] IS NULL AND [Disposition] = 'Current'")
                 .IsUnique();
-            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature, x.ReceiptId })
+            entity.HasIndex(x => new { x.RoomId, x.IdentityKey, x.TreatmentSignature, x.ReceiptId, x.CohortKey })
                 .HasDatabaseName("UX_TreatmentLineageSegments_Receipt")
                 .HasFilter(isPostgreSqlProvider ? "\"ReceiptId\" IS NOT NULL AND \"Disposition\" = 'Current'" : "[ReceiptId] IS NOT NULL AND [Disposition] = 'Current'")
                 .IsUnique();

@@ -10,10 +10,11 @@
       "WarehouseTransfer"
     ],
     "Reversal": "ReverseRoomMove",
-    "Evidence": "Current room authority; treatment; route; seal; fingerprint",
+    "Evidence": "Current room authority; treatment; route; seal; fingerprint; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -27,10 +28,11 @@
       "ReverseRoomMove"
     ],
     "Reversal": "Preserve original forward",
-    "Evidence": "Exact unreversed paired movement and surviving destination",
+    "Evidence": "Exact unreversed paired movement and surviving destination; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -61,10 +63,11 @@
       "ReceiveTransfer"
     ],
     "Reversal": "ReopenTransfer Return",
-    "Evidence": "Exact custody parent and persistent receipt policy",
+    "Evidence": "Exact custody parent and persistent receipt policy; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalInterCrewWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalInterCrewWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -93,10 +96,11 @@
       "ReceiveTransfer"
     ],
     "Reversal": "ReopenTransfer",
-    "Evidence": "Dispatch remainder; exact variety reconciliation",
+    "Evidence": "Dispatch remainder; exact variety reconciliation; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -128,10 +132,11 @@
       "ReopenTransfer"
     ],
     "Reversal": "ReceiveTransfer",
-    "Evidence": "Exact surviving receive; no dependent movement",
+    "Evidence": "Exact surviving receive; no dependent movement; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -162,10 +167,11 @@
       "Return"
     ],
     "Reversal": "Preserve shipment history",
-    "Evidence": "Exact unreversed custody; current identity/treatment",
+    "Evidence": "Exact unreversed custody; current identity/treatment; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalProcessorWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalProcessorWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -196,10 +202,11 @@
       "Return"
     ],
     "Reversal": "Preserve transfer history",
-    "Evidence": "Exact unreversed custody; current identity/treatment",
+    "Evidence": "Exact unreversed custody; current identity/treatment; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalOutsideWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalOutsideWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -215,10 +222,11 @@
       "CancelRun"
     ],
     "Reversal": "CancelRun ReverseRunEntry",
-    "Evidence": "Own current-revision restoration only; facility attribution",
+    "Evidence": "Own current-revision restoration only; facility attribution; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalActualRunWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalActualRunWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -446,10 +454,11 @@
       "CorrectReceiptIdentity"
     ],
     "Reversal": "Compensating correction",
-    "Evidence": "Exact receipt/version/fingerprint; surviving physical ownership",
+    "Evidence": "Exact receipt/version/fingerprint; surviving physical ownership; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -463,10 +472,11 @@
       "CorrectReceiptIdentity"
     ],
     "Reversal": "Preserve historical identity",
-    "Evidence": "Ordinary receipt identity correction canonical; whole-lot legacy reconciliation CLI only",
+    "Evidence": "Ordinary receipt identity correction canonical; whole-lot legacy reconciliation CLI only; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
-      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs"
+      "tests/CropQc.Api.Tests/CanonicalReceiptIdentityWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },

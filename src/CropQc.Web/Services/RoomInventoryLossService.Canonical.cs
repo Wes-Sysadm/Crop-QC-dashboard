@@ -17,7 +17,7 @@ public sealed partial class RoomInventoryLossService
         var snapshot = (await ledgerQuery.GetSnapshotsAsync(null, [form.RoomId], ct)).SingleOrDefault(x => x.LatestAdjustmentId == form.InventoryAdjustmentId);
         if (snapshot == null) return "Inventory changed; reload and try again.";
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(snapshot.WarehouseId, [snapshot.RoomId]),
-            new(TreatmentSignature: form.TreatmentSignature), businessTime.UtcNow, ct);
+            new(TreatmentSignature: form.TreatmentSignature) { AllowIndependentCohorts = true }, businessTime.UtcNow, ct);
         var p = batch.Positions.SingleOrDefault(x => x.Identity.Key == CanonicalTreatmentSelections.Identity(snapshot).Key);
         if (p == null || p.AvailableQuantity != form.ExpectedCurrentBins || p.Watermark.Fingerprint != form.CanonicalFingerprint)
             return "Inventory changed; reload and try again.";

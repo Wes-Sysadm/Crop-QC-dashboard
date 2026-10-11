@@ -22,6 +22,23 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
     public sealed record Candidate(string Path, string Classification, string Reason, string Sha256);
 
     [Fact]
+    public void Destination_admission_is_separate_from_whole_position_treatment_proof()
+    {
+        var path = Path.Combine(Root(), "src/CropQc.Data/Inventory");
+        foreach (var file in Directory.EnumerateFiles(path, "InventoryCommand*.cs"))
+            Assert.DoesNotContain("Destination evidence is not proven; no stock may be merged into it.", File.ReadAllText(file));
+        var executor = File.ReadAllText(Path.Combine(path, "InventoryCommandExecutor.cs"));
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", executor);
+        Assert.Contains("ValidateDestinationsAsync", executor);
+        var destination = File.ReadAllText(Path.Combine(path, "InventoryCommandDestination.cs"));
+        Assert.Contains("InventoryDestinationAdmission.Assess", destination);
+        Assert.Contains("afterProjection - beforeProjection == after.AuthoritativeQuantity - before.AuthoritativeQuantity", destination);
+        Assert.Contains("CanonicalDestinationReconciliation", destination);
+        // Runtime cases prove missing, inconsistent and negative projections admit
+        // valid incoming stock, while origin, overdraw and custody checks reject.
+    }
+
+    [Fact]
     public void Exceptional_repair_writers_are_not_exposed_by_ordinary_controllers()
     {
         var maintenance = Read<Candidate[]>("phase3-reviewed-write-candidates.json")

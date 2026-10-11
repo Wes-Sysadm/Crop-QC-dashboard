@@ -20,7 +20,7 @@ internal static class CanonicalTreatmentSelections
     {
         if (snapshots.Count == 0) return new Dictionary<string, IReadOnlyList<TreatmentSegmentSelection>>();
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
-            new(null, snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray()), new(), DateTimeOffset.UtcNow, ct);
+            new(null, snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray()), new() { AllowIndependentCohorts = true }, DateTimeOffset.UtcNow, ct);
         var byPosition = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
         return snapshots.GroupBy(RoomTreatmentService.SelectionLookupKey).ToDictionary(x => x.Key, group =>
         {

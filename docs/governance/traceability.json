@@ -20,6 +20,18 @@
           "member": "INV001_missing_origin_cannot_become_available_stock",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementDestinationTests",
+          "member": "Missing_or_duplicate_origin_is_rejected_even_with_a_balanced_projection",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Committed_scalar_receipt_correction_retains_its_origin_for_subsequent_movement",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Opening-balance authorization remains operation-specific; this gate is not a certification of every historical origin."
@@ -61,6 +73,12 @@
         {
           "type": "CropQc.Api.Tests.BusinessRuleContractTests",
           "member": "INV003_move_has_equal_ledger_legs_and_preserves_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementDestinationTests",
+          "member": "Incoming_cohort_coexists_with_defective_destination_and_can_move_again",
           "kind": "postgres",
           "required": true
         }
@@ -129,6 +147,30 @@
         {
           "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
           "member": "Gap_is_not_untreated_without_arrival_evidence",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementDestinationTests",
+          "member": "Later_receipt_treatment_follows_the_incoming_cohort_without_claiming_older_unknown_stock",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Room_application_keeps_shared_and_receipt_owned_allocations_disjoint",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Backdated_transfer_cannot_be_reconstructed_as_untreated_across_recorded_room_treatment",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Shared_withdrawal_does_not_move_later_arrivals_before_a_backdated_application",
           "kind": "unit",
           "required": true
         }
@@ -222,6 +264,12 @@
           "member": "Direct_move_cannot_bypass_a_route_requiring_a_truck_receipt",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementDestinationTests",
+          "member": "Transfer_receipt_preserves_exclusive_custody_in_an_unresolved_destination",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Selected independent-session races are not exhaustive certification of all adapters."
@@ -236,6 +284,12 @@
           "type": "CropQc.Api.Tests.CanonicalHistoricalWorkflowTests",
           "member": "Normal_selectors_and_outside_roundtrip_preserve_historical_shapes",
           "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
+          "member": "Invalid_application_allocations_are_diagnostics_without_throwing_or_blocking_incoming_inventory",
+          "kind": "unit",
           "required": true
         }
       ],

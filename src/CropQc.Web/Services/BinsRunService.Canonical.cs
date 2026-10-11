@@ -25,7 +25,7 @@ public sealed partial class BinsRunService
     {
         if (snapshots.Count == 0) return snapshots;
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
-            new(null, snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray()), new(), BusinessTime.UtcNow, ct);
+            new(null, snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray()), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var positions = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
         return snapshots.Select(x => x with { CurrentBins = positions.GetValueOrDefault((x.RoomId, CanonicalIdentity(x).Key))?.AvailableQuantity ?? 0 }).ToArray();
     }
@@ -38,7 +38,7 @@ public sealed partial class BinsRunService
     {
         if (snapshots.Count == 0) return [];
         var rooms = snapshots.Select(x => x.RoomId).Distinct().ToImmutableArray();
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms), new(), BusinessTime.UtcNow, ct);
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, rooms), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var positions = batch.Positions.ToDictionary(x => (x.Location.RoomId, x.Identity.Key));
         var corrections = correctingRunId is long runId ? await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, runId, ct)
             : correctingLegacyEntryId is long entryId ? await new InventoryRunCorrectionAvailability(dbContext).ReadLegacyAsync(batch, entryId, ct) : null;
@@ -128,7 +128,7 @@ public sealed partial class BinsRunService
         }
         if (parsed.Select(x => x.Warehouse).Distinct().Count() != 1) return "All room-lot rows in one Actual Run must belong to the same facility.";
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
-            new(parsed[0].Warehouse, parsed.Select(x => x.Room).Distinct().ToImmutableArray()), new(), BusinessTime.UtcNow, ct);
+            new(parsed[0].Warehouse, parsed.Select(x => x.Room).Distinct().ToImmutableArray()), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var choices = form.Id is long correctingId
             ? (await new InventoryRunCorrectionAvailability(dbContext).ReadAsync(batch, correctingId, ct)).Values.Select(x => x.Current).ToArray()
             : batch.Positions.ToArray();

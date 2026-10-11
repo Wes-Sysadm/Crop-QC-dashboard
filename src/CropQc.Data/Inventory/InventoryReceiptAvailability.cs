@@ -44,7 +44,8 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
             // because identity matches. Include every position retaining its evidence.
             positions.AddRange(batch.Positions.Where(x => x.Receipts.Any(r => r.Id == receiptId)
                 || x.Projections.Any(p => p.ReceiptId == receiptId) || x.Movements.Any(m => m.ReceiptId == receiptId))
-                .Select(x => InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: custody, ReceiptId: receiptId))));
+                .Select(x => InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: custody, ReceiptId: receiptId)
+                { AllowIndependentCohorts = true })));
         }
         var allocation = ImmutableArray.CreateBuilder<InventoryReceiptAllocation>();
         string? blocker = receipt.IsDeleted || receipt.IsTransferReceipt ? "An active ordinary receipt is required." : null;
