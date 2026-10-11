@@ -7,8 +7,9 @@ production configuration, data, backups or deployments are required.
 
 ## 1. Adopt the approval policy
 
-1. Adopt ADR-007 through the currently effective change procedure, including its
-   independent-human review requirement. This proposal cannot approve itself.
+1. Adopt ADR-007 through the currently effective change procedure using the
+   [recorded owner review of Codex's work](RELEASE_AUTHORIZATION.md#transition-and-pr-278).
+   Policy prose and CI cannot substitute for that actual human review.
    Record the merged governance SHA; fetch and reload it on executing computers.
 2. Confirm explicit settings authorization and the original owner instruction.
    Follow the [transition](REPOSITORY_SETTINGS.md#reviewer-prerequisite); retain

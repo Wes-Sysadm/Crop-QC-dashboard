@@ -37,8 +37,11 @@ genuine policy change. Never weaken policy to fit a test or implementation limit
    Additional human review is optional unless the owner explicitly requires it or
    effective configuration enforces it. Proposed protections are in
    [repository settings](REPOSITORY_SETTINGS.md); never bypass live requirements.
-   Adoption of ADR-007 itself still follows the prior independent-review rule;
-   see [transition](RELEASE_AUTHORIZATION.md#transition-and-pr-278).
+   For ADR-007 adoption, the owner clarified that human review occurs in the
+   ChatGPT PR conversation: the owner examines Codex's work and approves
+   progression. Record that actual review, not a fictional additional reviewer.
+   The distinction from a separately enforced second-person/GitHub gate and the
+   adoption evidence are in [transition](RELEASE_AUTHORIZATION.md#transition-and-pr-278).
 7. After merge, every computer fetches and synchronizes using
    [Windows setup](WINDOWS_SETUP.md). Report version/SHA differences and reload
    instructions. No separate computer-specific catalog is created.
@@ -49,5 +52,7 @@ metadata, not authorization to weaken policy. The checker cannot authenticate th
 owner or decide that approval is genuine. The operator verifies and records the
 original owner instruction under [release authority](RELEASE_AUTHORIZATION.md).
 Policy publication alone grants no release or repair authority. Historical rule:
-version 1.0.1 required independent human review of governance changes; this
-proposal replaces that requirement prospectively, not for its own adoption.
+version 1.0.1 required independent human review of governance changes. For this
+adoption the owner is the human reviewer of the automated implementation; the
+owner's clarification does not assert another reviewer or a GitHub APPROVED event.
+Separate-person requirements, if expressly imposed or enforced, still bind.

@@ -69,7 +69,8 @@ sign-off is optional unless explicitly required for that release or by effective
 repository configuration. Never use an admin bypass to defeat such a requirement.
 Merge-only authorization is not deployment authorization. Stop for revoked,
 ambiguous or materially out-of-scope authority, not merely a different interface.
-This proposed policy cannot authorize its own adoption; follow the transition in
+The policy text cannot approve itself. Adoption relies on the recorded human
+owner review of Codex's work and explicit authorization, as explained in
 [the approval record](docs/governance/RELEASE_AUTHORIZATION.md#transition-and-pr-278).
 
 Before creating a new branch or pull request, check current GitHub state. Do not assume that a previously mentioned branch or pull request is still open, unmerged, or current.

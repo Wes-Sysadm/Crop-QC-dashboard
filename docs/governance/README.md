@@ -55,10 +55,11 @@ records the final consolidation into #276. Do not merge two competing catalogs o
 assume #274 is approved. No other PR implementation is incorporated. Follow the
 [post-merge activation procedure](POST_MERGE_ACTIVATION.md) only after authorization.
 
-The proposed [single-owner release authority](RELEASE_AUTHORIZATION.md) records
+The [single-owner release authority](RELEASE_AUTHORIZATION.md) records
 ADR-007's approval source, previous/new policy, technical safeguards and adoption
-boundary. It does not become effective from a feature branch or authorize its own
-merge. Original consolidation and activation evidence above remains historical.
+boundary, including the owner's October 11 human review and clarification. It
+becomes effective through normal approved-main adoption, not from a feature
+branch. Original consolidation and activation evidence above remains historical.
 
 Known gaps remain visible: positive receipt corrections can inherit historical
 treatment on current main; partial acknowledgement/compensation depends on #271;

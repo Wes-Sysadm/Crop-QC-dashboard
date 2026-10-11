@@ -2,7 +2,9 @@
 
 ## Status and owner request
 
-Proposed specification 1.1.0 / ADR-007. Not effective from this feature branch.
+Specification 1.1.0 / ADR-007. Owner approved; effective when adopted on main,
+not merely from a feature branch. The adoption history below distinguishes the
+original draft request, later approval and clarification.
 Owner: Wes, project owner of `Wes-Sysadm/Crop-QC-dashboard` (GitHub `Wes-Sysadm`).
 Approval reference: the owner's message titled **Crop QC Dashboard — Single Owner
 Release Authorization**, 2026-10-09 America/Los_Angeles, in Codex task
@@ -12,9 +14,13 @@ governance PR and expressly prohibits bypassing current safeguards for adoption.
 Requested rule: when the owner explicitly says "go live", "deploy", or otherwise
 authorizes production release, that one approval covers the merge-and-release
 lifecycle. The owner must not repeat it in GitHub or another interface. This is
-explicit business approval of the proposed policy, not independent review or
-permission to merge this proposal. The original task remains the primary source;
-this record is an attributed summary, not a fabricated GitHub review.
+the scope of the original draft request. On 2026-10-11 the owner subsequently
+completed human review in ChatGPT and authorized adoption of reviewed head
+`f8b63c72d030084f890b89f33a17362ead38842d` in **PR #279 — Adopt Single Owner
+Authorization**, then clarified the review meaning and authorized necessary
+revisions and normal merge in **PR #279 — Resolve Governance Adoption Deadlock**.
+These original messages in the same task are the approval sources. This record
+is attributed evidence, not a GitHub review submitted by another person.
 
 ## Previous and new policy
 
@@ -112,34 +118,68 @@ No synthetic production movement or unapproved data repair becomes permissible.
 
 ## Transition and PR 278
 
-This proposal must first satisfy **currently effective** governance approval and
-CI/merge requirements. It cannot use ADR-007 to approve itself. The present task
-authorizes only a draft PR. The prior independent-human review requirement remains
-applicable to its adoption. Publish the approved policy through normal merge, then
-fetch/reload main and record the effective governance SHA before relying on it.
-Do not assume that a draft, owner policy request or successful checker is adoption.
+### Actual review evidence and adoption interpretation
+
+At base `50bdc1a`, CHANGE_PROCEDURE step 6 requires explicit human review/approval;
+its final paragraph requires independent human review rather than treating prose
+validation as proof of approval. The separate GitHub collaborator, non-author
+approval and code-owner requirements are in **proposed, inactive** repository
+settings. They must not be reported as effective server requirements.
+
+The owner's 2026-10-11 clarification states that human review occurs in the
+ChatGPT PR conversation, where the owner examines Codex's results and approves
+progression. The actual human reviewer for #279 is **Wes, the project owner**;
+Codex prepared the implementation. This is human review of the automated work,
+independent of Codex's own implementation/testing assertions. It is not evidence
+of a second human, a different GitHub account or a GitHub APPROVED event. The
+GitHub author account alone neither proves nor disproves the human review that
+the owner explicitly reports performing in ChatGPT.
+
+The earlier adoption comment interpreted "independent" as necessarily requiring
+another human besides the owner. That was an additional interpretation, not a
+separate effective rule found in CHANGE_PROCEDURE. Preserve the comment as dated
+history; this record supersedes that assessment using the owner's explicit
+clarification. Do not continue demanding an inactive proposed GitHub gate.
+
+This is the documented business-owner clarification under GOV-001, ADR-006 and
+CHANGE_PROCEDURE steps 1–2: previous interpretation required another reviewer;
+clarified meaning permits the owner to review Codex's work in the task. Normal
+future approval is codified by ADR-007. No technical gate is amended, and no
+separate-person requirement is deemed satisfied by impersonation. If an effective
+rule explicitly requires someone other than the owner/author, stop and identify
+that rule; this record grants no bypass.
+
+The compliant adoption path is to retain the owner's reviewed starting head,
+review only the requested documentation clarification against it, record the
+resulting final head, pass required checks, recheck live protections, and merge
+normally. The October 11 instruction expressly authorizes these necessary
+revisions and merge once the conditions pass. No executable changes are needed.
+After normal merge, fetch/reload main and record its SHA and specification 1.1.0 /
+ADR-007. Policy prose or CI alone cannot supply the actual owner review.
 
 Read-only GitHub inspection on 2026-10-09: classic main protection returned
 `404 Branch not protected`; effective main rules returned `[]`. CODEOWNERS lists
 `Wes-Sysadm`; it supplies routing, not an independent reviewer or enforced approval.
-No settings, collaborators or pending PR were modified.
+The same protection results were observed again on 2026-10-11. No live settings
+or collaborator permissions were changed. Required CI jobs remain mandatory in
+the workflow/policy; their server-side protection activation is separate work.
 
 #278 remains at `67ac6242ee171892ba57a6495502964ee1c8bc7d`, open/draft with all CI
 checks successful and no reviews/comments at inspection. Owner merge/release
 authorization already exists, but the owner's preceding **PR #278 — Production
 Release** instruction explicitly requires an authorized independent human review.
-An owner instruction cannot truthfully be recorded as an independent reviewer.
-There is no current exception allowing that requirement to be satisfied by duplicate
-owner action, and no live GitHub configuration forcing such duplication. The exact
-dependencies are that release-specific condition and current CHANGE_PROCEDURE for
-the proposed governance change, not a failed CI check or absent second owner click.
+The initial adoption assessment treated that phrase as requiring another human.
+The owner's later clarification defines the normal review as owner review of
+Codex's results in ChatGPT; it does not invent an additional reviewer.
 
-After adoption, the #278 lifecycle must reconcile its explicit extra review
-condition under the effective policy; ADR-007's normal default does not silently
-erase a specifically imposed condition. This task does not remove that condition,
-approve #278 independently, edit its metadata, merge it or release it. Its separate
-210-bin RED reconstruction remains unauthorized. Report this dependency honestly;
-do not claim #278 is unblocked merely because this draft exists.
+After adoption, a duplicate owner GitHub approval is not a #278 prerequisite.
+Its release lifecycle must record the existing owner review/authorization against
+its own exact head and reconcile its review wording with this clarification;
+this task does not certify those application-release gates. If a distinct second
+person is explicitly required beyond the clarified normal review, identify that
+condition instead of silently erasing it. No #278 metadata, code, merge or deployment
+is changed here. Its technical release gates and separate 210-bin RED reconstruction
+exclusion remain intact. Governance adoption alone is not production readiness.
 
 ## Validation scope
 

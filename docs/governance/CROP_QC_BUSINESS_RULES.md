@@ -1,6 +1,6 @@
 # Crop QC business rules
 
-Specification version: **1.1.0**. This branch proposes the owner-requested single-approval workflow (2026-10-09); it takes effect only after adoption under the currently effective change procedure. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
+Specification version: **1.1.0**. The owner requested the single-approval workflow on 2026-10-09 and reviewed, approved and clarified its adoption on 2026-10-11. It is effective on approved main after normal adoption, not from an unmerged branch. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
 
 This is the single normative business-rule catalog. Existing inventory phase documents remain detailed technical contracts and historical evidence, not competing business-policy owners. Their dated implementation/release status is not current production status. A more specific compatible constraint still applies; contradictions require resolution, not a silent override.
 
