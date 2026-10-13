@@ -79,4 +79,33 @@ Restore reports pre-existing ImageSharp 3.1.12 NuGet security advisories. No pac
 version is changed here; the new renderer creates images from numeric observations.
 Visual browser/MIME checks are not a claim of exhaustive Outlook/Gmail client testing.
 
-Safe before/after previews and final release evidence are linked in the PR.
+## Final development and isolated rehearsal evidence
+
+- 108 focused email tests, 29 governance tests, and 10 inventory architecture
+  contracts passed with no failures or skips. Restore/build, model consistency,
+  formatting and whitespace checks passed.
+- The reviewed-source allowlist hashes for Program and QcSummaryEmailComposer were
+  updated after inspecting their complete diffs: one scoped read-only DI registration
+  and pure composition/local image-list changes. Neither file gains a physical writer,
+  maintenance path or capability. No other allowlist entry or guard was changed.
+- Production's active apple categories were read-only verified as
+  48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216.
+- The production Dockerfile built successfully on Linux/amd64. Verified backup
+  #194 was restored into a new isolated PostgreSQL 18 database, then brought to
+  the already-live additive CohortKey schema. No migration is needed for this PR.
+- Linux/PostgreSQL composition passed for restored samples 2587, 2588 and 2589.
+  Candidate and predecessor `6223211` each returned HTTP 200 from health,
+  database health and the three authenticated report routes. Candidate charts,
+  summary/defect behavior and last-position details passed; predecessor reports
+  retained their old format with identical detail tables.
+- All 11 protected restored table fingerprints were identical before and after:
+  Receipts, QcSamples, QcFruitReadings, QcFruitDefects, QcSummaryEmailLogs, AuditLogs,
+  RoomInventoryAdjustments, RoomTreatmentApplications, TreatmentLineageSegments,
+  TreatmentLineageSegmentApplications and TreatmentLineageMovements. No external
+  credentials or outbound email were enabled in the isolated network.
+
+[Before preview](email-redesign-preview/before.html) and
+[after preview](email-redesign-preview/after.html) use safe fabricated data and were
+visually inspected. Both embedded charts were decoded and rendered; all 13 detail
+fields were byte-identical before/after relocation. Final release evidence belongs
+in the PR closeout; rehearsal backup #194 does not replace a fresh release backup.

@@ -267,7 +267,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "F1F590CCDC24238EF4791E10AE82DFD1B9C8F25BC19DBA6FE5CA411CDB9896D6"
+    "Sha256": "327C0DDBAED36CB5E1EDD066F545405E7449E864DD86EBF308E19958E8ACCA69"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
@@ -471,7 +471,7 @@
     "Path": "src/CropQc.Web/Services/QcSummaryEmailComposer.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "26C2F4C50C6C9B48F35C7B45D429337947367CB0E4962543205FF8296E5B7CB3"
+    "Sha256": "D713B2E74BA56D1059BCDB89D56A3D7EE104D88E8DE5DB46EEB7F07A5DD50902"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
