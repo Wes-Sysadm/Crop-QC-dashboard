@@ -43,6 +43,18 @@ public sealed class InventoryDestinationAliasTests
             await barrier.Task.WaitAsync(TimeSpan.FromSeconds(30));
         });
         var results = await Task.WhenAll(f.Execute(first, observer), f.Execute(second, observer));
+        // Serializable contention may consume the executor's bounded retries
+        // before the other request commits. RetryRequired is a client retry,
+        // never permission to lose an arrival or claim it already committed.
+        var commands = new[] { first, second };
+        for (var index = 0; index < results.Length; index++)
+        {
+            if (results[index].Status != InventoryCommandStatus.RetryRequired) continue;
+            Assert.Empty(results[index].Effects);
+            await using var pending = f.CreateDbContext();
+            Assert.False(await pending.InventoryCommands.AnyAsync(x => x.OperationKey == commands[index].OperationKey));
+            results[index] = await f.Execute(commands[index]);
+        }
         Assert.All(results, x => Assert.True(x.Status == InventoryCommandStatus.Committed, x.Detail));
         Assert.Equal(14, await f.Physical(9003)); Assert.Equal(33, await f.Physical() + await f.Physical(9003));
         var committed = await f.Snapshot();
