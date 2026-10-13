@@ -22,6 +22,27 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
     public sealed record Candidate(string Path, string Classification, string Reason, string Sha256);
 
     [Fact]
+    public void Destination_admission_is_separate_from_whole_position_treatment_proof()
+    {
+        var path = Path.Combine(Root(), "src/CropQc.Data/Inventory");
+        foreach (var file in Directory.EnumerateFiles(path, "InventoryCommand*.cs"))
+            Assert.DoesNotContain("Destination evidence is not proven; no stock may be merged into it.", File.ReadAllText(file));
+        var executor = File.ReadAllText(Path.Combine(path, "InventoryCommandExecutor.cs"));
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", executor);
+        Assert.Contains("ValidateDestinationsAsync", executor);
+        var destination = File.ReadAllText(Path.Combine(path, "InventoryCommandDestination.cs"));
+        Assert.Contains("InventoryDestinationAdmission.Assess", destination);
+        Assert.Contains("afterProjection - beforeProjection == after.AuthoritativeQuantity - before.AuthoritativeQuantity", destination);
+        Assert.Contains("CanonicalDestinationReconciliation", destination);
+        Assert.DoesNotContain("NormalizePositionAsync", destination);
+        Assert.DoesNotContain("ReconstructRecordedCohortsAsync", destination);
+        Assert.DoesNotContain(".CurrentAsync", destination);
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", destination);
+        // Runtime cases prove missing, inconsistent and negative projections admit
+        // valid incoming stock, while origin, overdraw and custody checks reject.
+    }
+
+    [Fact]
     public void Exceptional_repair_writers_are_not_exposed_by_ordinary_controllers()
     {
         var maintenance = Read<Candidate[]>("phase3-reviewed-write-candidates.json")
@@ -108,7 +129,7 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
             if (path.Split('/').Any(x => x is "bin" or "obj" or "Migrations")) continue;
             if (Regex.IsMatch(File.ReadAllText(file), @"\.CanonicalCommandTransaction\s*=")) assignments.Add(path);
         }
-        Assert.Equal(new[] { "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs", "src/CropQc.Data/Inventory/InventoryCommandOperations.cs" }, assignments.Order());
+        Assert.Equal(new[] { "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs", "src/CropQc.Data/Inventory/InventoryCommandOperations.cs", "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs" }, assignments.Order());
         var context = File.ReadAllText(Path.Combine(Root(), "src/CropQc.Data/CropQcDbContext.cs"));
         Assert.Contains("internal bool CanonicalCommandTransaction", context);
         Assert.Contains("CanonicalInventoryWriteGuard.Check(this)", context);

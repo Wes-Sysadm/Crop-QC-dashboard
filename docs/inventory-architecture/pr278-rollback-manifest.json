@@ -1,0 +1,13 @@
+{
+  "SourceCommit": "1667de8da158fa6fcc5aeeb3b65ab4e58e532fe3",
+  "FileName": "CropQc-Web-rollback-1667de8.zip",
+  "Bytes": 16152468,
+  "Sha256": "322FF276068DA9DD19AEB9EA1233DAAF883636529F0C5D897538AA97DC4BCCB5",
+  "InventoryAssemblies": {
+    "CropQc.Shared.dll": "37A93877A4DC2B643DEC0182002DFDF24CEAB5889DF9B8EF79A5DB214187851F",
+    "CropQc.Data.dll": "DC66CC41FCA8CA3F3EAE59998D8DFA37CB988B3B5E2738F16BE2C7DF1286EDD1"
+  },
+  "Build": "dotnet publish src/CropQc.Web/CropQc.Web.csproj -c Release --no-restore",
+  "Rehearsal": "pr278-frozen-rollback-rehearsal.json",
+  "ProductionAccess": "none"
+}

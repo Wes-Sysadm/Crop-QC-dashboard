@@ -1,0 +1,105 @@
+[
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 448,
+      "fruitProfileId": 17,
+      "lot": "1372",
+      "growerNumber": "1372",
+      "variety": "BART",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 4,
+      "roomId": 4,
+      "facility": "WP",
+      "name": "WP-7",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": 1122,
+    "rawProjectionQuantity": 1568,
+    "canonicalBlockers": [],
+    "classification": "ProvenReconstructionCandidate",
+    "blockers": [],
+    "segmentIds": [
+      617,
+      618,
+      619,
+      630,
+      669,
+      670
+    ],
+    "population": "Positive"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 511,
+      "fruitProfileId": 2,
+      "lot": "3152",
+      "growerNumber": "3152",
+      "variety": "GALA",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 1,
+      "roomId": 15,
+      "facility": "EBS",
+      "name": "Evans-5",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": 61,
+    "rawProjectionQuantity": 162,
+    "canonicalBlockers": [],
+    "classification": "ProvenReconstructionCandidate",
+    "blockers": [],
+    "segmentIds": [
+      414,
+      426
+    ],
+    "population": "Positive"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 642,
+      "fruitProfileId": 2,
+      "lot": "9682",
+      "growerNumber": "9682",
+      "variety": "GALA",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 1,
+      "roomId": 15,
+      "facility": "EBS",
+      "name": "Evans-5",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": 252,
+    "rawProjectionQuantity": 536,
+    "canonicalBlockers": [],
+    "classification": "ProvenReconstructionCandidate",
+    "blockers": [],
+    "segmentIds": [
+      419,
+      428
+    ],
+    "population": "Positive"
+  }
+]

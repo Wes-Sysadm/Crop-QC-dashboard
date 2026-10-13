@@ -14,7 +14,7 @@ public sealed partial class DashboardDataService
         // Enumerate receipt candidates, then ask the same canonical proof used by
         // submission. A different receipt's unassigned pool must not hide exact stock.
         var positions = evidence.Positions.SelectMany(p => p.Receipts.Select(x => x.Id).Distinct()
-            .Select(id => (Id: id, Position: InventoryAvailabilityResolver.Resolve(p, new(RequireExactReceipt: true, ReceiptId: id)))))
+            .Select(id => (Id: id, Position: InventoryAvailabilityResolver.Resolve(p, new(RequireExactReceipt: true, ReceiptId: id) { AllowIndependentCohorts = true }))))
             .Where(x => x.Position.IsOperable).ToArray();
         var ids = positions.Select(x => x.Id).Distinct().ToArray();
         var receipts = await dbContext.Receipts.AsNoTracking().Where(x => ids.Contains(x.Id) && x.RoomId == room && !x.IsDeleted && !x.IsTransferReceipt)
@@ -34,7 +34,7 @@ public sealed partial class DashboardDataService
         var replay = await CanonicalApplicationReplay.TryAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id, InventoryCommandKind.ReceiptDepletion, submission, ct);
         if (replay != null) return CanonicalInventoryMessages.Result(replay);
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, [form.RoomId]),
-            new(RequireExactReceipt: true, ReceiptId: form.ReceiptId, TreatmentSignature: form.TreatmentSignature), BusinessTime.UtcNow, ct);
+            new(RequireExactReceipt: true, ReceiptId: form.ReceiptId, TreatmentSignature: form.TreatmentSignature) { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var p = batch.Positions.SingleOrDefault(x => x.ReceiptProvenance.ReceiptIds.Contains(form.ReceiptId));
         if (p == null || !p.IsOperable) return "Exact receipt inventory or treatment identity cannot be proven.";
         if (form.CanonicalFingerprint != p.Watermark.Fingerprint) return "Inventory changed; reload and try again.";

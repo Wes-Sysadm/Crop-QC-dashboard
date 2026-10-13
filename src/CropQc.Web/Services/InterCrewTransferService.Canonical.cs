@@ -79,7 +79,7 @@ public sealed partial class InterCrewTransferService
             var movements = await dbContext.TreatmentLineageMovements.AsNoTracking().Where(x => x.InterCrewTransferId == transfer.Id).ToListAsync(ct);
             var receives = movements.Where(x => x.MovementType == "InterCrewReceive" && !movements.Any(r => r.ReversesTreatmentLineageMovementId == x.Id));
             var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(
-                new(transfer.DestinationWarehouseId, [transfer.DestinationRoomId!.Value]), new(), businessTime.UtcNow, ct);
+                new(transfer.DestinationWarehouseId, [transfer.DestinationRoomId!.Value]), new() { AllowIndependentCohorts = true }, businessTime.UtcNow, ct);
             var builder = ImmutableArray.CreateBuilder<InventoryCommandLine>();
             foreach (var g in receives.GroupBy(x => new { Identity = InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey), x.TreatmentSignatureSnapshot }))
             {

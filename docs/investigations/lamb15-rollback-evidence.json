@@ -1,0 +1,55 @@
+{
+  "CandidateBinaries": {
+    "CropQc.Data.dll": "9E16D1F379C7BA499F10FE5FC1A5ACAC4E6F13540FD1B4A7A833ED07009C0A3F",
+    "CropQc.Shared.dll": "7DF4A2CC42214CE8EA2F89A44A687C7A1FF56D67C8664D35CF7E0EB992000CC9"
+  },
+  "RollbackSource": "2f66134938f768a1d467074037cc3dbcf308d0e5",
+  "RollbackBinaries": {
+    "CropQc.Data.dll": "A9D55F33119DD192D70B1B2BAD0D66B262A03398EC07C7FB8A0570FED9E853CF",
+    "CropQc.Shared.dll": "29A74CF7B931C39CA92DAA8C6BD67BCDDE6DBD2B4FBF4C8BF3D658144939BA5C"
+  },
+  "Original": 74429,
+  "AfterCandidate": 74441,
+  "AfterRollback": 74441,
+  "ProtectedTables": [
+    "Receipts",
+    "RoomInventoryAdjustments",
+    "TreatmentLineageMovements",
+    "RoomTransfers",
+    "RoomTreatmentApplications",
+    "RoomTreatmentApplicationSources",
+    "AuditLogs",
+    "BinsRunEntries",
+    "ActualRuns",
+    "RoomInventoryLosses"
+  ],
+  "CandidateOperations": [
+    {
+      "OperationKey": "lamb-rollback-treated",
+      "Status": 0,
+      "Detail": "Command committed atomically."
+    },
+    {
+      "OperationKey": "lamb-rollback-treatment",
+      "Status": 0,
+      "Detail": "Command committed atomically."
+    },
+    {
+      "OperationKey": "lamb-rollback-later",
+      "Status": 0,
+      "Detail": "Command committed atomically."
+    },
+    {
+      "OperationKey": "lamb-rollback-candidate-move",
+      "Status": 0,
+      "Detail": "Command committed atomically."
+    }
+  ],
+  "RollbackOperations": [
+    {
+      "OperationKey": "lamb-rollback-rollback-move",
+      "Status": 0,
+      "Detail": "Command committed atomically."
+    }
+  ]
+}

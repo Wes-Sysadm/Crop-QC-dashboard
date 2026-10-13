@@ -1,0 +1,536 @@
+{
+  "sourceCommit": "fd7f691c2268779c26740e5f3fa7866390691b5d",
+  "database": "pr271_release_pr275_189",
+  "results": [
+    {
+      "key": "r15-g511",
+      "authorityBefore": 61,
+      "authorityAfter": 61,
+      "projectionBefore": 162,
+      "projectionAfter": 61,
+      "approvalAuditId": 176594,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r15-g511",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 834,
+        "repairAuditId": 176595,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "C3FC555C298DE5876D000FE7D143B406596EAD7FF8E597C7618E9B268B1B67E4"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r15-g511",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 834,
+        "repairAuditId": 176595,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "C3FC555C298DE5876D000FE7D143B406596EAD7FF8E597C7618E9B268B1B67E4"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r15-g511",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 834,
+        "repairAuditId": 176595,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "C3FC555C298DE5876D000FE7D143B406596EAD7FF8E597C7618E9B268B1B67E4"
+      },
+      "previewSha256": "d42b514f19b348b1cfdd5dd1202ae4ba28dbce34eb5255100c601a6f1ecb3447",
+      "opaqueBytesPreserved": true
+    },
+    {
+      "key": "r15-g642",
+      "authorityBefore": 252,
+      "authorityAfter": 252,
+      "projectionBefore": 536,
+      "projectionAfter": 252,
+      "approvalAuditId": 176596,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r15-g642",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 835,
+        "repairAuditId": 176597,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "904F24686CFD9817EF7B0FAA5853151716F53BD7174A2AF8DEA4E17CB22F649D"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r15-g642",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 835,
+        "repairAuditId": 176597,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "904F24686CFD9817EF7B0FAA5853151716F53BD7174A2AF8DEA4E17CB22F649D"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r15-g642",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 835,
+        "repairAuditId": 176597,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "904F24686CFD9817EF7B0FAA5853151716F53BD7174A2AF8DEA4E17CB22F649D"
+      },
+      "previewSha256": "46d6a533cc705afa1e9b23b6ff0ae50ed7ffa255581d00eba5f7a22be2ec7b7c",
+      "opaqueBytesPreserved": true
+    },
+    {
+      "key": "r4-g448",
+      "authorityBefore": 1122,
+      "authorityAfter": 1122,
+      "projectionBefore": 1568,
+      "projectionAfter": 1122,
+      "approvalAuditId": 176598,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r4-g448",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 836,
+        "repairAuditId": 176599,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "6B7C092F6175EF5E93C6D060C73333B3CC02F779DA39F58EF5C5286661E43CC4"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r4-g448",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 836,
+        "repairAuditId": 176599,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "6B7C092F6175EF5E93C6D060C73333B3CC02F779DA39F58EF5C5286661E43CC4"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r4-g448",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 836,
+        "repairAuditId": 176599,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "6B7C092F6175EF5E93C6D060C73333B3CC02F779DA39F58EF5C5286661E43CC4"
+      },
+      "previewSha256": "aa0adfa0c3939db3a76124ad488d01eff1734e2c6717ed79f88e18aa48236988",
+      "opaqueBytesPreserved": true
+    },
+    {
+      "key": "r47-g495",
+      "authorityBefore": 202,
+      "authorityAfter": 202,
+      "projectionBefore": 598,
+      "projectionAfter": 202,
+      "approvalAuditId": 176600,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r47-g495",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 837,
+        "repairAuditId": 176601,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "AA4F4AF97E72945D99C272CA0AC6F3867AB99081A115B0078390B1210750C24C"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r47-g495",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 837,
+        "repairAuditId": 176601,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "AA4F4AF97E72945D99C272CA0AC6F3867AB99081A115B0078390B1210750C24C"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r47-g495",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 837,
+        "repairAuditId": 176601,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "AA4F4AF97E72945D99C272CA0AC6F3867AB99081A115B0078390B1210750C24C"
+      },
+      "previewSha256": "a60045be7126fe1dec6965a789242a4ebf910d0f56d4933e552dadca1ca13a4c",
+      "opaqueBytesPreserved": true
+    },
+    {
+      "key": "r2-g398",
+      "authorityBefore": 10,
+      "authorityAfter": 10,
+      "projectionBefore": 130,
+      "projectionAfter": 10,
+      "approvalAuditId": 176602,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r2-g398",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 838,
+        "repairAuditId": 176603,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "2A024D8812E0A892A5FAC841D6421104FE0B5E271C87269D0749AB4964327C1D"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r2-g398",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 838,
+        "repairAuditId": 176603,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "2A024D8812E0A892A5FAC841D6421104FE0B5E271C87269D0749AB4964327C1D"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r2-g398",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 838,
+        "repairAuditId": 176603,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "2A024D8812E0A892A5FAC841D6421104FE0B5E271C87269D0749AB4964327C1D"
+      },
+      "previewSha256": "a0f61a6f7f661eb85732150dbd92ecc7d3b9ef94452b69fb5c713e047370f42e",
+      "opaqueBytesPreserved": true
+    },
+    {
+      "key": "r5-g495",
+      "authorityBefore": 170,
+      "authorityAfter": 170,
+      "projectionBefore": 362,
+      "projectionAfter": 170,
+      "approvalAuditId": 176604,
+      "result": {
+        "status": "Committed",
+        "operationKey": "lossless189-r5-g495",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 839,
+        "repairAuditId": 176605,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "ABCB5CD8FB20ACC2C2529A962594869D1199E2D79E12A6C3D8DC60637041371A"
+      },
+      "verification": {
+        "status": "Verified",
+        "operationKey": "lossless189-r5-g495",
+        "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+        "replacementSegmentId": 839,
+        "repairAuditId": 176605,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "ABCB5CD8FB20ACC2C2529A962594869D1199E2D79E12A6C3D8DC60637041371A"
+      },
+      "replay": {
+        "status": "Replayed",
+        "operationKey": "lossless189-r5-g495",
+        "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+        "replacementSegmentId": 839,
+        "repairAuditId": 176605,
+        "authoritativeQuantityDelta": 0,
+        "verificationSeal": "ABCB5CD8FB20ACC2C2529A962594869D1199E2D79E12A6C3D8DC60637041371A"
+      },
+      "previewSha256": "91075f3535a58f32f0cf2fa8d667af846cb316366feab4948f28051850537564",
+      "opaqueBytesPreserved": true
+    }
+  ],
+  "protectedGroups": 26,
+  "protectedUnchanged": true,
+  "modifiedRejected": true,
+  "staleRejected": true,
+  "concurrentWriterRejected": true,
+  "approvalAudits": 6,
+  "repairAudits": 6,
+  "commands": 6,
+  "fullReadiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 979,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1079,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 986,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 441,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 441 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "invalidOutside": 0
+    }
+  },
+  "authoritativeTotalBefore": 1817,
+  "authoritativeTotalAfter": 1817,
+  "projectionBefore": 3356,
+  "projectionAfter": 1817,
+  "productionAccess": false,
+  "reproduction": {
+    "previewBytes": 10746,
+    "previewSha256": "49ba5415d2a92cf0bd29a1d6554ff7954653b950d0b3d6da33c95fef23034962",
+    "approvalBytes": 10877,
+    "approvalSha256": "cad02ebdfa48515885301ad3412b5cb3566b8c7a71dfa0cf9b0d9164e59f6ae3",
+    "exit": 3762504530,
+    "error": "Approval preview is stale or unsupported.",
+    "changes": [
+      {
+        "path": "$.plan.changes[0].beforeUpdatedAt",
+        "before": "2026-09-04T15:07:31.459524+00:00",
+        "after": "2026-09-04T08:07:31.459524-07:00"
+      },
+      {
+        "path": "$.plan.changes[1].beforeUpdatedAt",
+        "before": "2026-09-04T15:10:39.473749+00:00",
+        "after": "2026-09-04T08:10:39.473749-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[0].at",
+        "before": "2026-09-04T14:54:00+00:00",
+        "after": "2026-09-04T07:54:00-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[0].recordedAt",
+        "before": "2026-09-04T14:57:44.012635+00:00",
+        "after": "2026-09-04T07:57:44.012635-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[1].at",
+        "before": "2026-09-04T15:07:00+00:00",
+        "after": "2026-09-04T08:07:00-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[1].recordedAt",
+        "before": "2026-09-04T15:07:31.468144+00:00",
+        "after": "2026-09-04T08:07:31.468144-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[2].at",
+        "before": "2026-09-04T15:10:00+00:00",
+        "after": "2026-09-04T08:10:00-07:00"
+      },
+      {
+        "path": "$.snapshot.ledger[2].recordedAt",
+        "before": "2026-09-04T15:10:39.485913+00:00",
+        "after": "2026-09-04T08:10:39.485913-07:00"
+      },
+      {
+        "path": "$.snapshot.projections[0].createdAt",
+        "before": "2026-09-04T14:57:43.99909+00:00",
+        "after": "2026-09-04T07:57:43.99909-07:00"
+      },
+      {
+        "path": "$.snapshot.projections[0].updatedAt",
+        "before": "2026-09-04T15:07:31.459524+00:00",
+        "after": "2026-09-04T08:07:31.459524-07:00"
+      },
+      {
+        "path": "$.snapshot.projections[1].createdAt",
+        "before": "2026-09-04T15:10:39.464615+00:00",
+        "after": "2026-09-04T08:10:39.464615-07:00"
+      },
+      {
+        "path": "$.snapshot.projections[1].updatedAt",
+        "before": "2026-09-04T15:10:39.473749+00:00",
+        "after": "2026-09-04T08:10:39.473749-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[0].at",
+        "before": "2026-09-04T14:54:00+00:00",
+        "after": "2026-09-04T07:54:00-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[0].createdAt",
+        "before": "2026-09-04T14:57:43.99909+00:00",
+        "after": "2026-09-04T07:57:43.99909-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[1].at",
+        "before": "2026-09-04T15:07:00+00:00",
+        "after": "2026-09-04T08:07:00-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[1].createdAt",
+        "before": "2026-09-04T15:07:31.459524+00:00",
+        "after": "2026-09-04T08:07:31.459524-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[2].at",
+        "before": "2026-09-04T15:10:00+00:00",
+        "after": "2026-09-04T08:10:00-07:00"
+      },
+      {
+        "path": "$.snapshot.movements[2].createdAt",
+        "before": "2026-09-04T15:10:39.473749+00:00",
+        "after": "2026-09-04T08:10:39.473749-07:00"
+      },
+      {
+        "path": "$.snapshot.watermark.versions[0].updatedAt",
+        "before": "2026-09-04T15:07:31.459524+00:00",
+        "after": "2026-09-04T08:07:31.459524-07:00"
+      },
+      {
+        "path": "$.snapshot.watermark.versions[1].updatedAt",
+        "before": "2026-09-04T15:10:39.473749+00:00",
+        "after": "2026-09-04T08:10:39.473749-07:00"
+      },
+      {
+        "path": "$.snapshotCapturedAt",
+        "before": "2026-10-09T01:32:06.5236248+00:00",
+        "after": "2026-10-08T18:32:06.5236248-07:00"
+      }
+    ],
+    "tokenCount": 949,
+    "nonWhitespaceTokenDifferences": [
+      {
+        "tokenIndex": 257,
+        "before": "\"2026-09-04T15:07:31.459524+00:00\"",
+        "after": "\"2026-09-04T08:07:31.459524-07:00\""
+      },
+      {
+        "tokenIndex": 312,
+        "before": "\"2026-09-04T15:10:39.473749+00:00\"",
+        "after": "\"2026-09-04T08:10:39.473749-07:00\""
+      },
+      {
+        "tokenIndex": 467,
+        "before": "\"2026-09-04T14:54:00+00:00\"",
+        "after": "\"2026-09-04T07:54:00-07:00\""
+      },
+      {
+        "tokenIndex": 483,
+        "before": "\"2026-09-04T14:57:44.012635+00:00\"",
+        "after": "\"2026-09-04T07:57:44.012635-07:00\""
+      },
+      {
+        "tokenIndex": 501,
+        "before": "\"2026-09-04T15:07:00+00:00\"",
+        "after": "\"2026-09-04T08:07:00-07:00\""
+      },
+      {
+        "tokenIndex": 517,
+        "before": "\"2026-09-04T15:07:31.468144+00:00\"",
+        "after": "\"2026-09-04T08:07:31.468144-07:00\""
+      },
+      {
+        "tokenIndex": 535,
+        "before": "\"2026-09-04T15:10:00+00:00\"",
+        "after": "\"2026-09-04T08:10:00-07:00\""
+      },
+      {
+        "tokenIndex": 551,
+        "before": "\"2026-09-04T15:10:39.485913+00:00\"",
+        "after": "\"2026-09-04T08:10:39.485913-07:00\""
+      },
+      {
+        "tokenIndex": 585,
+        "before": "\"2026-09-04T14:57:43.99909+00:00\"",
+        "after": "\"2026-09-04T07:57:43.99909-07:00\""
+      },
+      {
+        "tokenIndex": 589,
+        "before": "\"2026-09-04T15:07:31.459524+00:00\"",
+        "after": "\"2026-09-04T08:07:31.459524-07:00\""
+      },
+      {
+        "tokenIndex": 640,
+        "before": "\"2026-09-04T15:10:39.464615+00:00\"",
+        "after": "\"2026-09-04T08:10:39.464615-07:00\""
+      },
+      {
+        "tokenIndex": 644,
+        "before": "\"2026-09-04T15:10:39.473749+00:00\"",
+        "after": "\"2026-09-04T08:10:39.473749-07:00\""
+      },
+      {
+        "tokenIndex": 687,
+        "before": "\"2026-09-04T14:54:00+00:00\"",
+        "after": "\"2026-09-04T07:54:00-07:00\""
+      },
+      {
+        "tokenIndex": 691,
+        "before": "\"2026-09-04T14:57:43.99909+00:00\"",
+        "after": "\"2026-09-04T07:57:43.99909-07:00\""
+      },
+      {
+        "tokenIndex": 749,
+        "before": "\"2026-09-04T15:07:00+00:00\"",
+        "after": "\"2026-09-04T08:07:00-07:00\""
+      },
+      {
+        "tokenIndex": 753,
+        "before": "\"2026-09-04T15:07:31.459524+00:00\"",
+        "after": "\"2026-09-04T08:07:31.459524-07:00\""
+      },
+      {
+        "tokenIndex": 811,
+        "before": "\"2026-09-04T15:10:00+00:00\"",
+        "after": "\"2026-09-04T08:10:00-07:00\""
+      },
+      {
+        "tokenIndex": 815,
+        "before": "\"2026-09-04T15:10:39.473749+00:00\"",
+        "after": "\"2026-09-04T08:10:39.473749-07:00\""
+      },
+      {
+        "tokenIndex": 898,
+        "before": "\"2026-09-04T15:07:31.459524+00:00\"",
+        "after": "\"2026-09-04T08:07:31.459524-07:00\""
+      },
+      {
+        "tokenIndex": 916,
+        "before": "\"2026-09-04T15:10:39.473749+00:00\"",
+        "after": "\"2026-09-04T08:10:39.473749-07:00\""
+      },
+      {
+        "tokenIndex": 943,
+        "before": "\"2026-10-09T01:32:06.5236248+00:00\"",
+        "after": "\"2026-10-08T18:32:06.5236248-07:00\""
+      }
+    ],
+    "powershellVersion": "7.6.5",
+    "inferredType": "System.DateTime",
+    "inferredKind": "Local",
+    "allOtherTokensIdentical": false,
+    "additionalEscapeOnlyChange": {
+      "path": "$.beforeSegmentsJson",
+      "decodedValueUnchanged": true,
+      "example": "Unicode quote/plus escapes rewritten as escaped quotes and literal plus signs",
+      "tokenIndex": 347
+    },
+    "totalNonWhitespaceTokenDifferences": 22,
+    "interpretation": "21 changed timestamp values plus one escape-only token; remaining 927 of 949 non-whitespace tokens identical. Outer envelope/indentation also differ as expected."
+  },
+  "focusedDotNetTests": {
+    "CropQc.Api.Tests.DynamicProjectionReconstructionTests": 57,
+    "CropQc.Api.Tests.CanonicalInventoryArchitectureTests": 9,
+    "CropQc.Api.Tests.GovernanceArchitectureTests": 2,
+    "CropQc.Api.Tests.ProjectionReconstructionTests": 8
+  },
+  "binary": {
+    "commit": "fd7f691c2268779c26740e5f3fa7866390691b5d",
+    "createdAt": "2026-10-09T01:00:02.7979233+00:00",
+    "files": [
+      {
+        "productVersion": "1.0.0+fd7f691c2268779c26740e5f3fa7866390691b5d",
+        "file": "CropQc.Web.dll",
+        "sha256": "93350D9F3F390959B1F7703D28EAC4A91C3882466EB34B438832D8CDEB6B19ED"
+      },
+      {
+        "productVersion": "1.0.0+fd7f691c2268779c26740e5f3fa7866390691b5d",
+        "file": "CropQc.Data.dll",
+        "sha256": "EB23E300210A63795B287F3DE23C49BB20DDAFC8FF626016578CFB74BB65A9BD"
+      },
+      {
+        "productVersion": "1.0.0+fd7f691c2268779c26740e5f3fa7866390691b5d",
+        "file": "CropQc.Shared.dll",
+        "sha256": "167BBE667EDB2A3B433424349BC24FBA855F2C111E13C3D87B689D45A93CDA83"
+      }
+    ]
+  },
+  "backup189Sha256": "674c9c86d34067b1ca2e0e00dd301c2b7d4917174a2a87e9cf573c7fedc02d58",
+  "protocolTestCount": 21,
+  "governanceMetadataTests": 22,
+  "sourceUnchanged": true
+}

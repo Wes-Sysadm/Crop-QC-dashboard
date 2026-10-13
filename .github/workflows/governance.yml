@@ -1,0 +1,72 @@
+name: Governance
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/governance/check.test.mjs
+      - run: node scripts/governance/check.mjs
+  contracts:
+    name: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: governance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d governance_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CANONICAL_INVENTORY_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=governance_test;Username=postgres;Password=disposable-ci-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - run: pwsh -File scripts/governance/test-contracts.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: governance-contract-results
+          path: artifacts/governance/**/*.trx
+          retention-days: 14
+  windows-sync:
+    name: windows-sync (${{ matrix.shell }})
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        shell: [pwsh, powershell]
+    env:
+      CROPQC_TEST_POWERSHELL: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/governance/sync.test.mjs

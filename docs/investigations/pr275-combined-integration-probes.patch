@@ -1,0 +1,59 @@
+--- a/tests/CropQc.Api.Tests/DynamicProjectionReconstructionTests.cs
++++ b/tests/CropQc.Api.Tests/DynamicProjectionReconstructionTests.cs
+@@ -431,0 +432,34 @@
++    [InventoryPostgresFact]
++    public async Task Later_real_partial_acknowledgement_never_certifies_unimplemented_held_custody()
++    {
++        await using var f = await Fixture.Create();
++        await using (var setup = f.LegacyDb())
++        {
++            (await setup.Warehouses.SingleAsync(x => x.Id == 4)).Code = "BASE-WP";
++            await setup.SaveChangesAsync();
++        }
++        var request = await f.Request();
++        var repair = await f.Executor.ReconstructProjectionAsync(request, true);
++        Assert.Equal("Committed", repair.Status);
++        await Receive(f, 9, "REMAIN-AFTER-DISPATCH");
++        var legacy = new InventoryCommandTests.Fixture(f.Connection);
++        var fullReceive = await legacy.ReceiveCommand();
++        await using var db = f.CreateDbContext();
++        var transfer = await db.InterCrewTransfers.SingleAsync(x => x.Id == fullReceive.Lines[0].Source.Location.CustodyRecordId);
++        var receipt = await db.Receipts.SingleAsync(x => x.Id == fullReceive.ReceivingEvidence!.ReceiptId);
++        var dispatch = await db.TreatmentLineageMovements.SingleAsync(x => x.InterCrewTransferId == transfer.Id && x.MovementType == "InterCrewDispatch");
++        var ack = new InventoryCommand(Guid.NewGuid().ToString("N"), InventoryCommandKind.AcknowledgeTransfer,
++            8000, DateTimeOffset.UtcNow, "Disposable actual partial acknowledgement", [], ReceiptCustody:
++            new(transfer.Id, receipt.Id, transfer.ConcurrencyVersion, receipt.ConcurrencyVersion, [new(dispatch.Id, 18)]));
++        var acknowledged = await f.Executor.ExecuteAsync(ack);
++        Assert.True(acknowledged.Status == InventoryCommandStatus.Committed, acknowledged.Detail);
++        var before = await legacy.Snapshot();
++        var verified = await f.Executor.VerifyProjectionReconstructionAsync(repair.OperationKey);
++        Assert.Equal("CommittedEvidenceVerifiedCurrentReviewRequired", verified.Status);
++        Assert.Contains("ReceiptCustodyAcknowledgment", verified.Detail);
++        Assert.Contains("not certified", verified.Detail);
++        Assert.Equal(9, await Authority(f));
++        Assert.False((await f.Executor.PreviewProjectionReconstructionAsync(f.Target)).Eligible);
++        Assert.Equal(before, await legacy.Snapshot());
++    }
++
+--- a/tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs
++++ b/tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs
+@@ -325,0 +326 @@
++        await AssertReconstructionBoundary(f, original.Lines[0].Source.Identity);
+@@ -333,0 +335 @@
++        await AssertReconstructionBoundary(f, original.Lines[0].Source.Identity);
+@@ -341,0 +344 @@
++        await AssertReconstructionBoundary(f, original.Lines[0].Source.Identity);
+@@ -344,0 +348 @@
++        await AssertReconstructionBoundary(f, original.Lines[0].Source.Identity);
+@@ -386,0 +391,11 @@
++    }
++
++    private static async Task AssertReconstructionBoundary(Fixture f, InventoryIdentity identity)
++    {
++        var before = await f.Snapshot();
++        var executor = new InventoryCommandExecutor(new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection));
++        var preview = await executor.PreviewProjectionReconstructionAsync(new(9001, 9002, identity));
++        Assert.False(preview.Eligible);
++        Assert.Contains(preview.Blockers, x => x.Contains("ReceiptCustodyAcknowledgment") && x.Contains("writer fence"));
++        Assert.Equal(0, preview.AuthoritativeQuantity);
++        Assert.Equal(before, await f.Snapshot());

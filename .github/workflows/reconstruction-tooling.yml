@@ -1,0 +1,21 @@
+name: Reconstruction tooling
+on:
+  pull_request:
+    paths:
+      - 'scripts/reconstruction/**'
+      - '.github/workflows/reconstruction-tooling.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/reconstruction/protocol.test.mjs

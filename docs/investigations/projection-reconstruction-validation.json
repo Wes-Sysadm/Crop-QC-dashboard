@@ -1,0 +1,221 @@
+{
+  "recordedUtc": "2026-10-08T04:38:03.218271+00:00",
+  "mainAndBase": "e58d73a12c8bf0cc5f0f2333e442497e2b91b807",
+  "branch": "codex/historical-projection-reconstruction",
+  "integrationCommit": "588abaf3064fe2dd867f48816b304bb1606912c8",
+  "integrationInputs": {
+    "#271": "58e6d29edc9d81326274a3d7ff73c56dde20fcc5",
+    "#272": "9fcca90e206460d55b030a87017d587212b5a29f"
+  },
+  "focused": {
+    "total": "28",
+    "executed": "28",
+    "passed": "28",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "fullSuiteRuns": [
+    {
+      "file": "combined-full-bounded.trx",
+      "counts": {
+        "total": "2404",
+        "executed": "2400",
+        "passed": "2391",
+        "failed": "9",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": [
+        "CropQc.Api.Tests.InventoryCommandRestoreTests.Verified_fresh_restore_executes_68_plus_104_with_atomic_rollback_and_protected_history",
+        "CropQc.Api.Tests.CanonicalWorkflowConcurrencyTests.Restored_room_move_versus_dump_preserves_unrelated_history",
+        "CropQc.Api.Tests.OrasDefinitionTests.Normal_admin_workflow_corrects_current_and_consumed_history_on_verified_restore_without_physical_changes",
+        "CropQc.Api.Tests.TruckReceiptSchemaContractTests.Exact_feature_schema_passes_both_gates_in_read_only_transaction",
+        "CropQc.Api.Tests.CanonicalWorkflowConcurrencyTests.Restored_treatment_versus_move_preserves_unrelated_history",
+        "CropQc.Api.Tests.OutsideWarehouseIdentityGateTests.Restored_postgres_gate_accepts_the_four_reviewed_shapes_without_any_writes",
+        "CropQc.Api.Tests.TruckReceiptWorkerCompatibilityTests.New_backup_manifest_and_schema_gate_read_completed_feature_data",
+        "CropQc.Api.Tests.CanonicalActualRunWorkflowTests.Normal_ActualRun_selector_and_submission_consume_68_plus_104_atomically",
+        "CropQc.Api.Tests.CanonicalProducerStateMachineTests.Restored_production_preserves_unrelated_history_through_normal_workflow_lifecycle"
+      ]
+    },
+    {
+      "file": "combined-failed-rerun.trx",
+      "counts": {
+        "total": "9",
+        "executed": "9",
+        "passed": "4",
+        "failed": "5",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": [
+        "CropQc.Api.Tests.TruckReceiptWorkerCompatibilityTests.New_backup_manifest_and_schema_gate_read_completed_feature_data",
+        "CropQc.Api.Tests.OutsideWarehouseIdentityGateTests.Restored_postgres_gate_accepts_the_four_reviewed_shapes_without_any_writes",
+        "CropQc.Api.Tests.CanonicalWorkflowConcurrencyTests.Restored_treatment_versus_move_preserves_unrelated_history",
+        "CropQc.Api.Tests.OrasDefinitionTests.Normal_admin_workflow_corrects_current_and_consumed_history_on_verified_restore_without_physical_changes",
+        "CropQc.Api.Tests.CanonicalWorkflowConcurrencyTests.Restored_room_move_versus_dump_preserves_unrelated_history"
+      ]
+    },
+    {
+      "file": "combined-legacy-fixtures.trx",
+      "counts": {
+        "total": "5",
+        "executed": "5",
+        "passed": "5",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": []
+    }
+  ],
+  "finalPerTestOutcome": {
+    "total": 2404,
+    "passed": 2400,
+    "failed": 0,
+    "skipped": 4
+  },
+  "interpretation": "2400 distinct cases passed across the bounded full run and targeted reruns; this is not a claim that one pristine full run was green. The earlier unbounded attempt was stopped for local PostgreSQL resource exhaustion.",
+  "skippedTests": [
+    {
+      "id": "0012fe74-763e-3120-d5c1-21a1bcd372e2",
+      "name": "CropQc.Api.Tests.BoundedBackupTests.Additive_migration_preserves_verified_restore_and_old_backup_history",
+      "outcome": "NotExecuted",
+      "reason": "Set BACKUP_RESTORE_TEST_POSTGRES to a verified local restore containing the Phase 2 additive schema."
+    },
+    {
+      "id": "85ac6c1c-95eb-8a09-8c2b-9ba36e24f0e6",
+      "name": "CropQc.Api.Tests.TruckReceiptWorkerCompatibilityTests.New_backup_manifest_reads_old_schema_while_new_web_gate_refuses_it",
+      "outcome": "NotExecuted",
+      "reason": "Set CROPQC_TRUCK_PREFEATURE_TEST_CONNECTION to a disposable pre-feature schema for worker compatibility validation."
+    },
+    {
+      "id": "058f3482-40a1-c4c6-7f58-3029a89b682f",
+      "name": "CropQc.Api.Tests.TruckReceiptAdoptionTests.Any_bad_load_aborts_the_entire_batch",
+      "outcome": "NotExecuted",
+      "reason": "Set CROPQC_TRUCK_ADOPTION_TEST_CONNECTION to the reviewed unadopted disposable production restore."
+    },
+    {
+      "id": "0512062d-c0a3-aae8-8cba-c8730696362a",
+      "name": "CropQc.Api.Tests.TruckReceiptAdoptionTests.All_15_adopt_without_inventory_changes_then_match_and_reconcile_exactly",
+      "outcome": "NotExecuted",
+      "reason": "Set CROPQC_TRUCK_ADOPTION_TEST_CONNECTION to the reviewed unadopted disposable production restore."
+    }
+  ],
+  "optionalEarlyReturnMethods": 51,
+  "optionalGuardLocations": 57,
+  "optionalCoverageManifest": "projection-reconstruction-optional-fixtures.csv",
+  "configuredFixtureSettings": [
+    "BACKUP_TEST_POSTGRES",
+    "BACKUP_VERIFIED_PACKAGE",
+    "CANONICAL_INVENTORY_RESTORE_POSTGRES",
+    "CANONICAL_INVENTORY_TEST_POSTGRES",
+    "CROPQC_LEGACY_NORMALIZATION_TEST_POSTGRES",
+    "CROPQC_TEST_FRUIT_PROFILE_POSTGRES",
+    "CROPQC_TEST_RECEIPT_DATE_POSTGRES",
+    "CROPQC_TRUCK_RECEIPT_TEST_CONNECTION",
+    "CROPQC_TRUCK_SCHEMA_TEST_CONNECTION",
+    "ROOM_TRANSFER_TEST_POSTGRES"
+  ],
+  "coverageGroupsOverlap": true,
+  "coverageGroups": {
+    "reconstructionAndRevisionEvidence": {
+      "passed": 19,
+      "skipped": 0
+    },
+    "partialReceiptCustodyAndCompensations": {
+      "passed": 34,
+      "skipped": 0
+    },
+    "treatmentAndReadiness": {
+      "passed": 292,
+      "skipped": 0
+    },
+    "backupRegression": {
+      "passed": 63,
+      "skipped": 2
+    },
+    "schemaAndMigrations": {
+      "passed": 52,
+      "skipped": 1
+    },
+    "writerArchitecture": {
+      "passed": 9,
+      "skipped": 0
+    },
+    "concurrencyAndStaleProtection": {
+      "passed": 95,
+      "skipped": 0
+    }
+  },
+  "fixtureCorrections": [
+    "Local PostgreSQL concurrency bounded by repository runsettings (four threads).",
+    "Restored test database renamed with an accepted disposable marker.",
+    "Preexisting audited Historical rows preserved by full original-column fingerprints; legacy default-metadata assertion applies only when adding those columns.",
+    "Four failed cases passed on corrected #186 fixtures; five legacy-only cases passed on the prior verified #184-shaped restore or empty migrated schema fixture. No production guard was relaxed."
+  ],
+  "restoredLegacyFixture": {
+    "backupRun": 184,
+    "snapshotUtc": "2026-10-05T08:00:54.881257Z",
+    "sha256": "443eb7def03a0d815c3b31e16512c8e9385b644ec6200823555ac02ffed72eac",
+    "provenance": "Existing local fixture documented and verified during PR271; cloned for legacy regression preconditions. Both new reconstruction rehearsals used #186."
+  },
+  "restore": "PASS",
+  "solutionBuild": {
+    "status": "PASS",
+    "errors": 0,
+    "warnings": 69,
+    "note": "Existing warnings include ImageSharp advisories and nullable/analyzer warnings; no dependency changes."
+  },
+  "repositoryDefaultEfModel": "PASS; no pending changes",
+  "explicitPostgreSqlEfModel": "Existing provider/snapshot drift reproduced on unchanged main-based #272 baseline and candidate; no new migration generated.",
+  "newMigrations": 0,
+  "combinedPr271AdditiveMigration": "PASS on isolated #186 clone; strict combined schema readiness passes before and after.",
+  "format": "PASS: changed-file dotnet format whitespace --verify-no-changes",
+  "diffCheck": "PASS",
+  "productionWrites": 0,
+  "deployments": 0,
+  "githubPrMerges": 0,
+  "productionBackupOperations": 0,
+  "msi": "Not applicable; no WinForms/QC Station changes."
+}

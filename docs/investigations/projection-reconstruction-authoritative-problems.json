@@ -1,0 +1,217 @@
+[
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 141,
+      "fruitProfileId": 21,
+      "lot": "1270",
+      "growerNumber": "1270",
+      "variety": "ORDA",
+      "productionType": "Organic",
+      "isOrganic": true,
+      "status": "Organic",
+      "key": "2026|141|21|1270|1270|ORDA|ORGANIC|True|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 3,
+      "roomId": 60,
+      "facility": "McDougall",
+      "name": "MCD-08",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": -40,
+    "rawProjectionQuantity": 0,
+    "canonicalBlockers": [
+      {
+        "code": "NegativeAuthoritativeBalance",
+        "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+      },
+      {
+        "code": "UnsupportedHistoricalEvidence",
+        "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+      }
+    ],
+    "classification": "AuthoritativeInventoryProblem",
+    "blockers": [
+      "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+    ],
+    "segmentIds": [
+      229
+    ],
+    "population": "Negative"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 477,
+      "fruitProfileId": 29,
+      "lot": "1538",
+      "growerNumber": "1538",
+      "variety": "RDAN",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|477|29|1538|1538|RDAN|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 3,
+      "roomId": 60,
+      "facility": "McDougall",
+      "name": "MCD-08",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": -18,
+    "rawProjectionQuantity": 0,
+    "canonicalBlockers": [
+      {
+        "code": "NegativeAuthoritativeBalance",
+        "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+      },
+      {
+        "code": "UnsupportedHistoricalEvidence",
+        "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+      }
+    ],
+    "classification": "AuthoritativeInventoryProblem",
+    "blockers": [
+      "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+    ],
+    "segmentIds": [
+      235
+    ],
+    "population": "Negative"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 502,
+      "fruitProfileId": 18,
+      "lot": "2822",
+      "growerNumber": "2822",
+      "variety": "DANJ",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|502|18|2822|2822|DANJ|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 3,
+      "roomId": 60,
+      "facility": "McDougall",
+      "name": "MCD-08",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": -5,
+    "rawProjectionQuantity": 0,
+    "canonicalBlockers": [
+      {
+        "code": "NegativeAuthoritativeBalance",
+        "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+      },
+      {
+        "code": "UnsupportedHistoricalEvidence",
+        "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+      }
+    ],
+    "classification": "AuthoritativeInventoryProblem",
+    "blockers": [
+      "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+    ],
+    "segmentIds": [
+      341
+    ],
+    "population": "Negative"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 476,
+      "fruitProfileId": 18,
+      "lot": "1537",
+      "growerNumber": "1537",
+      "variety": "DANJ",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|476|18|1537|1537|DANJ|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 3,
+      "roomId": 61,
+      "facility": "McDougall",
+      "name": "MCD-09",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": -20,
+    "rawProjectionQuantity": 0,
+    "canonicalBlockers": [
+      {
+        "code": "NegativeAuthoritativeBalance",
+        "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+      },
+      {
+        "code": "UnsupportedHistoricalEvidence",
+        "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+      }
+    ],
+    "classification": "AuthoritativeInventoryProblem",
+    "blockers": [
+      "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+    ],
+    "segmentIds": [
+      317
+    ],
+    "population": "Negative"
+  },
+  {
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 478,
+      "fruitProfileId": 18,
+      "lot": "1539",
+      "growerNumber": "1539",
+      "variety": "DANJ",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "Conventional",
+      "key": "2026|478|18|1539|1539|DANJ|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 3,
+      "roomId": 61,
+      "facility": "McDougall",
+      "name": "MCD-09",
+      "custodyRecordId": null
+    },
+    "authoritativeQuantity": -44,
+    "rawProjectionQuantity": 0,
+    "canonicalBlockers": [
+      {
+        "code": "NegativeAuthoritativeBalance",
+        "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+      },
+      {
+        "code": "UnsupportedHistoricalEvidence",
+        "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+      }
+    ],
+    "classification": "AuthoritativeInventoryProblem",
+    "blockers": [
+      "Only positive occupied pools with proven historical excess are eligible; depleted and negative positions remain excluded."
+    ],
+    "segmentIds": [
+      320
+    ],
+    "population": "Negative"
+  }
+]

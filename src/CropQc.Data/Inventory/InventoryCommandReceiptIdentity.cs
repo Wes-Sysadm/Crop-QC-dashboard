@@ -88,14 +88,14 @@ public sealed partial class InventoryCommandExecutor
             var targetIdentity = change.Target with { Status = InventoryStatusIdentity.Normalize(p.Identity.Status, p.Identity.ProductionType) };
             var batch = await loader.LoadAsync(new(warehouse, [room]), now, ct);
             var source = batch.Positions.Single(x => x.Identity.Key == p.Identity.Key);
+            var originFailure = await InventoryOriginGuard.ValidateAsync(db, [source], now, ct);
+            Require(originFailure == null, originFailure ?? "Receipt origin validation failed.");
             await NormalizePositionAsync(db, factory, c, source, p, now, attempt, ct);
             var targetEvidence = batch.Positions.SingleOrDefault(x => x.Identity.Key == targetIdentity.Key);
             var targetBefore = targetEvidence?.AuthoritativeQuantity ?? 0;
             if (targetEvidence != null)
             {
-                var targetResult = InventoryAvailabilityResolver.Resolve(targetEvidence, new());
-                Require(targetResult.IsOperable, "Target identity inventory requires review before merging receipt stock.");
-                await NormalizePositionAsync(db, factory, c, targetEvidence, targetResult, now, attempt, ct);
+                await PrepareDestinationAsync(db, factory, c, targetEvidence, now, attempt, ct);
             }
             var quantity = group.Sum(x => x.Slice.Quantity);
             var rows = (await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => x.Disposition == "Current" && x.CurrentBins > 0

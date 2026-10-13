@@ -269,7 +269,9 @@ public sealed class InventoryCommandTests
                 [new(new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions), r.AuthoritativeQuantity,
                     r.TreatmentSlices[0].Signature, kind == InventoryCommandKind.ReceiveTransfer ? new(9006, 9007) : null)]);
         }
-        public async Task<InventoryCommand> ReceiveCommand(int bins = 19, bool treated = false)
+        public Task<InventoryCommand> ReceiveCommand(Func<Task> prepareDestination) => ReceiveCommand(19, false, prepareDestination);
+
+        public async Task<InventoryCommand> ReceiveCommand(int bins = 19, bool treated = false, Func<Task>? prepareDestination = null)
         {
             await using var db = CreateDbContext();
             if (bins != 19)
@@ -285,6 +287,7 @@ public sealed class InventoryCommandTests
             db.Warehouses.Add(new() { Id = 9006, Code = "EBS", Name = "Receiving site" });
             db.Rooms.Add(new() { Id = 9007, WarehouseId = 9006, Code = "RECV", Name = "Receiving room" });
             await db.SaveChangesAsync();
+            if (prepareDestination != null) await prepareDestination();
             string signature = "u";
             if (treated)
             {

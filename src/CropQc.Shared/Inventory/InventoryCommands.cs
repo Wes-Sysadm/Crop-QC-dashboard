@@ -73,7 +73,8 @@ public static class InventoryCommandPolicy
     public static InventoryOperationRequirements Requirements(InventoryCommandKind kind, InventoryCommandLine line) =>
         new(RequireKnownTreatment: kind != InventoryCommandKind.ManualStockAddition, RequireExactReceipt: kind is InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion,
             ReceiptId: line.ReceiptId, TreatmentSignature: kind == InventoryCommandKind.ManualStockAddition ? null : line.TreatmentSignature,
-            AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint);
+            AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint)
+        { AllowIndependentCohorts = !IsTreatment(kind) || kind == InventoryCommandKind.ReceiptTreatmentAssignment };
     public static bool IsRoomMove(InventoryCommandKind kind) => kind is InventoryCommandKind.RoomMove
         or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove;
     public static bool IsTreatment(InventoryCommandKind kind) => kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ReceiptTreatmentAssignment;
@@ -94,7 +95,11 @@ public static class InventoryNormalizationPlanner
         if (!result.IsOperable || result.TreatmentConfidence != InventoryConfidence.Proven)
             throw new InvalidOperationException("Unproven availability cannot authorize projection writes.");
         var current = evidence.Projections.Where(x => x.Disposition == "Current").ToArray();
-        if (current.Sum(x => x.Quantity) == result.AuthoritativeQuantity && current.All(x => x.RawKey == result.Identity.Key)) return null;
+        // A depleted alias carries no allocation to normalize. Do not force a
+        // proven mixed-treatment pool through untreated whole-pool replacement
+        // solely to tidy its zero-bin historical identity spelling.
+        if (current.Sum(x => x.Quantity) == result.AuthoritativeQuantity
+            && current.Where(x => x.Quantity > 0).All(x => x.RawKey == result.Identity.Key)) return null;
         // An aggregate candidate is not a row allocation. Independently prove the entire
         // current pool WITHOUT ANY projection quantity, then supersede every identified
         // row. No surviving receipt allocation is invented or proportionally trimmed.
@@ -106,6 +111,9 @@ public static class InventoryNormalizationPlanner
         return new(Algorithm, result.Proof.EvidenceVersion, result.Watermark.Fingerprint,
             "Retire exact old projection rows; recreate independently proven untreated pool without per-receipt allocation.",
             result.ReceiptProvenance, result.Proof.Evidence,
+            // Depleted rows still occupy current-only identity/receipt keys. Include
+            // them in the guarded supersession, retaining their links and zero
+            // retired quantity instead of leaving a conflicting current alias.
             current.OrderBy(x => x.Id).Select(x => new InventoryProjectionChange(x.Id,
                 x.Quantity, 0, x.Version, checked(x.Version + 1), "Current", "Historical", x.Signature, x.ReceiptId, x.ApplicationIds, x.RawKey, x.State, x.UpdatedAt)).ToImmutableArray(),
             result.AuthoritativeQuantity, result.ReceiptProvenance.Confidence == InventoryConfidence.Proven

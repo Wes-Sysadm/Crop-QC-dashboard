@@ -39,7 +39,7 @@
     "Path": "src/CropQc.Data/CropQcDbContext.cs",
     "Classification": "Physical write boundary",
     "Reason": "Tracked field guard and raw SQL interceptor; command-transaction capability internal to Data assembly.",
-    "Sha256": "738AC243C743196570BA17DF4000D8DEFEA4980B61E0EE4735FDF1ED835B259E"
+    "Sha256": "E91D360E3ADE24585BFE91262F8466C93DA30CE3C15601CFF13D565277AE68D0"
   },
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalBaselinePreview.cs",
@@ -57,7 +57,7 @@
     "Path": "src/CropQc.Data/Inventory/CanonicalProjectionFactory.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "8D9E313A23C5D0C2611F45D7FE229E1C4F65B1E49AD8470E9989EC3B18D533CE"
+    "Sha256": "E21AFCB50A8670ADC019EE6F8FF655E57F5564F62E85C579A871715B0CED54F6"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandBaseline.cs",
@@ -69,13 +69,13 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "DFE08AE62D6F6C2047554FDB060911AE87B3E2AE01363D53CCB964D350F3DC97"
+    "Sha256": "9AE739C42BBD46840C5E1C49F9682D4F40DA26DFE353451FE22FCE4DEFAC3876"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "086617C823788AAC5B84A292D0B7961EC744ABEAD7334955BFA71E49DBCB2671"
+    "Sha256": "937B37AC059F5F3DDA25F212E047A85DE44B84C02EC4D97D53BA096049F2E132"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -87,7 +87,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOperations.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "C4B49F184DEE99118291DEE914D87B8FE99E1277A643D923F9672A3CBB5C0C29"
+    "Sha256": "113DC18C75C29E8D821182056286A06F5E4C6D2F13ECC30CB8BF97E7F56A85DF"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOrasDefinition.cs",
@@ -96,28 +96,34 @@
     "Sha256": "882FC08115192D803F5B72D518406D56F19219C7C82AFD14C9E37CD1895C6E04"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandProjectionReconstruction.cs",
+    "Classification": "CLI maintenance",
+    "Reason": "Explicit preview-bound approval and operator command in the existing serializable canonical executor. Retires exact proven alias projections and creates receiptless shared replacement; protected evidence hashes, NOWAIT table locks, immutable audit and operation-key replay. Ordinary routes never invoke this entry point.",
+    "Sha256": "3B06F1C93055B0A7394F4C85BD7F44E9E25CC5984BEBC2FCC49F7E589C02D149"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "0460FC8DFCFFB472A1B17E1114E68955BB7F298E4D2D0D2AA1D9501BBBF9ABAE"
+    "Sha256": "9D3861F98209B47BD22B8F7145D3C4C4018E5ABB26E277E77BFD4A9786D27EC0"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned serializable acknowledgement and placement of immutable dispatch allocations; bounds, parent versions, journal replay and linked ledger/movement proof.",
-    "Sha256": "8EFE1C36A254CF9B43519FB9D48C138404A40A78654A5992EFBC2AB459492307"
+    "Sha256": "7426F90547D01147061679E93F9C9E8A48F8FFCFBCF8A544453150552BFED4E0"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptIdentity.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "347E6ABB727D9E6A587A8604A0328CC9F63F37817FB3F65974148064F125B184"
+    "Sha256": "674105D7188EEC36E1E80EF618AB81B433C29E1A295EE44FDB2A8D434A8E44AF"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptLocation.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "C8472815C9C760991AEE42FCF7FF69E47C7C7400E14820BF4AD3FD887633312F"
+    "Sha256": "850515E2EF3E7228D227E62CBE4B2A77F91544A05ED8ED6DEF8476885322B6B6"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptMetadata.cs",
@@ -135,25 +141,37 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "1F7B2D27D447ECDC642D559B6E38E4C8D37CBE3FF41C1204B5EF376FAED52683"
+    "Sha256": "0F0AC57AC1E30C3D7AA5DB5BBCF8B36F12F1694D89A1213C4F42E1E01BDB5B90"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandReconstructionVerification.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "E905C0E68FE287247FF34C32F8085EBEF541FE47C8926889CF1EA62A5E499B07"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryCommandRecordedCohorts.cs",
+    "Classification": "Canonical infrastructure",
+    "Reason": "Executor-owned Serializable transaction; complete recorded-cohort proof and origin validation precede audited projection supersession; authoritative history is unchanged.",
+    "Sha256": "EB5C306113024F17AD77A684C2951FE35B587A80A64527FBC92D341F587F6E47"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandRestoration.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "58BA015EB68D332055BEA07F2B95773D0BB41BA695B289B02541103E4CA71468"
+    "Sha256": "4496C694C88B55F72EBFE50D349AB972DE9697F2CD1BC8F8F74A49EC2CDF4F92"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandRunRevisions.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "5B6C9E33E8B713D57DD5F1FD3625688245D0DBC5FB27983D2B04B35FBD470238"
+    "Sha256": "6F00A93F645FE3BA2567A1807994BB8DE5CD783F8A6052579B3887F630FFCF5B"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandTransitEdits.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "FCB731698A7972C88165867B7591F70869E73B5423E74DACF213B5F5BF4986C9"
+    "Sha256": "72B3318BF677CDE504DB7B48907002769FA7EA256D9791801AD7FEB9820D8D67"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs",
@@ -171,13 +189,19 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "DCF87C0C0F526E16AC5CEAA867F4C385296E6A1DC9763992F879F203A021D689"
+    "Sha256": "5CD9670F5F79866B14F58BAA6FC64E2F8EF3C2EB4AEFBEFE9EC8F332CC03C357"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
+    "Sha256": "06AE1F3FD5C122BF6F03A06036B9465EC044290A0F93B25B1F606FAA25BC80EA"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "1ABB240CA8BC2C9C4F1E43E569A2925ABABDB324C8F690356F8A3D3DF7F672C2"
+    "Sha256": "1B65D77A85C7DB91711EBF154DB0A0A9815F7113FCC533893D17E6FDD8AA5D00"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptHeldEvidence.cs",
@@ -198,10 +222,34 @@
     "Sha256": "A5FB3F170E783B7511B76C1980755ADE213BBF39D0B08191A68B8CE952CC6581"
   },
   {
+    "Path": "src/CropQc.Data/Inventory/ReceiptRevisionEvidenceValidator.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "AsNoTracking evidence reads and local diagnostic collections only; correction arithmetic never grants custody or reconstruction authority.",
+    "Sha256": "CB166E4643E5813F9C0E09C346D144FF504AC65969C7AD194E3276A02E752E70"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/ReconstructionCommandEvidence.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "C68F76AE00DF913EB7A63442889B0A7563058E9497D572A25D565CE2305BB0AF"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/RecordedInventoryHistory.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Detached read-only history loader and pure maintenance proof; collection Add calls construct evidence, never persist physical entities.",
+    "Sha256": "5A223358FECE147730957115BCE81D6642957A9AFA0A5E9FA399054888EBBF79"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
     "Sha256": "7CECE62EFC2D39D0BC2EB7C5866747B116CEE290990854A3050DE97A4CFF15E6"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/SelectiveProjectionReconstruction.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only maintenance evidence and local collection construction. No SaveChanges, physical SQL writes or guard bypass. Canonical transaction owner performs separately approved projection changes.",
+    "Sha256": "17BD7AECBAE410BB6B10A08266950E236A0268D41C2B1DED9A53CAD91C4CB83B"
   },
   {
     "Path": "src/CropQc.Data/ReceiptQcSampleCoordinator.cs",
@@ -213,7 +261,13 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "3D005251FF644EBE303DB63DEA6D4B67F83DD68C3DA69669724C63D532573AF6"
+    "Sha256": "A64A9AA56A73BAE862D04242F3B91C66654C3DEBD8AB23CC2C4382B46794F57F"
+  },
+  {
+    "Path": "src/CropQc.Shared/Inventory/InventoryEventReplay.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
+    "Sha256": "B67858A5BEF9B40171CD65B653E42776A6B1E65DC23E95E6B45432E86BA8CAC3"
   },
   {
     "Path": "src/CropQc.Shared/Storage/GoogleDriveStorageService.cs",
@@ -231,7 +285,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "FD88094912099364D3C1240CBB821F404FA5B6CD240F3A05362DA79C5FF617CE"
+    "Sha256": "D98697A7A0C4829A611BBE8CBEF2B882F97F6B7E43FBB24FF49EA61DB36AE888"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
@@ -261,7 +315,7 @@
     "Path": "src/CropQc.Web/Services/BinsRunService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "DCAB4B32F240DBC9827BFE0A092DF38B8DCCF6E4F7ECAEB9AC9B4DD81D479F2E"
+    "Sha256": "1512EBC76883C49265808B63B62459C6EFC2B5898AD39FBCDAC2A1F032C8832F"
   },
   {
     "Path": "src/CropQc.Web/Services/BinsRunService.cs",
@@ -285,7 +339,7 @@
     "Path": "src/CropQc.Web/Services/DashboardDataService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "12CE806C7F31DF1CA9D674A6A78A592EA4DE9686ADA02818EFCCE5B0556CE8FE"
+    "Sha256": "33AE05B515068B39D9222295B34854FAE69148AC9A08070608306AE52E68324E"
   },
   {
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
@@ -294,16 +348,16 @@
     "Sha256": "A2ABED3DCE7AF1D22B31793470F0D221E9C2E0DCDA4E20C61A6542B02ABB2457"
   },
   {
-    "Path": "src/CropQc.Web/Services/DataCleanupService.cs",
-    "Classification": "Nonphysical or read-only",
-    "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "94C2F8FA083EBCC64D427EB40B7521BB40EB7295A87E94223E41B173C6A03F64"
-  },
-  {
     "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Schema existence inspection only; matching UpdatedAt/Add strings are descriptions or local collection construction, not row repair.",
     "Sha256": "17CFF19DC75D60633F31CD122C5CFD80A071D0F7AB214865622E6EC0102EB82B"
+  },
+  {
+    "Path": "src/CropQc.Web/Services/DataCleanupService.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
+    "Sha256": "94C2F8FA083EBCC64D427EB40B7521BB40EB7295A87E94223E41B173C6A03F64"
   },
   {
     "Path": "src/CropQc.Web/Services/EmailOptions.cs",
@@ -333,7 +387,7 @@
     "Path": "src/CropQc.Web/Services/InterCrewTransferService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "9A0F0CD0210BC2317497C4FDA0827142B38DE6436BF490D74E0303DF1E8C350B"
+    "Sha256": "7924C70B1EB5423B3BA049D7E1477B70E4689C2EA6B85F3B5B82F606DEA91436"
   },
   {
     "Path": "src/CropQc.Web/Services/InterCrewTransferService.cs",
@@ -435,7 +489,7 @@
     "Path": "src/CropQc.Web/Services/QcSummaryEmailComposer.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "26C2F4C50C6C9B48F35C7B45D429337947367CB0E4962543205FF8296E5B7CB3"
+    "Sha256": "D713B2E74BA56D1059BCDB89D56A3D7EE104D88E8DE5DB46EEB7F07A5DD50902"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
@@ -507,7 +561,7 @@
     "Path": "src/CropQc.Web/Services/RoomTreatmentService.CanonicalReceiving.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "41268DC6F3ACCB402F50D7D0F007D17A0A47F6A22D4EFCA87057A8F48ADD1301"
+    "Sha256": "C5FC6ED57171724B326481E107D85CFBE304E8A3ECBB3E955912AA64CDDBD790"
   },
   {
     "Path": "src/CropQc.Web/Services/RoomTreatmentService.cs",
@@ -567,7 +621,7 @@
     "Path": "src/CropQc.Web/Services/TruckReceiptReconciliationService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "77744845B29421AD8CAADB3B30A7A15895ACA9CA608372D3B63DF39F16FED4B4"
+    "Sha256": "6A959E021B36BBCBA44024F3764426149A1E7EC35FE0B921CF61C398595C26A7"
   },
   {
     "Path": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",

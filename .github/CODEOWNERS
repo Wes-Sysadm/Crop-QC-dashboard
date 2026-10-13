@@ -1,0 +1,13 @@
+# Owner routing and accountability. Under effective ADR-007 this is not a
+# requirement for duplicate GitHub approval; never bypass actual branch settings.
+/AGENTS.md @Wes-Sysadm
+AGENTS.md @Wes-Sysadm
+AGENTS.override.md @Wes-Sysadm
+/.github/ @Wes-Sysadm
+/docs/governance/ @Wes-Sysadm
+/docs/inventory-architecture/ @Wes-Sysadm
+/docs/change-scoped-testing-standard.md @Wes-Sysadm
+/docs/overnight-release-standard.md @Wes-Sysadm
+/scripts/governance/ @Wes-Sysadm
+/scripts/Sync-CropQcKnowledge.ps1 @Wes-Sysadm
+/tests/CropQc.Api.Tests/ @Wes-Sysadm

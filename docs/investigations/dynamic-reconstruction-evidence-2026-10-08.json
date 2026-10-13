@@ -1,0 +1,3039 @@
+{
+  "scope": "Local verified backup #186 and disposable fixtures only; no production-current quantities",
+  "productionRead": false,
+  "productionWrite": false,
+  "backupOperation": false,
+  "merge": false,
+  "deployment": false,
+  "restoreVerification": {
+    "run": 186,
+    "bytes": 17317796,
+    "sha256": "0170afc86576e3c57483ebdf1cc3b431555b545bf1cd9e454e7e020bdf22ccc0",
+    "commit": "e58d73a12c8bf0cc5f0f2333e442497e2b91b807",
+    "snapshot": "2026-10-07T23:53:37.406346+00:00",
+    "database": "pr271_release_dynamic_verified186",
+    "restoredAt": "2026-10-08T17:59:53.003500+00:00",
+    "archiveCrc": true,
+    "componentsVerified": 4,
+    "dumpBytes": 311151169,
+    "frozenPhotos": 11768,
+    "restored": true
+  },
+  "rehearsal": {
+    "results": [
+      {
+        "target": {
+          "warehouseId": 1,
+          "roomId": 15,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 511,
+            "fruitProfileId": 2,
+            "lot": "3152",
+            "growerNumber": "3152",
+            "variety": "GALA",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 61,
+        "projectedQuantity": 162,
+        "old": [
+          {
+            "id": 414,
+            "beforeQuantity": 101,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:07:31.459524+00:00"
+          },
+          {
+            "id": 426,
+            "beforeQuantity": 61,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:10:39.473749+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r15-g511",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 806,
+          "repairAuditId": 174804,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "46460CC2224B7C8E956261FF34F4016249BD18B55BD496E78F9D3255EA4B125E"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r15-g511",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 806,
+          "repairAuditId": 174804,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "46460CC2224B7C8E956261FF34F4016249BD18B55BD496E78F9D3255EA4B125E"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r15-g511",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 806,
+          "repairAuditId": 174804,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "46460CC2224B7C8E956261FF34F4016249BD18B55BD496E78F9D3255EA4B125E"
+        }
+      },
+      {
+        "target": {
+          "warehouseId": 1,
+          "roomId": 15,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 642,
+            "fruitProfileId": 2,
+            "lot": "9682",
+            "growerNumber": "9682",
+            "variety": "GALA",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 252,
+        "projectedQuantity": 536,
+        "old": [
+          {
+            "id": 419,
+            "beforeQuantity": 284,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:08:26.048562+00:00"
+          },
+          {
+            "id": 428,
+            "beforeQuantity": 252,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-04T15:12:12.615589+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r15-g642",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 807,
+          "repairAuditId": 174806,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B37A7F75833BE6840569410DFEE843251581EA1395D65E226B25725D57105A3D"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r15-g642",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 807,
+          "repairAuditId": 174806,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B37A7F75833BE6840569410DFEE843251581EA1395D65E226B25725D57105A3D"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r15-g642",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 807,
+          "repairAuditId": 174806,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B37A7F75833BE6840569410DFEE843251581EA1395D65E226B25725D57105A3D"
+        }
+      },
+      {
+        "target": {
+          "warehouseId": 4,
+          "roomId": 4,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 448,
+            "fruitProfileId": 17,
+            "lot": "1372",
+            "growerNumber": "1372",
+            "variety": "BART",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 1122,
+        "projectedQuantity": 1568,
+        "old": [
+          {
+            "id": 617,
+            "beforeQuantity": 134,
+            "afterQuantity": 0,
+            "beforeVersion": 4,
+            "afterVersion": 5,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 774,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-17T16:30:28.491918+00:00"
+          },
+          {
+            "id": 618,
+            "beforeQuantity": 604,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.420452+00:00"
+          },
+          {
+            "id": 619,
+            "beforeQuantity": 250,
+            "afterQuantity": 0,
+            "beforeVersion": 5,
+            "afterVersion": 6,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 660,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-18T19:13:00.487129+00:00"
+          },
+          {
+            "id": 630,
+            "beforeQuantity": 324,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-21T04:33:20.693509+00:00"
+          },
+          {
+            "id": 669,
+            "beforeQuantity": 72,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 626,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.403441+00:00"
+          },
+          {
+            "id": 670,
+            "beforeQuantity": 184,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": 720,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-24T16:52:50.41405+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r4-g448",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 808,
+          "repairAuditId": 174808,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B3207E242AD42FC0B7B30D71AC956E87B6CB8472F3FEAE64D6CD657CB128BC05"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r4-g448",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 808,
+          "repairAuditId": 174808,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B3207E242AD42FC0B7B30D71AC956E87B6CB8472F3FEAE64D6CD657CB128BC05"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r4-g448",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 808,
+          "repairAuditId": 174808,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "B3207E242AD42FC0B7B30D71AC956E87B6CB8472F3FEAE64D6CD657CB128BC05"
+        }
+      },
+      {
+        "target": {
+          "warehouseId": 2,
+          "roomId": 47,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 495,
+            "fruitProfileId": 18,
+            "lot": "2350",
+            "growerNumber": "2350",
+            "variety": "DANJ",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 202,
+        "projectedQuantity": 598,
+        "old": [
+          {
+            "id": 407,
+            "beforeQuantity": 396,
+            "afterQuantity": 0,
+            "beforeVersion": 4,
+            "afterVersion": 5,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-09T23:31:49.201204+00:00"
+          },
+          {
+            "id": 557,
+            "beforeQuantity": 202,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-10T20:15:05.899942+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r47-g495",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 809,
+          "repairAuditId": 174810,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "1B4C1158F8761A8B89DA1C089413E3F1AF8621E659C630C8F943216BD9548AEB"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r47-g495",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 809,
+          "repairAuditId": 174810,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "1B4C1158F8761A8B89DA1C089413E3F1AF8621E659C630C8F943216BD9548AEB"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r47-g495",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 809,
+          "repairAuditId": 174810,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "1B4C1158F8761A8B89DA1C089413E3F1AF8621E659C630C8F943216BD9548AEB"
+        }
+      },
+      {
+        "target": {
+          "warehouseId": 4,
+          "roomId": 2,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 398,
+            "fruitProfileId": 2,
+            "lot": "1084",
+            "growerNumber": "1084",
+            "variety": "GALA",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 10,
+        "projectedQuantity": 130,
+        "old": [
+          {
+            "id": 65,
+            "beforeQuantity": 120,
+            "afterQuantity": 0,
+            "beforeVersion": 5,
+            "afterVersion": 6,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-01T21:02:40.777355+00:00"
+          },
+          {
+            "id": 597,
+            "beforeQuantity": 10,
+            "afterQuantity": 0,
+            "beforeVersion": 3,
+            "afterVersion": 4,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-14T14:54:49.543054+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r2-g398",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 810,
+          "repairAuditId": 174812,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "3F4AD88ACD0890472B4DE344849C8F630F0D5A77527DD99FACE8C082F8E2A3F7"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r2-g398",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 810,
+          "repairAuditId": 174812,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "3F4AD88ACD0890472B4DE344849C8F630F0D5A77527DD99FACE8C082F8E2A3F7"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r2-g398",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 810,
+          "repairAuditId": 174812,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "3F4AD88ACD0890472B4DE344849C8F630F0D5A77527DD99FACE8C082F8E2A3F7"
+        }
+      },
+      {
+        "target": {
+          "warehouseId": 4,
+          "roomId": 5,
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 495,
+            "fruitProfileId": 18,
+            "lot": "2350",
+            "growerNumber": "2350",
+            "variety": "DANJ",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "isComplete": true
+          }
+        },
+        "authoritativeQuantity": 170,
+        "projectedQuantity": 362,
+        "old": [
+          {
+            "id": 552,
+            "beforeQuantity": 192,
+            "afterQuantity": 0,
+            "beforeVersion": 2,
+            "afterVersion": 3,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-09T23:31:49.201204+00:00"
+          },
+          {
+            "id": 553,
+            "beforeQuantity": 170,
+            "afterQuantity": 0,
+            "beforeVersion": 6,
+            "afterVersion": 7,
+            "beforeDisposition": "Current",
+            "afterDisposition": "Historical",
+            "signature": "u",
+            "receiptId": null,
+            "applicationIds": [],
+            "rawIdentityKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "treatmentState": "Untreated",
+            "beforeUpdatedAt": "2026-09-21T04:42:41.170619+00:00"
+          }
+        ],
+        "result": {
+          "status": "Committed",
+          "operationKey": "rehearsal186-r5-g495",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 811,
+          "repairAuditId": 174814,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "261C5E23C8B766EC7930AEE3C9D94F5A37FD44AB33CF02B6A96D1D60496A607F"
+        },
+        "verification": {
+          "status": "Verified",
+          "operationKey": "rehearsal186-r5-g495",
+          "detail": "Committed repair and fresh canonical quantity, custody, treatment, identity and preserved projections verify independently.",
+          "replacementSegmentId": 811,
+          "repairAuditId": 174814,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "261C5E23C8B766EC7930AEE3C9D94F5A37FD44AB33CF02B6A96D1D60496A607F"
+        },
+        "replay": {
+          "status": "Replayed",
+          "operationKey": "rehearsal186-r5-g495",
+          "detail": "Historical projections superseded; authoritative inventory and treatment evidence preserved.",
+          "replacementSegmentId": 811,
+          "repairAuditId": 174814,
+          "authoritativeQuantityDelta": 0,
+          "verificationSeal": "261C5E23C8B766EC7930AEE3C9D94F5A37FD44AB33CF02B6A96D1D60496A607F"
+        }
+      }
+    ],
+    "after": [
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 511,
+          "fruitProfileId": 2,
+          "lot": "3152",
+          "growerNumber": "3152",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 1,
+          "roomId": 15,
+          "facility": "EBS",
+          "name": "Evans-5",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 61,
+        "rawProjectionQuantity": 61,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 414,
+            "rawKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-04T14:57:43.99909+00:00",
+            "updatedAt": "2026-10-08T18:00:37.827404+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 101
+          },
+          {
+            "id": 426,
+            "rawKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-04T15:10:39.464615+00:00",
+            "updatedAt": "2026-10-08T18:00:37.827404+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 61
+          },
+          {
+            "id": 806,
+            "rawKey": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+            "quantity": 61,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:00:37.827404+00:00",
+            "updatedAt": "2026-10-08T18:00:37.827404+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      },
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 642,
+          "fruitProfileId": 2,
+          "lot": "9682",
+          "growerNumber": "9682",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 1,
+          "roomId": 15,
+          "facility": "EBS",
+          "name": "Evans-5",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 252,
+        "rawProjectionQuantity": 252,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 419,
+            "rawKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-04T15:00:55.020622+00:00",
+            "updatedAt": "2026-10-08T18:01:19.203299+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 284
+          },
+          {
+            "id": 428,
+            "rawKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-04T15:12:12.603259+00:00",
+            "updatedAt": "2026-10-08T18:01:19.203299+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 252
+          },
+          {
+            "id": 807,
+            "rawKey": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+            "quantity": 252,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:01:19.203299+00:00",
+            "updatedAt": "2026-10-08T18:01:19.203299+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      },
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 448,
+          "fruitProfileId": 17,
+          "lot": "1372",
+          "growerNumber": "1372",
+          "variety": "BART",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 4,
+          "roomId": 4,
+          "facility": "WP",
+          "name": "WP-7",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 1122,
+        "rawProjectionQuantity": 1122,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Ambiguous",
+          "receiptIds": [
+            626,
+            660,
+            720,
+            774
+          ],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 617,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": 774,
+            "createdAt": "2026-09-17T16:29:01.533122+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 5,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 134
+          },
+          {
+            "id": 618,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-17T16:29:01.546926+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 604
+          },
+          {
+            "id": 619,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": 660,
+            "createdAt": "2026-09-17T16:30:52.825979+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 6,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 250
+          },
+          {
+            "id": 630,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-21T04:33:20.682528+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 324
+          },
+          {
+            "id": 669,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": 626,
+            "createdAt": "2026-09-24T16:52:50.39704+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 3,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 72
+          },
+          {
+            "id": 670,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": 720,
+            "createdAt": "2026-09-24T16:52:50.408119+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 3,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 184
+          },
+          {
+            "id": 808,
+            "rawKey": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+            "quantity": 1122,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:02:00.659172+00:00",
+            "updatedAt": "2026-10-08T18:02:00.659172+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      },
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 495,
+          "fruitProfileId": 18,
+          "lot": "2350",
+          "growerNumber": "2350",
+          "variety": "DANJ",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 2,
+          "roomId": 47,
+          "facility": "DH",
+          "name": "DH-15",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 202,
+        "rawProjectionQuantity": 202,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 407,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-03T18:46:18.428215+00:00",
+            "updatedAt": "2026-10-08T18:02:32.496424+00:00",
+            "version": 5,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 396
+          },
+          {
+            "id": 557,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-10T20:15:05.804867+00:00",
+            "updatedAt": "2026-10-08T18:02:32.496424+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 202
+          },
+          {
+            "id": 809,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "quantity": 202,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:02:32.496424+00:00",
+            "updatedAt": "2026-10-08T18:02:32.496424+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      },
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 398,
+          "fruitProfileId": 2,
+          "lot": "1084",
+          "growerNumber": "1084",
+          "variety": "GALA",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 4,
+          "roomId": 2,
+          "facility": "WP",
+          "name": "WP-5",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 10,
+        "rawProjectionQuantity": 10,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 65,
+            "rawKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-08-20T17:24:21.31066+00:00",
+            "updatedAt": "2026-10-08T18:03:04.201531+00:00",
+            "version": 6,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 120
+          },
+          {
+            "id": 597,
+            "rawKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-14T14:54:49.530913+00:00",
+            "updatedAt": "2026-10-08T18:03:04.201531+00:00",
+            "version": 4,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 10
+          },
+          {
+            "id": 810,
+            "rawKey": "2026|398|2|1084|1084|GALA|CONVENTIONAL|False|",
+            "quantity": 10,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:03:04.201531+00:00",
+            "updatedAt": "2026-10-08T18:03:04.201531+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      },
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 495,
+          "fruitProfileId": 18,
+          "lot": "2350",
+          "growerNumber": "2350",
+          "variety": "DANJ",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "Conventional",
+          "key": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "Room",
+          "warehouseId": 4,
+          "roomId": 5,
+          "facility": "WP",
+          "name": "WP-8",
+          "custodyRecordId": null
+        },
+        "authoritativeQuantity": 170,
+        "rawProjectionQuantity": 170,
+        "treatmentConfidence": "Proven",
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "blockers": [],
+        "exactReceiptOperable": false,
+        "segments": [
+          {
+            "id": 552,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-09T23:31:49.201204+00:00",
+            "updatedAt": "2026-10-08T18:03:36.26218+00:00",
+            "version": 3,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 192
+          },
+          {
+            "id": 553,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|CONVENTIONAL",
+            "quantity": 0,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-09-09T23:45:30.21799+00:00",
+            "updatedAt": "2026-10-08T18:03:36.26218+00:00",
+            "version": 7,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Historical",
+            "retiredQuantity": 170
+          },
+          {
+            "id": 811,
+            "rawKey": "2026|495|18|2350|2350|DANJ|CONVENTIONAL|False|",
+            "quantity": 170,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": null,
+            "createdAt": "2026-10-08T18:03:36.26218+00:00",
+            "updatedAt": "2026-10-08T18:03:36.26218+00:00",
+            "version": 1,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null
+          }
+        ]
+      }
+    ],
+    "protectedUnchanged": true
+  },
+  "protectedBefore": {
+    "ActualRunRevisions": "5599a746fc2b3c46c99ab5585666118f",
+    "ActualRuns": "a0df89c4d929305c174a0051d56aea30",
+    "AuditLogs": "9cd5c2b7d5ee75318a11a202b68804e4",
+    "BinsRunEntries": "e4c9f88a1bba745df56979355134f348",
+    "FruitProfiles": "f3383e7f5a68399d13c4bd407567c41a",
+    "GrowerLots": "a29a944a4267f3b11c6b11012d21c842",
+    "InterCrewTransfers": "ec6b3e7d746e2eee5b1bbf946602826a",
+    "InventoryCommands": "82389b4a0dad0b5146ee9caa7c0da722",
+    "InventoryIdentityCorrections": "58232b406ff7640bbc0d548095592eb6",
+    "OutsideWarehouseTransfers": "86fb24752546646a00de3dca7a5f0a81",
+    "ProcessorShipmentLines": "d41d8cd98f00b204e9800998ecf8427e",
+    "ProcessorShipments": "d41d8cd98f00b204e9800998ecf8427e",
+    "ReceiptInventoryOverrides": "a28cc74579e787064df31a2253ae7537",
+    "Receipts": "da52203ac30217fe5a2f68440eb8b9cd",
+    "ReceiptVarietyLines": "d41d8cd98f00b204e9800998ecf8427e",
+    "RoomDepletions": "32c44e5c2fa50bb57546686ef528bc91",
+    "RoomInventoryAdjustments": "caec5e8559342abf81e1c6220744b443",
+    "RoomInventoryLosses": "4507511b996d5327ba47d77348c9164e",
+    "Rooms": "aabf4ca372a1bb5ec76b5f9943616817",
+    "RoomTransfers": "1addbcae676274444dcab1c1a521c53f",
+    "RoomTreatmentApplications": "de9f3e7b1b8bf5198c04e99734c4deb1",
+    "RoomTreatmentApplicationSources": "f5ec10d6ba59cace8cda671867b11dc2",
+    "TreatmentLineageMovements": "543a0bb285eb95c4a4e97b9594606bfc",
+    "TreatmentLineageSegmentApplications": "00e16b097e721dea8323f8f34066640f",
+    "TreatmentLineageSegments": "8901f3223b5727646b13509e8f34b88b",
+    "Warehouses": "143dfb7da90ec3fca4e5e681d89cb2c7"
+  },
+  "protectedAfter": {
+    "ActualRunRevisions": "5599a746fc2b3c46c99ab5585666118f",
+    "ActualRuns": "a0df89c4d929305c174a0051d56aea30",
+    "AuditLogs": "9cd5c2b7d5ee75318a11a202b68804e4",
+    "BinsRunEntries": "e4c9f88a1bba745df56979355134f348",
+    "FruitProfiles": "f3383e7f5a68399d13c4bd407567c41a",
+    "GrowerLots": "a29a944a4267f3b11c6b11012d21c842",
+    "InterCrewTransfers": "ec6b3e7d746e2eee5b1bbf946602826a",
+    "InventoryCommands": "82389b4a0dad0b5146ee9caa7c0da722",
+    "InventoryIdentityCorrections": "58232b406ff7640bbc0d548095592eb6",
+    "OutsideWarehouseTransfers": "86fb24752546646a00de3dca7a5f0a81",
+    "ProcessorShipmentLines": "d41d8cd98f00b204e9800998ecf8427e",
+    "ProcessorShipments": "d41d8cd98f00b204e9800998ecf8427e",
+    "ReceiptInventoryOverrides": "a28cc74579e787064df31a2253ae7537",
+    "Receipts": "da52203ac30217fe5a2f68440eb8b9cd",
+    "ReceiptVarietyLines": "d41d8cd98f00b204e9800998ecf8427e",
+    "RoomDepletions": "32c44e5c2fa50bb57546686ef528bc91",
+    "RoomInventoryAdjustments": "caec5e8559342abf81e1c6220744b443",
+    "RoomInventoryLosses": "4507511b996d5327ba47d77348c9164e",
+    "Rooms": "aabf4ca372a1bb5ec76b5f9943616817",
+    "RoomTransfers": "1addbcae676274444dcab1c1a521c53f",
+    "RoomTreatmentApplications": "de9f3e7b1b8bf5198c04e99734c4deb1",
+    "RoomTreatmentApplicationSources": "f5ec10d6ba59cace8cda671867b11dc2",
+    "TreatmentLineageMovements": "543a0bb285eb95c4a4e97b9594606bfc",
+    "TreatmentLineageSegmentApplications": "00e16b097e721dea8323f8f34066640f",
+    "TreatmentLineageSegments": "8901f3223b5727646b13509e8f34b88b",
+    "Warehouses": "143dfb7da90ec3fca4e5e681d89cb2c7"
+  },
+  "readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 979,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1079,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 986,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 438,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 438 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "invalidOutside": 0
+    }
+  },
+  "focusedTests": {
+    "counters": {
+      "total": "205",
+      "executed": "205",
+      "passed": "205",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "cases": [
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"state\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.8321923"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"variety\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9022652"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Transfer projection surviving depletion\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002971"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityHostTests.Shadow_endpoint_requires_admin_and_serves_readonly_comparison",
+        "outcome": "Passed",
+        "duration": "00:00:02.5038107"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityDatabaseTests.Admin_diagnostic_has_explicit_admin_policy_and_only_get_actions",
+        "outcome": "Passed",
+        "duration": "00:00:00.0016408"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Room transfer state\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002166"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.All_32_original_workflows_have_explicit_adapter_or_nonphysical_classification",
+        "outcome": "Passed",
+        "duration": "00:00:00.0346245"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Pack-run dump state\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000241"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Legacy_packing_debits_require_exact_committed_run_evidence(fault: \"missing-entry\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0014413"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Truck Receipt InTransit inventory\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001981"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Unavailable_independent_commit_lookup_reports_unknown_and_same_key_recovers",
+        "outcome": "Passed",
+        "duration": "00:00:02.0181415"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Status-key alias duplicate\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004372"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityHostTests.Web_and_API_hosts_resolve_the_same_shared_contract_and_answer",
+        "outcome": "Passed",
+        "duration": "00:00:04.4978749"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"duplicate-operation\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0006010"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"approval\")",
+        "outcome": "Passed",
+        "duration": "00:00:03.6253991"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 5, fault: \"missing-original\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012382"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 2, fault: \"missing-audit\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0026968"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"seal\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0147497"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Complete_recorded_timelines_prove_only_shared_treatment_and_preserve_every_event(room: 47, quantity: 202, projected: 598, ledgerRows: 13, ancestryRooms: 2)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0019865"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"signature\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.7904528"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Audited_receipt_corrections_and_void_use_committed_effects(corrected: 5, isVoid: False, afterMovement: False)",
+        "outcome": "Passed",
+        "duration": "00:00:03.5043212"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"changed-lot\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002515"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Operational_parents_cannot_be_ignored_when_their_ledger_effect_is_missing(parent: \"packing\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0013151"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Missing projection treatment evidence\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002029"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Negative ledger position\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0014870"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Unlinked_treatment_and_unproven_return_cannot_be_masked_by_a_balanced_count",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004371"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Proved_current_pool_does_not_invent_the_cause_of_old_excess",
+        "outcome": "Passed",
+        "duration": "00:00:00.0014479"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"unexpected-current\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.8069043"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityDatabaseTests.Shared_module_is_resolvable_without_referencing_Web_or_API",
+        "outcome": "Passed",
+        "duration": "00:00:01.3019342"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Room 14 Bartlett 1372 original pooled overcount\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004353"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Unresolved receipt provenance\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0015288"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Wp8_requires_actual_ancestry_through_Dh15_to_original_receipt_1288(fault: \"source-receipt\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0019549"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"Received\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.4990109"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"lot\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9667496"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Audited_receipt_corrections_and_void_use_committed_effects(corrected: 5, isVoid: False, afterMovement: True)",
+        "outcome": "Passed",
+        "duration": "00:00:03.4097437"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Randomized_projection_quantities_never_create_physical_stock",
+        "outcome": "Passed",
+        "duration": "00:00:00.0149802"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityDatabaseTests.Resolver_preserves_tracked_entities_timestamps_projections_and_audits",
+        "outcome": "Passed",
+        "duration": "00:00:00.0387216"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.In_transit_dispatch_is_counted_once_and_kept_separate_from_room_quantity",
+        "outcome": "Passed",
+        "duration": "00:00:01.6849933"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Point_in_time_treatment_and_new_untreated_receiving_are_preserved_when_mixed_repair_is_blocked(transfer: True)",
+        "outcome": "Passed",
+        "duration": "00:00:01.8100247"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"PartiallyReceived\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.5662898"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 47, fault: \"missing-original\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0007593"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 5, fault: \"missing-audit\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012983"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalRoomMoveWorkflowTests.Room_screen_bulk_move_and_exact_reversal_conserve_each_lot_and_preserve_history",
+        "outcome": "Passed",
+        "duration": "00:00:06.8301445"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 47, fault: \"treatment\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012421"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Audited_receipt_corrections_and_void_use_committed_effects(corrected: 16, isVoid: False, afterMovement: True)",
+        "outcome": "Passed",
+        "duration": "00:00:06.8301545"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Cross_company_matched_truck_receipt_is_not_another_physical_origin",
+        "outcome": "Passed",
+        "duration": "00:00:01.8166699"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Returned/recreated source bins\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 20, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 20)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000780"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"identity-key\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0329771"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 2, fault: \"missing-correction\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011520"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Negative_authority_is_not_clamped_or_treated_as_valid",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001522"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Correction_reason_never_changes_treatment_proof_or_assigns_receipts(room: 2)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0144691"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Outside Warehouse custody\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = OutsideWarehouse, WarehouseId = 903, RoomId = , Facility = Test, Name = Destination, CustodyRecordId = 50 }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000085"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Exact receipt provenance\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004763"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests.Ordinary_receipt_conversion_and_unposted_receiving_use_one_audited_stock_creation",
+        "outcome": "Passed",
+        "duration": "00:00:03.1929044"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 5, fault: \"effective-overdraw\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0017723"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Missing projection treatment evidence\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000106"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"changed-current\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000492"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Room 14 Bartlett 1372 original pooled overcount\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 798, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 798)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0035215"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Ambiguous_receipt_is_valid_for_dump_but_never_for_receipt_specific_correction",
+        "outcome": "Passed",
+        "duration": "00:00:00.0010198"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Operational_parents_cannot_be_ignored_when_their_ledger_effect_is_missing(parent: \"transfer\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0024726"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Split transfer\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 20, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 20)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000823"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"production-type\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.7253317"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock(treatmentRoom: 904, expectedOperable: False)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000297"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Status-key alias duplicate\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 1122, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 1122)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000833"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Multiple balanced treatment signatures\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 20, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 20)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000293"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 47, fault: \"effective-overdraw\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0013387"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityDatabaseTests.InTransit_adapter_uses_dispatch_custody_and_rejects_unbalanced_parent",
+        "outcome": "Passed",
+        "duration": "00:00:00.1619636"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalDepletionWorkflowTests.Exact_receipt_depletion_refuses_overdraw_and_reverses_without_reviving_history",
+        "outcome": "Passed",
+        "duration": "00:00:03.5170696"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Duplicate_receipt_ticket_is_not_a_second_origin",
+        "outcome": "Passed",
+        "duration": "00:00:01.4470055"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Operational_parents_cannot_be_ignored_when_their_ledger_effect_is_missing(parent: \"receipt\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0032659"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Invalid_original_commit_cannot_be_excused_by_a_valid_current_replacement_or_later_receiving",
+        "outcome": "Passed",
+        "duration": "00:00:01.5115894"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Truck Receipt InTransit inventory\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = InTransit, WarehouseId = 903, RoomId = , Facility = Test, Name = Destination, CustodyRecordId = 50 }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000225"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.A_room_application_before_any_arrival_is_not_attached_to_later_inventory(room: 2)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0010238"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Committed_activity_between_preview_and_execution_requires_fresh_approval(operation: \"packing\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.4973820"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Balanced lineage\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002661"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"retired-metadata\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.8051591"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"db.RoomInventoryAdjustments.Add(new());\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000128"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"changed-audit\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000457"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Complete_recorded_timelines_prove_only_shared_treatment_and_preserve_every_event(room: 2, quantity: 10, projected: 130, ledgerRows: 19, ancestryRooms: 1)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0103160"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"transfer-out\", first: 21, second: 8, deducted: 7)",
+        "outcome": "Passed",
+        "duration": "00:00:02.3780615"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"both-directions\", first: 17, second: 9, deducted: 6)",
+        "outcome": "Passed",
+        "duration": "00:00:02.1270131"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Valid_revision_arithmetic_never_proves_surviving_custody(id: 1373, original: 66, deleted: True)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0009232"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"EVANS-3 lot 9722\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002865"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"disposition\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0390047"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Pack-run dump state\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0014470"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"organic\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.7473415"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceiptCorrectionWorkflowTests.Quantity_correction_and_void_change_only_exact_receipt_stock_with_atomic_audits_and_replay",
+        "outcome": "Passed",
+        "duration": "00:00:03.5049991"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Wp7_accounts_for_duplicate_and_consumed_history_without_inventing_receipt_allocation",
+        "outcome": "Passed",
+        "duration": "00:00:00.0110934"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Partial movement\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 12, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 12)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000443"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"LAMB-14 lot 9682\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002248"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Complete_recorded_timelines_prove_only_shared_treatment_and_preserve_every_event(room: 5, quantity: 170, projected: 362, ledgerRows: 12, ancestryRooms: 3)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0030904"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalLossWorkflowTests.Loss_and_restoration_use_canonical_stock_and_do_not_revive_historical_excess",
+        "outcome": "Passed",
+        "duration": "00:00:03.6252482"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceiptCorrectionWorkflowTests.Correction_failure_rolls_back_receipt_projection_ledger_override_and_audits",
+        "outcome": "Passed",
+        "duration": "00:00:14.7937825"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityDatabaseTests.Provider_batch_round_trips_are_bounded_and_legacy_baseline_is_measured",
+        "outcome": "Passed",
+        "duration": "00:00:10.0768886"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Actual_audit_movement_and_parent_save_failures_roll_back_all_tables",
+        "outcome": "Passed",
+        "duration": "00:00:06.8301154"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Wp8_requires_actual_ancestry_through_Dh15_to_original_receipt_1288(fault: \"transfer-pair\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0015238"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Stale depleted projection\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004175"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"InTransit\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.6623460"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Committed_activity_between_preview_and_execution_requires_fresh_approval(operation: \"transfer\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.6288485"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"LAMB-14 lot 9682\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 27, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 27)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000423"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.A_room_application_before_any_arrival_is_not_attached_to_later_inventory(room: 47)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011521"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Partial depletion\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002155"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Exact receipt provenance\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000189"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"crop\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9362121"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Room transfer state\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000213"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Later_treatment_is_recognized_without_certifying_unsupported_current_allocation",
+        "outcome": "Passed",
+        "duration": "00:00:02.1849688"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Completely_depleted_history_does_not_overwrite_a_subsequent_receipt",
+        "outcome": "Passed",
+        "duration": "00:00:01.6613839"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Divergence_is_visible_and_does_not_silently_prefer_new_logic",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012539"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"warehouse\")",
+        "outcome": "Passed",
+        "duration": "00:00:03.5173747"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Requirements_filter_slices_without_replacing_physical_arithmetic",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002832"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Processor Sale custody\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Processor, WarehouseId = 903, RoomId = , Facility = Test, Name = Destination, CustodyRecordId = 50 }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000096"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"status\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.3880190"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Legacy_packing_debits_require_exact_committed_run_evidence(fault: \"changed-quantity\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0018634"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Audited_receipt_corrections_and_void_use_committed_effects(corrected: 16, isVoid: False, afterMovement: False)",
+        "outcome": "Passed",
+        "duration": "00:00:04.8947742"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"WP-7 Bartlett lot 1372\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004322"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"loss\", first: 14, second: 6, deducted: 5)",
+        "outcome": "Passed",
+        "duration": "00:00:01.9153828"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Genuine treatment ambiguity\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0503327"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalOutsideWorkflowTests.Outside_normal_workflow_and_return_conserve_stock_and_match_dump_and_processor_selectors",
+        "outcome": "Passed",
+        "duration": "00:00:03.4086707"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"db.BinsRunEntries.ExecuteDeleteAsync();\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000075"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Unresolved receipt provenance\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 1122, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 1122)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000997"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalTreatmentReversalWorkflowTests.Reversal_follows_current_room_stock_and_preserves_historical_movements_and_sources",
+        "outcome": "Passed",
+        "duration": "00:00:03.6256468"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Gap_is_not_untreated_without_arrival_evidence",
+        "outcome": "Passed",
+        "duration": "00:00:00.0118170"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Preview_approval_reconstruction_replay_preserve_authority_and_full_history",
+        "outcome": "Passed",
+        "duration": "00:00:01.7254495"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"multiple-receipts\", first: 11, second: 17, deducted: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:01.6868175"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Processor Sale custody\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004575"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Administrator_alone_forged_approval_and_unrelated_targets_do_not_authorize_writes",
+        "outcome": "Passed",
+        "duration": "00:00:02.3873228"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Every_physical_write_candidate_matches_its_reviewed_source_and_allowlist",
+        "outcome": "Passed",
+        "duration": "00:00:00.1197582"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests.Web_and_API_receiving_share_creation_proof_and_replay_without_duplicate_stock",
+        "outcome": "Passed",
+        "duration": "00:00:03.4091093"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalTreatmentReversalWorkflowTests.External_custody_survives_audited_treatment_reversal_and_returns_with_current_treatment",
+        "outcome": "Passed",
+        "duration": "00:00:02.7470772"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Interrupted_stages_roll_back_every_projection_and_audit",
+        "outcome": "Passed",
+        "duration": "00:00:07.7447552"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Receipt true-up surviving movement\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 0, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000226"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Receipt replacement/correction\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001873"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"different-lot\", first: 18, second: 0, deducted: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:01.9286691"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Ambiguous_treatment_missing_movement_depleted_and_negative_positions_are_not_candidates",
+        "outcome": "Passed",
+        "duration": "00:00:07.5446585"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInterCrewWorkflowTests.Normal_dispatch_persists_Truck_Receipt_policy_across_pause_and_reactivation",
+        "outcome": "Passed",
+        "duration": "00:00:05.9056585"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"application\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9272651"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalProcessorWorkflowTests.Multi_lot_shipment_is_one_parent_and_reverses_every_line_atomically",
+        "outcome": "Passed",
+        "duration": "00:00:03.0738404"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"await db.Database.ExecuteSqlRawAsync(sqlForReceipt\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000105"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Stale depleted projection\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 0, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000250"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Balanced lineage\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 19, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000118"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock(treatmentRoom: null, expectedOperable: False)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002358"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.A_room_application_before_any_arrival_is_not_attached_to_later_inventory(room: 5)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011624"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Lost_commit_acknowledgment_is_recovered_by_the_persisted_operation_key",
+        "outcome": "Passed",
+        "duration": "00:00:02.0115935"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"WP-7 Bartlett lot 1372\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 1122, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 1122)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001047"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"reversal\", first: 16, second: 7, deducted: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:02.4352225"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 2, fault: \"missing-original\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011025"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Correction_reason_never_changes_treatment_proof_or_assigns_receipts(room: 5)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0036159"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"malformed\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002058"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"EVANS-3 lot 9722\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001896"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Receipt replacement/correction\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002149"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalOutsideWorkflowTests.Raw_sql_and_execute_update_cannot_bypass_global_write_boundary",
+        "outcome": "Passed",
+        "duration": "00:00:02.7473143"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Outside Warehouse custody\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002056"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Only_canonical_Data_infrastructure_can_open_the_physical_write_capability",
+        "outcome": "Passed",
+        "duration": "00:00:00.0911484"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Partial depletion\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 12, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 12)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000371"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Wp8_requires_actual_ancestry_through_Dh15_to_original_receipt_1288(fault: \"missing-movement\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0015459"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"room\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9143674"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Split transfer\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0004362"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Transfer projection surviving depletion\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 0, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000288"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"quantity\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.9282578"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests.Receiving_failure_rolls_back_receipt_ledger_projection_and_normalization_together",
+        "outcome": "Passed",
+        "duration": "00:00:03.5171501"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Missing_movement_parent_cannot_be_hidden_by_balanced_new_populations",
+        "outcome": "Passed",
+        "duration": "00:00:01.5633904"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests.New_receipt_after_room_treatment_is_separate_untreated_stock_and_reversal_preserves_both_receipts",
+        "outcome": "Passed",
+        "duration": "00:00:03.6255260"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Multiple balanced treatment signatures\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002453"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"ReceivedNeedsReview\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.4973831"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"wrong-identity\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000566"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Audited_receipt_corrections_and_void_use_committed_effects(corrected: 0, isVoid: True, afterMovement: False)",
+        "outcome": "Passed",
+        "duration": "00:00:03.1777961"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 47, fault: \"missing-correction\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0006946"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Returned/recreated source bins\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0016159"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Point_in_time_treatment_and_new_untreated_receiving_are_preserved_when_mixed_repair_is_blocked(transfer: False)",
+        "outcome": "Passed",
+        "duration": "00:00:01.5480264"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Negative ledger position\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = -5, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000185"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Legacy_packing_debits_require_exact_committed_run_evidence(fault: \"missing-revision\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012220"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Valid_revision_arithmetic_never_proves_surviving_custody(id: 1754, original: 64, deleted: False)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002250"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Concurrent_receipt_transfer_treatment_consumption_and_duplicate_submission_cannot_interleave",
+        "outcome": "Passed",
+        "duration": "00:00:12.7274128"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 2, fault: \"effective-overdraw\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0010181"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalTreatmentReversalWorkflowTests.Fully_consumed_treatment_can_be_reversed_without_restoring_any_stock",
+        "outcome": "Passed",
+        "duration": "00:00:03.4040725"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"var row = new RoomInventoryAdjustment(); db.Add(ro\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002754"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"ledger\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.8856300"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"packing-after-receiving\", first: 23, second: 4, deducted: 9)",
+        "outcome": "Passed",
+        "duration": "00:00:01.8844361"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 47, fault: \"missing-audit\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0013122"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Valid_revision_arithmetic_never_proves_surviving_custody(id: 1339, original: 6, deleted: True)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000854"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Legacy_packing_debits_require_exact_committed_run_evidence(fault: \"changed-treatment\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012913"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"chronology\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000586"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Partial movement\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001912"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Later_receiving_is_distinguished_from_an_invalid_historical_repair_and_replay_is_read_only",
+        "outcome": "Passed",
+        "duration": "00:00:01.6359101"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"one-receipt\", first: 13, second: 0, deducted: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:01.8718582"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"var r = await db.Receipts.SingleAsync(); r.BinCoun\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0005826"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock(treatmentRoom: 905, expectedOperable: True)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0044936"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"grower-number\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0586449"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Correction_reason_never_changes_treatment_proof_or_assigns_receipts(room: 47)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012711"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 5, fault: \"missing-correction\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011697"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"receipt\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0061947"
+      },
+      {
+        "name": "CropQc.Api.Tests.ProjectionReconstructionTests.Stale_versions_quantities_treatment_receipts_movements_and_audits_require_new_approval",
+        "outcome": "Passed",
+        "duration": "00:00:11.6146350"
+      },
+      {
+        "name": "CropQc.Api.Tests.ReceiptRevisionEvidenceValidatorTests.Inconsistent_corrections_are_reported_without_throwing_or_promoting_proof(fault: \"missing-debit\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0035220"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Exceptional_repair_writers_are_not_exposed_by_ordinary_controllers",
+        "outcome": "Passed",
+        "duration": "00:00:00.0583774"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests.Receipt_treatment_only_changes_exact_receipt_stock_and_reversal_preserves_other_receipt",
+        "outcome": "Passed",
+        "duration": "00:00:02.7474377"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Serialization_failure_retries_whole_intent_once_with_no_duplicate_history",
+        "outcome": "Passed",
+        "duration": "00:00:04.8856790"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 5, fault: \"treatment\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011766"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Operational_parents_cannot_be_ignored_when_their_ledger_effect_is_missing(parent: \"loss\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0011922"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Independent_verifier_rejects_tampering_even_after_valid_new_receiving(mutation: \"retired-quantity\")",
+        "outcome": "Passed",
+        "duration": "00:00:02.0143535"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Missing_or_contradictory_events_and_treatment_remain_blocked(room: 2, fault: \"treatment\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0012676"
+      },
+      {
+        "name": "CropQc.Api.Tests.RecordedInventoryHistoryTests.Wp8_requires_actual_ancestry_through_Dh15_to_original_receipt_1288(fault: \"source-treatment\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0235209"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryCommandProofTests.Executable_plans_require_independent_physical_and_treatment_proof(name: \"Genuine treatment ambiguity\", e: InventoryPositionEvidence { Identity = InventoryIdentity { CropYear = 2026, GrowerLotId = 901, FruitProfileId = 902, Lot = CORPUS, GrowerNumber = CORPUS, Variety = BART, ProductionType = Conventional, IsOrganic = False, Status = , Key = 2026|901|902|CORPUS|CORPUS|BART|CONVENTIONAL|False|, IsComplete = True }, Location = InventoryLocation { Custody = Room, WarehouseId = 903, RoomId = 904, Facility = Test, Name = Source, CustodyRecordId =  }, AuthoritativeQuantity = 10, CommittedQuantity = 0, IdentityVerified = True, CustodyVerified = True, Ledger = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryLedgerEvidence], Projections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryProjectionEvidence], Movements = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryMovementEvidence], Receipts = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryReceiptEvidence], Applications = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryApplicationEvidence], Watermark = InventoryReadWatermark { Fingerprint = fixture-watermark, Consistency = Fixture, Versions = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryVersion] }, HistoricalSnapshotUnavailable = False, IdentityCorrections = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryEvidenceReference], CustodyAllocations = System.Collections.Immutable.ImmutableArray`1[CropQc.Shared.Inventory.InventoryCustodyAllocation] }, expected: 0)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000252"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Committed_activity_between_preview_and_execution_requires_fresh_approval(operation: \"receiving\")",
+        "outcome": "Passed",
+        "duration": "00:00:01.4795128"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Fresh_authority_follows_committed_transactions_and_preserves_current_populations(scenario: \"old-stock-depleted\", first: 31, second: 0, deducted: 19)",
+        "outcome": "Passed",
+        "duration": "00:00:01.7452941"
+      },
+      {
+        "name": "CropQc.Api.Tests.InventoryAvailabilityTests.Corpus_is_explained_without_mutation(name: \"Receipt true-up surviving movement\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0001820"
+      }
+    ]
+  },
+  "restoredLifecycle": {
+    "counters": {
+      "total": "1",
+      "executed": "1",
+      "passed": "1",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "cases": [
+      {
+        "name": "CropQc.Api.Tests.CanonicalProducerStateMachineTests.Restored_production_preserves_unrelated_history_through_normal_workflow_lifecycle",
+        "outcome": "Passed",
+        "duration": "00:04:24.6520805"
+      }
+    ]
+  },
+  "finalCustodyDiagnosticRerun": {
+    "counters": {
+      "total": "14",
+      "executed": "14",
+      "passed": "14",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "cases": [
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"ReceivedNeedsReview\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.8385396"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"InTransit\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.4952976"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Exceptional_repair_writers_are_not_exposed_by_ordinary_controllers",
+        "outcome": "Passed",
+        "duration": "00:00:00.0460759"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"db.RoomInventoryAdjustments.Add(new());\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000140"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"var row = new RoomInventoryAdjustment(); db.Add(ro\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0002469"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"Received\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:04.7350932"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Every_physical_write_candidate_matches_its_reviewed_source_and_allowlist",
+        "outcome": "Passed",
+        "duration": "00:00:00.1471701"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"var r = await db.Receipts.SingleAsync(); r.BinCoun\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0027764"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.Unsupported_partial_acknowledged_held_or_incomplete_settlement_is_never_room_stock(status: \"PartiallyReceived\", acknowledged: 4)",
+        "outcome": "Passed",
+        "duration": "00:00:01.5379400"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Only_canonical_Data_infrastructure_can_open_the_physical_write_capability",
+        "outcome": "Passed",
+        "duration": "00:00:00.0919188"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.All_32_original_workflows_have_explicit_adapter_or_nonphysical_classification",
+        "outcome": "Passed",
+        "duration": "00:00:00.0292839"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"db.BinsRunEntries.ExecuteDeleteAsync();\")",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000081"
+      },
+      {
+        "name": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests.Scanner_flags_new_direct_tracked_generic_and_bulk_write_shapes(source: \"await db.Database.ExecuteSqlRawAsync(sqlForReceipt\"\u00b7\u00b7\u00b7)",
+        "outcome": "Passed",
+        "duration": "00:00:00.0000077"
+      },
+      {
+        "name": "CropQc.Api.Tests.DynamicProjectionReconstructionTests.In_transit_dispatch_is_counted_once_and_kept_separate_from_room_quantity",
+        "outcome": "Passed",
+        "duration": "00:00:01.8186436"
+      }
+    ]
+  },
+  "validationSequence": "205 focused tests, restored lifecycle and six-pool rehearsal preceded the final custody rejection-message improvement; 14 custody/architecture tests and solution build passed after that diagnostic-only change.",
+  "restoredLifecycleTrace": {
+    "seed": 255,
+    "restored": true,
+    "trace": [
+      {
+        "step": 0,
+        "action": "Receive",
+        "received": 60,
+        "roomBins": 60,
+        "external": 0,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 1,
+        "ledger": 1
+      },
+      {
+        "step": 1,
+        "action": "Treatment assignment",
+        "received": 60,
+        "roomBins": 60,
+        "external": 0,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 1,
+        "ledger": 1
+      },
+      {
+        "step": 2,
+        "action": "Room move",
+        "received": 60,
+        "roomBins": 60,
+        "external": 0,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 2,
+        "ledger": 3
+      },
+      {
+        "step": 3,
+        "action": "Inter-crew dispatch",
+        "received": 60,
+        "roomBins": 56,
+        "external": 4,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 3,
+        "ledger": 4
+      },
+      {
+        "step": 4,
+        "action": "Partial transit return",
+        "received": 60,
+        "roomBins": 57,
+        "external": 3,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 4,
+        "ledger": 5
+      },
+      {
+        "step": 5,
+        "action": "Truck Receipt evidence only",
+        "received": 60,
+        "roomBins": 57,
+        "external": 3,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 4,
+        "ledger": 5
+      },
+      {
+        "step": 6,
+        "action": "Truck match (nonphysical)",
+        "received": 60,
+        "roomBins": 57,
+        "external": 3,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 4,
+        "ledger": 5
+      },
+      {
+        "step": 7,
+        "action": "Truck completion",
+        "received": 60,
+        "roomBins": 60,
+        "external": 0,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 5,
+        "ledger": 6
+      },
+      {
+        "step": 8,
+        "action": "Truck reopen",
+        "received": 60,
+        "roomBins": 57,
+        "external": 3,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 6,
+        "ledger": 7
+      },
+      {
+        "step": 9,
+        "action": "Transit cancellation return",
+        "received": 60,
+        "roomBins": 60,
+        "external": 0,
+        "consumed": 0,
+        "lost": 0,
+        "movements": 7,
+        "ledger": 8
+      },
+      {
+        "step": 10,
+        "action": "ActualRun dump",
+        "received": 60,
+        "roomBins": 58,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 8,
+        "ledger": 9
+      },
+      {
+        "step": 11,
+        "action": "Receipt quantity correction",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 9,
+        "ledger": 10
+      },
+      {
+        "step": 12,
+        "action": "Treatment reversal",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 9,
+        "ledger": 10
+      },
+      {
+        "step": 13,
+        "action": "Room move",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 10,
+        "ledger": 12
+      },
+      {
+        "step": 14,
+        "action": "Receipt identity correction",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 14,
+        "ledger": 16
+      },
+      {
+        "step": 15,
+        "action": "Processor sale",
+        "received": 61,
+        "roomBins": 58,
+        "external": 1,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 15,
+        "ledger": 17
+      },
+      {
+        "step": 16,
+        "action": "Processor return",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 16,
+        "ledger": 18
+      },
+      {
+        "step": 17,
+        "action": "Treatment assignment",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 16,
+        "ledger": 18
+      },
+      {
+        "step": 18,
+        "action": "Treatment reversal",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 16,
+        "ledger": 18
+      },
+      {
+        "step": 19,
+        "action": "Outside transfer",
+        "received": 61,
+        "roomBins": 58,
+        "external": 1,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 17,
+        "ledger": 19
+      },
+      {
+        "step": 20,
+        "action": "Outside return",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 18,
+        "ledger": 20
+      },
+      {
+        "step": 21,
+        "action": "Room move",
+        "received": 61,
+        "roomBins": 59,
+        "external": 0,
+        "consumed": 2,
+        "lost": 0,
+        "movements": 19,
+        "ledger": 22
+      },
+      {
+        "step": 22,
+        "action": "ActualRun dump",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 20,
+        "ledger": 23
+      },
+      {
+        "step": 23,
+        "action": "Treatment assignment",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 20,
+        "ledger": 23
+      },
+      {
+        "step": 24,
+        "action": "Inter-crew dispatch",
+        "received": 61,
+        "roomBins": 53,
+        "external": 4,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 21,
+        "ledger": 24
+      },
+      {
+        "step": 25,
+        "action": "Partial transit return",
+        "received": 61,
+        "roomBins": 54,
+        "external": 3,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 22,
+        "ledger": 25
+      },
+      {
+        "step": 26,
+        "action": "Truck Receipt evidence only",
+        "received": 61,
+        "roomBins": 54,
+        "external": 3,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 22,
+        "ledger": 25
+      },
+      {
+        "step": 27,
+        "action": "Truck match (nonphysical)",
+        "received": 61,
+        "roomBins": 54,
+        "external": 3,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 22,
+        "ledger": 25
+      },
+      {
+        "step": 28,
+        "action": "Truck completion",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 23,
+        "ledger": 26
+      },
+      {
+        "step": 29,
+        "action": "Truck reopen",
+        "received": 61,
+        "roomBins": 54,
+        "external": 3,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 24,
+        "ledger": 27
+      },
+      {
+        "step": 30,
+        "action": "Transit cancellation return",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 25,
+        "ledger": 28
+      },
+      {
+        "step": 31,
+        "action": "ActualRun dump",
+        "received": 61,
+        "roomBins": 56,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 26,
+        "ledger": 29
+      },
+      {
+        "step": 32,
+        "action": "Run cancellation",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 27,
+        "ledger": 30
+      },
+      {
+        "step": 33,
+        "action": "Loss",
+        "received": 61,
+        "roomBins": 54,
+        "external": 0,
+        "consumed": 4,
+        "lost": 3,
+        "movements": 28,
+        "ledger": 31
+      },
+      {
+        "step": 34,
+        "action": "Loss reversal",
+        "received": 61,
+        "roomBins": 57,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 29,
+        "ledger": 32
+      },
+      {
+        "step": 35,
+        "action": "Receipt quantity correction",
+        "received": 62,
+        "roomBins": 58,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 30,
+        "ledger": 33
+      },
+      {
+        "step": 36,
+        "action": "Receive",
+        "received": 66,
+        "roomBins": 62,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 31,
+        "ledger": 34
+      },
+      {
+        "step": 37,
+        "action": "Receive",
+        "received": 71,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 32,
+        "ledger": 35
+      },
+      {
+        "step": 38,
+        "action": "Room move",
+        "received": 71,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 4,
+        "lost": 0,
+        "movements": 33,
+        "ledger": 37
+      },
+      {
+        "step": 39,
+        "action": "ActualRun dump",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 34,
+        "ledger": 38
+      },
+      {
+        "step": 40,
+        "action": "Loss",
+        "received": 71,
+        "roomBins": 65,
+        "external": 0,
+        "consumed": 5,
+        "lost": 1,
+        "movements": 35,
+        "ledger": 39
+      },
+      {
+        "step": 41,
+        "action": "Loss reversal",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 36,
+        "ledger": 40
+      },
+      {
+        "step": 42,
+        "action": "Inter-crew dispatch",
+        "received": 71,
+        "roomBins": 62,
+        "external": 4,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 37,
+        "ledger": 41
+      },
+      {
+        "step": 43,
+        "action": "Partial transit return",
+        "received": 71,
+        "roomBins": 63,
+        "external": 3,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 38,
+        "ledger": 42
+      },
+      {
+        "step": 44,
+        "action": "Truck Receipt evidence only",
+        "received": 71,
+        "roomBins": 63,
+        "external": 3,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 38,
+        "ledger": 42
+      },
+      {
+        "step": 45,
+        "action": "Truck match (nonphysical)",
+        "received": 71,
+        "roomBins": 63,
+        "external": 3,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 38,
+        "ledger": 42
+      },
+      {
+        "step": 46,
+        "action": "Truck completion",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 39,
+        "ledger": 43
+      },
+      {
+        "step": 47,
+        "action": "Truck reopen",
+        "received": 71,
+        "roomBins": 63,
+        "external": 3,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 40,
+        "ledger": 44
+      },
+      {
+        "step": 48,
+        "action": "Transit cancellation return",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 41,
+        "ledger": 45
+      },
+      {
+        "step": 49,
+        "action": "Processor sale",
+        "received": 71,
+        "roomBins": 65,
+        "external": 1,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 42,
+        "ledger": 46
+      },
+      {
+        "step": 50,
+        "action": "Processor return",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 43,
+        "ledger": 47
+      },
+      {
+        "step": 51,
+        "action": "Treatment reversal",
+        "received": 71,
+        "roomBins": 66,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 43,
+        "ledger": 47
+      },
+      {
+        "step": 52,
+        "action": "Receipt quantity correction",
+        "received": 72,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 44,
+        "ledger": 48
+      },
+      {
+        "step": 53,
+        "action": "ActualRun dump",
+        "received": 72,
+        "roomBins": 64,
+        "external": 0,
+        "consumed": 8,
+        "lost": 0,
+        "movements": 45,
+        "ledger": 49
+      },
+      {
+        "step": 54,
+        "action": "Run cancellation",
+        "received": 72,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 46,
+        "ledger": 50
+      },
+      {
+        "step": 55,
+        "action": "Treatment assignment",
+        "received": 72,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 46,
+        "ledger": 50
+      },
+      {
+        "step": 56,
+        "action": "Receipt identity correction",
+        "received": 72,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 50,
+        "ledger": 54
+      },
+      {
+        "step": 57,
+        "action": "Outside transfer",
+        "received": 72,
+        "roomBins": 66,
+        "external": 1,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 51,
+        "ledger": 55
+      },
+      {
+        "step": 58,
+        "action": "Outside return",
+        "received": 72,
+        "roomBins": 67,
+        "external": 0,
+        "consumed": 5,
+        "lost": 0,
+        "movements": 52,
+        "ledger": 56
+      }
+    ]
+  },
+  "reviewedSourceSha256": {
+    "InventoryCommandProjectionReconstruction.cs": "8fe1f8d0ca8292e92a28ea591463330f6341ceb9cdf4b93baa685d28c656ec21",
+    "InventoryCommandReconstructionVerification.cs": "6b27b631be87de2c5ebcd845f9f27669b91a3b654e374d0f8cca56a4ce667b2a",
+    "ReconstructionCommandEvidence.cs": "444f88b30d6c92dfab8222daf05324406d2d98f73be3ed03b92adcd2987aea10",
+    "SelectiveProjectionReconstruction.cs": "17bd7aecbae410bb6b10a08266950e236a0268d41c2b1ded9a53cad91c4cb83b",
+    "RecordedInventoryHistory.cs": "5a223358fece147730957115bce81d6642957a9afa0a5e9fa399054888ebbf79",
+    "ReceiptRevisionEvidenceValidator.cs": "cb166e4643e5813f9c0e09c346d144ff504ac65969c7ad194e3276a02e752e70"
+  },
+  "validation": {
+    "restore": "PASS",
+    "solutionBuild": "PASS",
+    "defaultModel": "No pending changes",
+    "postgresModel": "Known baseline provider-specific pending-model warning; no entity, model or migration changes",
+    "format": "PASS",
+    "diffCheck": "PASS",
+    "fullSuite": "Not run; maintenance and directly affected dependency scope",
+    "githubActions": "No checks returned for draft PR #275; no CI result claimed"
+  }
+}

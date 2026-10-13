@@ -10495,6 +10495,13 @@ namespace CropQc.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("CohortKey")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)")
+                        .HasDefaultValue("");
+
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
@@ -10601,12 +10608,12 @@ namespace CropQc.Data.Migrations
 
                     b.HasIndex("RoomId", "CurrentBins");
 
-                    b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature")
+                    b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature", "CohortKey")
                         .IsUnique()
                         .HasDatabaseName("UX_TreatmentLineageSegments_Unassigned")
                         .HasFilter("[ReceiptId] IS NULL AND [Disposition] = 'Current'");
 
-                    b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature", "ReceiptId")
+                    b.HasIndex("RoomId", "IdentityKey", "TreatmentSignature", "ReceiptId", "CohortKey")
                         .IsUnique()
                         .HasDatabaseName("UX_TreatmentLineageSegments_Receipt")
                         .HasFilter("[ReceiptId] IS NOT NULL AND [Disposition] = 'Current'");

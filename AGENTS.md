@@ -1,6 +1,37 @@
 # Crop QC Dashboard — Codex Repository Instructions
 
-These instructions apply to all Codex work in this repository unless the user explicitly overrides them for a specific request.
+These instructions apply to all Codex work in this repository. Explicit task instructions may override ordinary workflow preferences (for example, continuing an existing PR), but an ordinary request is not approval to change foundational inventory, custody, treatment, conservation or audit rules. Any apparent conflict must be reported before dependent implementation. A genuine policy change requires explicit documented approval from the business owner under the change procedure, including the previous/new rule, affected workflows, approval reference/date, versioned decision and tests. Ordinary development authorization does not authorize release or repair. Explicit project-owner production release authorization covers the merge-and-release lifecycle under the [single-owner policy](docs/governance/RELEASE_AUTHORIZATION.md); it never waives production safeguards.
+
+## Start every task with current repository knowledge
+
+The [canonical business rules](docs/governance/CROP_QC_BUSINESS_RULES.md) and
+[architectural decisions](docs/governance/ARCHITECTURAL_DECISIONS.md) are authoritative.
+Business rules define the system. Authoritative transactions establish physical
+truth. Code implements those rules. Tests verify the implementation. Historical
+projections never redefine authoritative inventory.
+
+Before designing or editing, identify the Git root, branch, HEAD and current
+`origin/main`. Verify the remote is `Wes-Sysadm/Crop-QC-dashboard`, fetch current
+main explicitly, and compare local instructions using
+`./scripts/Sync-CropQcKnowledge.ps1` (report-only by default). Follow the
+[Windows setup and synchronization guide](docs/governance/WINDOWS_SETUP.md).
+Report stale, locally changed, divergent or unavailable remote instructions;
+do not silently proceed under outdated policy. Read the fetched canonical rules
+and relevant decisions if the feature branch is behind; integrate safely before
+dependent implementation. Never overwrite work to refresh instructions.
+
+For every task, including read-only reviews, provide the [rule compliance assessment](docs/governance/README.md#rule-compliance-assessment). State the applicable rule/decision IDs and affected invariants,
+then inspect existing implementation and authoritative evidence. Read only the
+directly applicable detailed specifications; unrelated historical reports need
+not be loaded. Preserve approved behavior and the workflow below. Report any
+contradiction between the request, code, tests and established rules. A technical
+discovery does not supersede policy; a genuine new business-policy choice requires
+explicit human approval under the [change procedure](docs/governance/CHANGE_PROCEDURE.md).
+Routine bug fixes do not redefine foundational rules. GitHub's reviewed `main`
+is the shared source; conversations, global files and feature branches are not
+competing authorities. Include specification version and governance commit in
+the opening assessment. Run the [governance checks](docs/governance/VALIDATION.md)
+when governance or its contracts change, alongside change-scoped verification.
 
 ## Repository
 
@@ -25,6 +56,22 @@ For each new development request:
 11. Do not merge, deploy, install on production systems, or modify production data unless the user explicitly authorizes it.
 
 When the user explicitly says to continue an existing branch or pull request, update that work instead of creating a new branch or pull request.
+
+Once ADR-007 is effective on approved main, one explicit project-owner instruction
+to "go live", "deploy", or release the identified PR authorizes ready-for-review,
+normal merge, required backup/migration/deployment, independent verification and
+the established safe rollback response within that scope. Preserve exclusions.
+Record the original instruction/reference, owner, date and reviewed head; the
+agent carries that evidence into release records without requesting another
+owner action in GitHub. Do not submit an approval as though a separate reviewer
+provided it. Code review and all technical gates still apply; independent human
+sign-off is optional unless explicitly required for that release or by effective
+repository configuration. Never use an admin bypass to defeat such a requirement.
+Merge-only authorization is not deployment authorization. Stop for revoked,
+ambiguous or materially out-of-scope authority, not merely a different interface.
+The policy text cannot approve itself. Adoption relies on the recorded human
+owner review of Codex's work and explicit authorization, as explained in
+[the approval record](docs/governance/RELEASE_AUTHORIZATION.md#transition-and-pr-278).
 
 Before creating a new branch or pull request, check current GitHub state. Do not assume that a previously mentioned branch or pull request is still open, unmerged, or current.
 
@@ -227,7 +274,7 @@ Every pull request should explain:
 - known limitations
 - onsite or hardware verification still required
 
-Keep the PR limited to the requested work. Do not merge it unless the user explicitly authorizes the merge.
+Keep the PR limited to the requested work. Merge only under explicit applicable owner authorization, including the merge authority carried by an effective ADR-007 release instruction.
 
 ## Review behavior
 
@@ -240,4 +287,4 @@ When asked to review Codex work or a pull request:
 5. Look specifically for production-data risk, unintended scope expansion, historical-data loss, audit gaps, stale-write risk, partial-save regressions, unsupported fruit-count assumptions, installer omissions, and unverified claims.
 6. Confirm the tests match the actual blast radius; do not reject focused validation merely because unrelated suites were not run.
 7. Distinguish application defects from environment-specific issues that require onsite testing.
-8. Do not approve or merge automatically.
+8. Do not manufacture human approval. Merge only with applicable explicit owner authority and passing effective safeguards; a code review request alone is not merge authority.

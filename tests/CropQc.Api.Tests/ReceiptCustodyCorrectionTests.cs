@@ -13,6 +13,31 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReceiptCustodyCorrectionTests
 {
+    [InventoryPostgresFact]
+    public async Task Held_placement_preserves_destination_discrepancy_and_exact_incoming_custody()
+    {
+        await using var f = await Fixture.Create();
+        var receiving = await f.ReceiveCommand(async () => { await InventoryMovementDestinationTests.SeedDestination(f, 9, 9007, 9006); });
+        await Commit(f, receiving, InventoryCommandKind.AcknowledgeTransfer, 19);
+        var place = await Build(f, receiving, InventoryCommandKind.PlaceReceiptCustody, 7);
+        await using var db = f.CreateDbContext();
+        var before = System.Text.Json.JsonSerializer.Serialize(await db.TreatmentLineageSegments.AsNoTracking().Where(x => x.RoomId == 9007).OrderBy(x => x.Id).ToArrayAsync());
+        var result = await f.Execute(place);
+        Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail);
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(await db.TreatmentLineageSegments.AsNoTracking().Where(x => x.RoomId == 9007 && x.CohortKey != place.OperationKey).OrderBy(x => x.Id).ToArrayAsync()));
+        Assert.Equal(24, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        var incoming = await db.TreatmentLineageSegments.Include(x => x.Applications).SingleAsync(x => x.CohortKey == place.OperationKey);
+        Assert.Equal(7, incoming.CurrentBins);
+        Assert.Equal(100000, incoming.ReceiptId);
+        Assert.Equal("u", incoming.TreatmentSignature);
+        Assert.Empty(incoming.Applications);
+        Assert.Equal(19, await db.ReceiptCustodyAcknowledgments.SumAsync(x => x.Quantity));
+        Assert.Equal(7, await db.ReceiptCustodyPlacements.SumAsync(x => x.Quantity));
+        var snapshot = await f.Snapshot();
+        Assert.Equal(InventoryCommandStatus.Replayed, (await f.Execute(place)).Status);
+        Assert.Equal(snapshot, await f.Snapshot());
+    }
+
     [InventoryPostgresTheory]
     [InlineData(InventoryCommandKind.RoomMove)]
     [InlineData(InventoryCommandKind.Loss)]

@@ -23,7 +23,7 @@ public sealed partial class BinsRunService
         if (!TryParseLedgerInventoryKey(form.InventoryKey, out var wh, out var room, out var crop, out var lot, out _, out var profile, out var grower, requireVariety: false)
             || form.RoomId != null && form.RoomId != room || form.WarehouseId != null && form.WarehouseId != wh)
             return "Select current inventory from the requested facility and room.";
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(wh, [room]), new(), BusinessTime.UtcNow, ct);
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(wh, [room]), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var corrections = entryId is long correctingId ? await new InventoryRunCorrectionAvailability(dbContext).ReadLegacyAsync(batch, correctingId, ct) : null;
         var choices = corrections == null ? batch.Positions.ToArray() : corrections.Values.Select(x => x.Current).ToArray();
         var p = choices.SingleOrDefault(x => x.Identity.CropYear == crop && x.Identity.Lot == lot && x.Identity.FruitProfileId == profile && x.Identity.GrowerLotId == grower);

@@ -23,7 +23,7 @@ public sealed partial class DashboardDataService
         var keys = movements.Select(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey)).Distinct().ToArray();
         var signatures = movements.Select(x => x.TreatmentSignatureSnapshot).Distinct().ToArray();
         if (keys.Length != 1 || signatures.Length != 1) return "The exact original transfer lineage could not be proven.";
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(old.DestinationWarehouseId, [old.DestinationRoomId]), new(), BusinessTime.UtcNow, ct);
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(old.DestinationWarehouseId, [old.DestinationRoomId]), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var position = batch.Positions.SingleOrDefault(x => x.Identity.Key == keys[0]);
         if (position == null || !position.IsOperable) return "Destination inventory cannot be proven for this reversal.";
         return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.ReverseRoomMove,
@@ -33,7 +33,7 @@ public sealed partial class DashboardDataService
     private async Task<RoomTransferInventoryProjection> BuildCanonicalTransferProjectionAsync(int roomId, CancellationToken ct)
     {
         var snapshots = await RoomInventoryLedger.GetSnapshotsAsync(null, [roomId], ct);
-        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, [roomId]), new(), BusinessTime.UtcNow, ct);
+        var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(null, [roomId]), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var entries = new List<RoomTransferInventoryEntry>();
         foreach (var r in batch.Positions.Where(x => x.AuthoritativeQuantity != 0))
         {

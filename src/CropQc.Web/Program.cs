@@ -255,6 +255,7 @@ builder.Services.AddScoped<IGoogleCredentialStore, GoogleCredentialStore>();
 builder.Services.AddScoped<IQcEmailSender, GmailUserEmailSender>();
 builder.Services.AddScoped<IQcPhotoRequirementPolicy, QcPhotoRequirementPolicy>();
 builder.Services.AddScoped<IQcSummaryEmailComposer, QcSummaryEmailComposer>();
+builder.Services.AddScoped<IQcEmailSizeSnapshotService, QcEmailSizeSnapshotService>();
 builder.Services.AddScoped<IQcEmailRecipientResolver, QcEmailRecipientResolver>();
 builder.Services.AddScoped<IOrchardRecipientAdminService, OrchardRecipientAdminService>();
 builder.Services.AddScoped<IGrowerRecipientAdminService, GrowerRecipientAdminService>();
@@ -779,6 +780,12 @@ if (args.Contains(ActualRun3ReportingIdentityCorrectionConstants.CommandName, St
     else
         actualRun3CorrectionLogger.LogError("{CorrectionReport}", actualRun3CorrectionReport);
     Environment.ExitCode = actualRun3Correction.Success ? 0 : 1;
+    return;
+}
+
+if (args.Contains(ProjectionReconstructionCommand.Flag, StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await ProjectionReconstructionCommand.RunAsync(args, app.Services, CancellationToken.None);
     return;
 }
 

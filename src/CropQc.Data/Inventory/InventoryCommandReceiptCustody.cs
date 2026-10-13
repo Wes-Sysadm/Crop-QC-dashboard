@@ -114,9 +114,7 @@ public sealed partial class InventoryCommandExecutor
                 var before = evidence?.AuthoritativeQuantity ?? 0;
                 if (evidence != null)
                 {
-                    var result = InventoryAvailabilityResolver.Resolve(evidence, new());
-                    Require(result.IsOperable, "Destination inventory needs review before placement.");
-                    await NormalizePositionAsync(db, factory, c, evidence, result, now, attempt, ct);
+                    await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
                 }
                 var target = await factory.CurrentAsync(identity, destination.WarehouseId, destination.RoomId, treatment.Signature,
                     treatment.State, original.ReceiptId, treatment.ApplicationIds, now, ct);

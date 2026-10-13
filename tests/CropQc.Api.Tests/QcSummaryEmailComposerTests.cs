@@ -146,7 +146,7 @@ public sealed class QcSummaryEmailComposerTests
     {
         var sample = BuildSample("Receiving Sample");
         var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -168,8 +168,8 @@ public sealed class QcSummaryEmailComposerTests
         Assert.Contains("Row 1:", content.TextBody);
         Assert.NotEmpty(content.InlineImages);
         Assert.All(content.InlineImages, image => Assert.Contains("@cropqc", image.ContentId));
-        Assert.All(content.InlineImages, image => Assert.Equal("image/jpeg", image.ContentType));
-        Assert.All(content.InlineImages, image => Assert.EndsWith(".jpg", image.FileName, StringComparison.OrdinalIgnoreCase));
+        Assert.All(content.InlineImages.Where(x => x.ContentId.StartsWith("cropqc-photo-")), image => Assert.Equal("image/jpeg", image.ContentType));
+        Assert.All(content.InlineImages.Where(x => x.ContentId.StartsWith("cropqc-photo-")), image => Assert.EndsWith(".jpg", image.FileName, StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -185,7 +185,7 @@ public sealed class QcSummaryEmailComposerTests
         receipt.LotCode = "9350";
         var originalLotCode = receipt.LotCode;
         var originalGrowerNumber = receipt.GrowerNumber;
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -219,7 +219,7 @@ public sealed class QcSummaryEmailComposerTests
             photo.WebUrl = $"https://drive.google.com/file/d/{photo.FileId}/view";
         }
 
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -242,10 +242,10 @@ public sealed class QcSummaryEmailComposerTests
         photo.SharePointItemId = "email-original";
         sample.Photos.Add(photo);
         var storage = new KeyedPhotoStorage(new Dictionary<string, byte[]> { ["email-original"] = original });
-        var composer = new QcSummaryEmailComposer(storage, new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(storage, new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var automatic = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, null, false, null, CancellationToken.None);
-        var automaticImage = Assert.Single(automatic.InlineImages);
+        var automaticImage = Assert.Single(automatic.InlineImages, x => x.ContentId.StartsWith("cropqc-photo-"));
         AssertCornerOrder(automaticImage.Bytes, "CADB");
         using (var decoded = Image.Load(automaticImage.Bytes))
             Assert.False(decoded.Metadata.ExifProfile?.TryGetValue(ExifTag.Orientation, out _) == true);
@@ -264,7 +264,7 @@ public sealed class QcSummaryEmailComposerTests
         photo.PresentationUpdatedAt = DateTimeOffset.UtcNow;
 
         var manual = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, null, false, null, CancellationToken.None);
-        var manualImage = Assert.Single(manual.InlineImages);
+        var manualImage = Assert.Single(manual.InlineImages, x => x.ContentId.StartsWith("cropqc-photo-"));
         AssertCornerOrder(manualImage.Bytes, "DCBA");
         using var manualDecoded = Image.Load(manualImage.Bytes);
         Assert.False(manualDecoded.Metadata.ExifProfile?.TryGetValue(ExifTag.Orientation, out _) == true);
@@ -281,11 +281,11 @@ public sealed class QcSummaryEmailComposerTests
         photo.WebUrl = "https://drive.google.com/file/d/photo-2/view";
         sample.Photos.Add(photo);
         var originalBytes = CreateBmp(1800, 1200);
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(originalBytes), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(originalBytes), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
-        var image = Assert.Single(content.InlineImages);
+        var image = Assert.Single(content.InlineImages, x => x.ContentId.StartsWith("cropqc-photo-"));
         Assert.Equal("image/jpeg", image.ContentType);
         Assert.True(image.Bytes.Length <= QcSummaryEmailComposer.MaxInlineImageBytes);
         Assert.True(image.Bytes.Length < originalBytes.Length);
@@ -298,7 +298,7 @@ public sealed class QcSummaryEmailComposerTests
     {
         var sample = BuildSample("Receiving Sample");
         var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -317,7 +317,7 @@ public sealed class QcSummaryEmailComposerTests
         var sample = BuildSample("Receiving Sample");
         sample.Receipt.Photos.Single(x => x.PhotoType == "TopOfTruck").PhotoType = "TopTruckPhoto";
         var readiness = new ReadinessViewModel { CompletedFruitCount = 1 };
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, readiness, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -332,11 +332,11 @@ public sealed class QcSummaryEmailComposerTests
     {
         var sample = BuildSample("Receiving Sample");
         sample.Receipt.Photos.Single(x => x.PhotoType == "BinTruck").WebUrl = "https://drive.example/photo";
-        var composer = new QcSummaryEmailComposer(new LargePhotoFileStorageService(25_000_001), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new LargePhotoFileStorageService(25_000_001), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
-        Assert.Empty(content.InlineImages);
+        Assert.DoesNotContain(content.InlineImages, x => x.ContentId.StartsWith("cropqc-photo-"));
         Assert.DoesNotContain("cid:cropqc-photo-", content.HtmlBody);
         Assert.Contains("Photo was too large to embed and is linked instead.", content.HtmlBody);
         Assert.Contains("https://drive.example/photo", content.HtmlBody);
@@ -347,7 +347,7 @@ public sealed class QcSummaryEmailComposerTests
     {
         var sample = BuildSample("Receiving Sample");
         sample.Receipt.Photos.Single(x => x.PhotoType == "TopOfTruck").IsDeleted = true;
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -419,17 +419,18 @@ public sealed class QcSummaryEmailComposerTests
         };
         row5.Defects.Add(new QcFruitDefect { DefectType = sunburn, DefectTypeId = sunburn.Id });
         sample.FruitReadings.Add(row5);
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = false }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
         Assert.Contains("Entered fruit count</th><td style=\"border:1px solid #cbd5e1;\">5</td>", content.HtmlBody);
         Assert.Contains("Average Pressure</th><td style=\"border:1px solid #cbd5e1;\">12</td>", content.HtmlBody);
         Assert.Contains("Pressure std dev lbs</th><td style=\"border:1px solid #cbd5e1;\">2</td>", content.HtmlBody);
-        Assert.Contains("Average weight grams</th><td style=\"border:1px solid #cbd5e1;\">162.5</td>", content.HtmlBody);
+        Assert.Contains("Average Box Size</th><td style=\"border:1px solid #cbd5e1;\">113</td>", content.HtmlBody);
         Assert.Contains("Grade summary</th><td style=\"border:1px solid #cbd5e1;\">Fancy: 1</td>", content.HtmlBody);
-        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">2 of 5 inspected fruit affected; Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
-        Assert.Contains("Size/status summary</th><td style=\"border:1px solid #cbd5e1;\">1 size 100, 1 size 120</td>", content.HtmlBody);
+        Assert.Contains("Defect summary</th><td style=\"border:1px solid #cbd5e1;\">Bruise: 1, Sunburn: 1</td>", content.HtmlBody);
+        Assert.Contains("Current Sample", content.HtmlBody);
+        Assert.Contains("Fruit without a valid recorded commercial size: 4", content.HtmlBody);
         Assert.Contains("Row 1:", content.TextBody);
         Assert.Contains("Row 5:", content.TextBody);
         Assert.True(content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal) < content.HtmlBody.IndexOf("<h2>Fruit Overview</h2>", StringComparison.Ordinal));
@@ -438,7 +439,7 @@ public sealed class QcSummaryEmailComposerTests
     }
 
     [Fact]
-    public async Task EmailComposer_SortsSizeSummaryByPeakCountThenAppleSizeOrder()
+    public async Task EmailComposer_ChartsNumericSizeOrderAndExcludesUnsupportedRecordedCategory()
     {
         var sample = BuildSample("Door Sample");
         sample.FruitReadings.Clear();
@@ -455,11 +456,12 @@ public sealed class QcSummaryEmailComposerTests
                 SizeStatus = "Sized"
             });
         }
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true }, sendingUser: null, isOverride: false, overrideReason: null, CancellationToken.None);
 
-        Assert.Contains("4 size 120, 3 size 100, 3 size 113, 1 size 88", content.HtmlBody);
+        Assert.Contains("88: 1, 100: 3, 113: 3", content.HtmlBody);
+        Assert.Contains("Fruit without a valid recorded commercial size: 4", content.HtmlBody);
     }
 
     [Fact]
@@ -468,7 +470,7 @@ public sealed class QcSummaryEmailComposerTests
         var sample = BuildSample("Door Sample");
         sample.TakenByUser = null;
         var sender = new User { Id = 7, Email = "rob@earlbrownandsons.com", DisplayName = "Rob", Domain = "earlbrownandsons.com" };
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
 
         var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = true, CompletedFruitCount = 1 }, sender, isOverride: false, overrideReason: null, CancellationToken.None);
 
@@ -530,10 +532,10 @@ public sealed class QcSummaryEmailComposerTests
     [InlineData("Door Sample", false, false, false, "DH", "sixth@example.com", true)]
     [InlineData("Lot Sample", false, false, false, "WP", "seventh@example.com", false)]
     [InlineData("Transfer Sample", true, false, false, "EBS", "eighth@example.com", true)]
-    public async Task EmailComposer_PlacesUnchangedSummaryImmediatelyAfterHeaderForEveryRecipientAndReceiptShape(
+    public async Task EmailComposer_PreservesDetailsAtBottomForEveryRecipientAndReceiptShape(
         string sampleType, bool truckReceipt, bool multipleLots, bool multipleVarieties, string warehouse, string email, bool ready)
     {
-        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance);
+        var composer = new QcSummaryEmailComposer(new FakeFileStorageService(), new QcPhotoRequirementPolicy(), NullLogger<QcSummaryEmailComposer>.Instance, new SampleSizeSnapshot());
         // QC emails are composed per sample, including each lot in a multi-lot receiving workflow.
         foreach (var lot in multipleLots ? new[] { "LOT-A", "LOT-B" } : new[] { "LOT-A" })
         {
@@ -560,15 +562,16 @@ public sealed class QcSummaryEmailComposerTests
             }
 
             var content = await composer.ComposeAsync(sample, new ReadinessViewModel { IsReady = ready }, sender, !ready, "Existing override", CancellationToken.None);
-            var headerEnd = content.HtmlBody.IndexOf("</table>", StringComparison.Ordinal) + "</table>".Length;
+            var detailsStart = content.HtmlBody.IndexOf("<h2>Receiving Sample Details</h2>", StringComparison.Ordinal);
+            var detailsHtml = content.HtmlBody[detailsStart..];
             var summaryStart = content.HtmlBody.IndexOf("<h2>Summary</h2>", StringComparison.Ordinal);
             var summaryEnd = content.HtmlBody.IndexOf("</table>", summaryStart, StringComparison.Ordinal) + "</table>".Length;
             var summaryHtml = content.HtmlBody[summaryStart..summaryEnd];
-            Assert.True(content.HtmlBody.IndexOf("<h1>", StringComparison.Ordinal) < headerEnd);
-            Assert.StartsWith("<h2>Summary</h2>", content.HtmlBody[headerEnd..].TrimStart());
-            Assert.Contains(">Inspector</th>", content.HtmlBody[..headerEnd]);
-            Assert.Contains(email, content.HtmlBody[..headerEnd]);
-            Assert.Contains(lot, content.HtmlBody[..headerEnd]);
+            Assert.True(content.HtmlBody.IndexOf("<h2>Photos</h2>", StringComparison.Ordinal) < detailsStart);
+            Assert.DoesNotContain("<h2>", detailsHtml["<h2>Receiving Sample Details</h2>".Length..]);
+            Assert.Contains(">Inspector</th>", detailsHtml);
+            Assert.Contains(email, detailsHtml);
+            Assert.Contains(lot, detailsHtml);
             Assert.Equal(1, CountOccurrences(content.HtmlBody, "<h2>Summary</h2>"));
             Assert.Equal(2, CountOccurrences(content.HtmlBody, ">Target sample size</th>")); // Existing header + summary, not an added copy.
             Assert.Equal(1, CountOccurrences(summaryHtml, ">Target sample size</th>"));
@@ -579,9 +582,9 @@ public sealed class QcSummaryEmailComposerTests
             var expected = new (string Label, string Value)[]
             {
                 ("Target sample size", "10"), ("Entered fruit count", "1"), ("Average Pressure", "12.6"),
-                ("Pressure std dev lbs", "0.42"), ("Average starch", "4.5"), ("Average weight grams", "185.2"),
-                ("Grade summary", "XF: 1"), ("Defect summary", "1 of 1 inspected fruit affected; Bruise: 1"),
-                ("Size/status summary", "1 size 88"), ("Notes", "Keep existing notes")
+                ("Pressure std dev lbs", "0.42"), ("Average starch", "4.5"), ("Average Box Size", "100"),
+                ("Grade summary", "XF: 1"), ("Defect summary", "Bruise: 1"),
+                ("Notes", "Keep existing notes")
             };
             foreach (var (label, value) in expected)
             {
@@ -590,7 +593,7 @@ public sealed class QcSummaryEmailComposerTests
             }
             var textSummary = Environment.NewLine + "Summary" + Environment.NewLine;
             Assert.Equal(1, CountOccurrences(content.TextBody, textSummary));
-            Assert.Contains("Target sample size: 10" + Environment.NewLine + textSummary, content.TextBody);
+            Assert.True(content.TextBody.IndexOf("Photo sections:", StringComparison.Ordinal) < content.TextBody.IndexOf("Receiving Sample Details", StringComparison.Ordinal));
             Assert.Equal(2, CountOccurrences(content.TextBody, "Target sample size: "));
             Assert.True(content.TextBody.IndexOf(textSummary, StringComparison.Ordinal) < content.TextBody.IndexOf("Fruit Overview", StringComparison.Ordinal));
             Assert.True(content.TextBody.IndexOf("Fruit Overview", StringComparison.Ordinal) < content.TextBody.IndexOf("Photo sections:", StringComparison.Ordinal));
@@ -601,6 +604,14 @@ public sealed class QcSummaryEmailComposerTests
             Assert.Equal(lot, receipt.LotCode);
             Assert.Equal(multipleVarieties ? 2 : 0, receipt.VarietyLines.Count);
         }
+    }
+
+    private sealed class SampleSizeSnapshot : IQcEmailSizeSnapshotService
+    {
+        public Task<QcEmailSizeSnapshot> CaptureAsync(QcSample sample, CancellationToken cancellationToken) =>
+            Task.FromResult(QcEmailSizeSnapshotService.Create(DateTimeOffset.UtcNow,
+                [48, 56, 64, 72, 80, 88, 100, 113, 125, 138, 150, 163, 175, 198, 216],
+                sample.FruitReadings, sample.FruitReadings, 1, true));
     }
 
     private static QcSample BuildSample(string sampleType)
