@@ -188,7 +188,17 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
         }
         var plan = InventoryNormalizationPlanner.Plan(evidence, result);
         if (plan == null) return;
-        var ids = plan.Changes.Select(x => x.Id).ToArray();
+        // Receiving no longer rewrites this older pool. Preserve independently
+        // proven incoming receipt cohorts when a later source operation actually
+        // needs normalization; never collapse their ancestry into the remainder.
+        if (InventoryCohortEvidence.Proven(evidence).Any(x => x.ReceiptId != null))
+        {
+            var refined = SelectiveProjectionReconstruction.Refine(evidence, plan);
+            Require(refined.Blockers.IsEmpty, string.Join(" ", refined.Blockers));
+            plan = refined.Plan;
+            Require(plan != null, "Source normalization has no disjoint evidence-backed plan.");
+        }
+        var ids = plan!.Changes.Select(x => x.Id).ToArray();
         var segments = await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
         Require(segments.Count == plan.Changes.Length, "Normalization row disappeared.", InventoryCommandStatus.Stale);
         foreach (var change in plan.Changes)
@@ -202,16 +212,19 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             CanonicalProjectionFactory.Retire(row, command.OperationKey, readAt);
         }
         await db.SaveChangesAsync(cancellationToken); // release current-only uniqueness, still inside outer transaction
-        var replacement = await new CanonicalProjectionFactory(db).CurrentAsync(result.Identity, result.Location.WarehouseId,
-            result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
-        Require(replacement.CurrentBins == 0, "Replacement projection unexpectedly exists.");
-        replacement.CurrentBins = plan.ReplacementQuantity;
+        var replacement = plan.ReplacementProjectionId is long preservedId
+            ? await db.TreatmentLineageSegments.SingleAsync(x => x.Id == preservedId, cancellationToken)
+            : await new CanonicalProjectionFactory(db).CurrentAsync(result.Identity, result.Location.WarehouseId,
+                result.Location.RoomId!.Value, "u", "Untreated", plan.ReplacementReceiptId, [], readAt, cancellationToken);
+        Require(replacement.CurrentBins == (plan.ReplacementProjectionId == null ? 0 : plan.ReplacementQuantity),
+            "Replacement projection unexpectedly exists or preserved allocation changed.");
+        if (plan.ReplacementProjectionId == null) replacement.CurrentBins = plan.ReplacementQuantity;
         await db.SaveChangesAsync(cancellationToken);
         plan = plan with { ReplacementProjectionId = replacement.Id };
         AddAudit(db, command, "CanonicalInventoryNormalization", result.PositionKey, plan.Changes, plan, readAt);
         await Stage("NormalizationAudit", db, attempt, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        var balance = await PhysicalAsync(db, result.Identity, result.Location.WarehouseId, result.Location.RoomId.Value, cancellationToken);
+        var balance = await PhysicalAsync(db, result.Identity, result.Location.WarehouseId, result.Location.RoomId!.Value, cancellationToken);
         Require(balance == result.AuthoritativeQuantity, "Normalization changed physical inventory.");
     }
 

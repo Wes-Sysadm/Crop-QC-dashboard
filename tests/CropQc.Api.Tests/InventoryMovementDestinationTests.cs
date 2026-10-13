@@ -103,7 +103,7 @@ public sealed class InventoryMovementDestinationTests
         Assert.Single(await verify.AuditLogs.Where(x => x.Action == "CanonicalRecordedCohortReconstruction").ToArrayAsync());
         var current = await verify.TreatmentLineageSegments.Where(x => x.Disposition == "Current" && x.CurrentBins > 0).ToArrayAsync();
         Assert.Equal(17, current.Where(x => x.TreatmentSignature == "u|a:200001").Sum(x => x.CurrentBins));
-        Assert.Equal(19, current.Where(x => x.TreatmentSignature == "u").Sum(x => x.CurrentBins));
+        Assert.Equal(29, current.Where(x => x.TreatmentSignature == "u").Sum(x => x.CurrentBins)); // Unrelated destination projection excess is preserved.
         Assert.Equal(36, await verify.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
         Assert.Equal(17, await verify.RoomTreatmentApplicationSources.SumAsync(x => x.BinsTreated));
     }

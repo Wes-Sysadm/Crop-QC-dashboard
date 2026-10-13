@@ -22,19 +22,11 @@ public sealed partial class InventoryCommandExecutor
         if (!factory.PreparedDestinations.Add(key)) return;
         var originFailure = await InventoryOriginGuard.ValidateAsync(db, [evidence], now, ct);
         Require(originFailure == null, originFailure ?? "Destination recorded origin/custody validation failed.");
-        var result = InventoryAvailabilityResolver.Resolve(evidence, new());
-        // Retain the existing audited, independently proven untreated supersession
-        // where it applies. A failed/unavailable treatment proof is not a veto:
-        // the incoming command still creates its own isolated cohort.
-        if (result.IsOperable && !result.UsesRecordedCohorts && result.TreatmentConfidence == InventoryConfidence.Proven
-            && result.TreatmentSlices.All(x => x.Signature == "u")
-            && evidence.Projections.Where(x => x.Disposition == "Current").All(x => x.ExactIdentity
-                && x.Quantity >= 0 && x.Signature == "u" && x.ApplicationIds.IsEmpty))
-        {
-            await NormalizePositionAsync(db, factory, command, evidence, result, now, attempt, ct);
-            evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(evidence.Location.WarehouseId,
-                [evidence.Location.RoomId.Value]), now, ct)).Positions.Single(x => x.Identity.Key == evidence.Identity.Key);
-        }
+        // Destination admission does not require replacing existing projections,
+        // even when their whole-pool normalization appears provable. The incoming
+        // operation owns a separate cohort; preserve the exact destination baseline
+        // and validate only its recorded credit/consumption deltas below. Source
+        // normalization and explicitly approved reconstruction retain their proofs.
         factory.Destinations[key] = evidence;
     }
 

@@ -72,7 +72,13 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
         var useRecorded = recorded is { QuantityConserved: true, UnresolvedEvents.IsEmpty: true }
             && recorded.Cohorts.All(x => x.State is "Untreated" or "Confirmed");
         var independent = requirements.AllowIndependentCohorts ? provenCohorts : [];
-        var useIndependent = !useRecorded && !balanced && !pool && independent.Length > 0
+        // An independently proven newer receipt remains selectable even when
+        // the older remainder is a proven untreated pool with stale projections.
+        // Pool treatment certainty does not erase exact incoming ownership.
+        var exactIndependentReceipt = requirements.ReceiptId is long selectedReceipt
+            && independent.Any(x => x.ReceiptId == selectedReceipt)
+            && (ProveCurrentReceipt(e, selectedReceipt) || InventoryCohortEvidence.ProvesReceipt(e, selectedReceipt));
+        var useIndependent = !useRecorded && !balanced && (!pool || exactIndependentReceipt) && independent.Length > 0
             && independent.Sum(x => x.Quantity) <= e.AuthoritativeQuantity;
         if (projectionConflict && !useIndependent && !useRecorded)
             Block(InventoryBlockerCode.ConflictingIdentity, "A projection contradicts the canonical identity or contains a negative quantity.");
@@ -99,10 +105,11 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             receiptConfidence = requirements.ReceiptId is long exact
                 && (ProveCurrentReceipt(e, exact) || InventoryCohortEvidence.ProvesReceipt(e, exact))
                 ? InventoryConfidence.Proven : InventoryConfidence.Unknown;
-            // This is availability of the independently proven allocations only.
-            // The rest of the position remains explicitly unresolved and readiness
-            // still uses the default complete-position contract.
-            treatmentConfidence = InventoryConfidence.Unknown;
+            // Availability remains limited to independently proven allocations.
+            // The older remainder stays unresolved unless the separate full-pool
+            // arrival/application proof already establishes untreated history.
+            // Exact receipt selection does not discard that existing proof.
+            treatmentConfidence = pool && !projectionConflict ? InventoryConfidence.Proven : InventoryConfidence.Unknown;
         }
         else if (pool && !projectionConflict && !exactRequestedReceipt && !(balanced && positive.Length > 0 && positive.All(x => x.ReceiptId != null)))
         {

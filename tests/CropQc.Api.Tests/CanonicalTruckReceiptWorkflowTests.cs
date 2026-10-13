@@ -13,6 +13,49 @@ namespace CropQc.Api.Tests;
 public sealed class CanonicalTruckReceiptWorkflowTests
 {
     [InventoryPostgresFact]
+    public async Task Partial_return_then_exact_receipt_into_depleted_alias_preserves_exclusive_custody()
+    {
+        await using var f = await Fixture.Create();
+        var receiving = await f.ReceiveCommand();
+        await InventoryDestinationAliasTests.InsertLegacyAlias(f, 9007);
+        var id = receiving.Lines[0].Source.Location.CustodyRecordId!.Value;
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        var service = Service(db, new InventoryCommandExecutor(factory));
+        async Task<TruckReceiptActionForm> Form() => new()
+        {
+            TransferId = id,
+            ReceiptId = receiving.ReceivingEvidence!.ReceiptId,
+            TransferVersion = await db.InterCrewTransfers.Where(x => x.Id == id).Select(x => x.ConcurrencyVersion).SingleAsync(),
+            ReceiptVersion = await db.Receipts.Where(x => x.Id == receiving.ReceivingEvidence!.ReceiptId).Select(x => x.ConcurrencyVersion).SingleAsync(),
+            Reason = "Disposable exact partial arrival"
+        };
+        var allocation = Assert.Single((await service.GetAsync(receiving.ReceivingEvidence!.ReceiptId, id, default)).Allocations);
+        Assert.Null(await service.EditTransferAsync(new()
+        {
+            TransferId = id,
+            TransferVersion = (await Form()).TransferVersion,
+            DispatchMovementId = allocation.Movement.Id,
+            Bins = 5,
+            Reason = "Five recorded bins returned before receiving"
+        }, default));
+        var beforeMismatch = await f.Snapshot();
+        Assert.NotNull(await service.CompleteAsync(await Form(), default));
+        Assert.Equal(beforeMismatch, await f.Snapshot());
+        var edit = await Form(); edit.Lines = [new() { FruitProfileId = 9004, BinCount = 14 }];
+        Assert.Null(await service.EditReceiptAsync(edit, default));
+        Assert.Null(await service.CompleteAsync(await Form(), default));
+        Assert.Equal(5, await f.Physical());
+        Assert.Equal(14, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        Assert.Equal(14, await db.TreatmentLineageSegments.Where(x => x.RoomId == 9007 && x.Disposition == "Current").SumAsync(x => x.CurrentBins));
+        Assert.Equal("Untreated", await db.TreatmentLineageSegments.Where(x => x.RoomId == 9007 && x.CurrentBins > 0).Select(x => x.TreatmentState).SingleAsync());
+        Assert.Null(await service.ReopenAsync(await Form(), default));
+        Assert.Equal(0, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        Assert.Equal(14, Assert.Single(await service.ActiveAllocationsAsync(id, default)).Bins);
+        Assert.Equal(19, await f.Physical() + (await service.ActiveAllocationsAsync(id, default)).Sum(x => x.Bins));
+    }
+
+    [InventoryPostgresFact]
     public async Task Corrected_transit_variety_is_used_by_comparison_partial_return_match_completion_and_reopen()
     {
         await using var f = await Fixture.Create();
