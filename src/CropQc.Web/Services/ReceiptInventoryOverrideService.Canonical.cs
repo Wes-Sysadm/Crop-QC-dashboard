@@ -20,6 +20,13 @@ public sealed partial class ReceiptInventoryOverrideService
         var counts = await GetOperationalCountsAsync(receipt, ct);
         return new()
         {
+            AdditionalStockTargets = await new InventoryReceiptAvailability(dbContext).AdditionTargetsAsync(state, ct),
+            OriginalRecordedBins = await dbContext.ReceiptInventoryOverrides.AsNoTracking().Where(x => x.ReceiptId == id)
+                .OrderBy(x => x.CreatedAt).Select(x => (int?)x.OldReceiptBinCount).FirstOrDefaultAsync(ct) ?? receipt.BinCount,
+            RecordedMovements = await dbContext.TreatmentLineageMovements.AsNoTracking().Where(x => x.ReceiptId == id)
+                .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+                .Select(x => new ReceiptCorrectionMovementViewModel(x.Id, x.MovementType, x.BinCount, x.SourceRoomId, x.DestinationRoomId,
+                    x.TreatmentSignatureSnapshot, x.OccurredAt, x.CreatedAt)).ToArrayAsync(ct),
             ReceiptId = id,
             ConcurrencyVersion = receipt.ConcurrencyVersion,
             InventoryStateToken = state.Fingerprint,
@@ -98,12 +105,20 @@ public sealed partial class ReceiptInventoryOverrideService
             return await CanonicalResultAsync(await canonicalCommands.ExecuteAsync(locationCommand, ct), ct);
         }
         var allocations = form.TrueUpAllocations.Where(x => x.Bins != 0).Select(x => new InventoryReceiptQuantityAllocation(x.TargetKey, x.Bins)).ToImmutableArray();
+        InventoryReceiptAdditionalStock? additionalStock = null;
+        if (!string.IsNullOrWhiteSpace(form.AdditionalStockTarget))
+        {
+            var parts = form.AdditionalStockTarget.Split(':', 2);
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var roomId)) return Failed("Reload and select the reviewed additional-stock destination.");
+            additionalStock = new(roomId, parts[1], form.ConfirmAdditionalStockPresent);
+        }
         var available = state.Allocations.Where(x => x.Position.Location.Custody == InventoryCustody.Room).ToArray();
         if (allocations.IsEmpty && available.Length == 1 && form.BinCount != r.BinCount)
             allocations = [new(available[0].Key, Math.Abs(form.BinCount - r.BinCount))];
         var command = new InventoryCommand(form.OperationKey, InventoryCommandKind.CorrectReceiptQuantity, actor.Id, DateTimeOffset.UtcNow,
             form.Reason.Trim(), [], ApplicationIntent: submission, ReceiptChange: new(form.Id, form.ExpectedConcurrencyVersion,
-                form.ExpectedInventoryStateToken, form.BinCount, allocations, ConfirmAdditionalBinsUntreated: form.ConfirmAdditionalBinsUntreated));
+                form.ExpectedInventoryStateToken, form.BinCount, allocations, ConfirmAdditionalBinsUntreated: form.ConfirmAdditionalBinsUntreated,
+                AdditionalStock: additionalStock));
         return await CanonicalResultAsync(await canonicalCommands.ExecuteAsync(command, ct), ct);
     }
 

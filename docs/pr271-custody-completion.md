@@ -1,5 +1,7 @@
 # PR 271 custody corrections and integration review
 
+For the October 13 integration with merged PR #281, the three receiving-correction investigations, additional depleted-receipt workflow, current validation and remaining release gates, see [the current investigation](investigations/receiving-corrections-2026-10-13.md). The results below remain the October 7–8 historical checkpoint, not the final integrated candidate's validation.
+
 PR [271](https://github.com/Wes-Sysadm/Crop-QC-dashboard/pull/271) now supports audited corrections of partial acknowledgements and proven room placements. Original dispatches, acknowledgements, placements and treatment history remain intact. A correction creates linked compensation; it never assumes that fruit physically returned to its dispatch source. This is a human-review candidate, not production release approval.
 
 Verification ran October 7–8, 2026 UTC. Production access consisted only of schema and receipt 2161 evidence SELECTs. All migrations, receipt mutations, backup regression operations and browser submissions ran on isolated localhost PostgreSQL databases. No production data repair, backup run, deployment or PR merge was performed.

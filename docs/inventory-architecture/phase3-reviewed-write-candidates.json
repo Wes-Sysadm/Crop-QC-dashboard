@@ -105,7 +105,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "9D3861F98209B47BD22B8F7145D3C4C4018E5ABB26E277E77BFD4A9786D27EC0"
+    "Sha256": "4DD198E1EF6C93F0DDED40336CDC47ADAD08A57774791BA531E46CD12912F190"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
@@ -201,7 +201,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "1B65D77A85C7DB91711EBF154DB0A0A9815F7113FCC533893D17E6FDD8AA5D00"
+    "Sha256": "F91EC50EDB64620E8020FE84F0F5796E42DF19744F2B4CDBA19B721439A46017"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptHeldEvidence.cs",

@@ -82,6 +82,19 @@ public sealed class InventoryMovementReviewTests
         var correction = await f.Command(InventoryCommandKind.ReceiptCorrection, 3);
         correction = correction with { Lines = [correction.Lines[0] with { ReceiptId = 100000 }] };
         Assert.Equal(InventoryCommandStatus.Committed, (await f.Execute(correction)).Status);
+        // #271 now writes full snapshots. Retain an explicit disposable fixture
+        // of the already-committed legacy scalar format instead of requiring the
+        // new writer to emit that obsolete format. Production history is immutable.
+        CropQc.Data.ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(f.Connection);
+        await using (var connection = new Npgsql.NpgsqlConnection(f.Connection))
+        {
+            await connection.OpenAsync();
+            await using var fixture = new Npgsql.NpgsqlCommand("""
+                UPDATE "ReceiptInventoryOverrides" SET "BeforeReceiptSnapshotJson"='19', "AfterReceiptSnapshotJson"='16'
+                WHERE "ReceiptId"=100000
+                """, connection);
+            Assert.Equal(1, await fixture.ExecuteNonQueryAsync());
+        }
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
         await using var db = factory.CreateDbContext();
         if (correctIdentity)

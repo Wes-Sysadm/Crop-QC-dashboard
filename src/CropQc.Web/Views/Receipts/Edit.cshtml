@@ -147,7 +147,9 @@
                     <dt>Inventory adjustment</dt><dd><span id="overrideBinDelta">0</span> bins</dd>
                     <dt>Removed from selected current inventory</dt><dd><span id="overrideRemovedBins">0</span> bins</dd>
                     <dt>Current attributable inventory</dt><dd>@preview.CurrentInventory bins</dd>
-                    <dt>Net already run or consumed</dt><dd>@preview.ConsumedBins bins</dd>
+                    @if (preview.OriginalRecordedBins is int originalRecorded)
+                    { <dt>Original recorded receipt quantity</dt><dd>@originalRecorded bins</dd> }
+                    <dt>Receipt quantity outside proven current custody (review history below)</dt><dd>@preview.ConsumedBins bins</dd>
                     <dt>Current receipt inventory in other rooms/custody (already moved, not consumed)</dt><dd>@preview.Balances.Where(x => x.RoomId != form.RoomId).Sum(x => x.CurrentBins) bins</dd>
                     <dt>Operational history</dt><dd>@preview.BinsRunCount Bins Run line(s), @preview.ActualRunCount Actual Run(s), @preview.TransferCount transfer(s)</dd>
                 </dl>
@@ -159,6 +161,18 @@
                         <tr><td>@balance.Warehouse</td><td>@balance.Room</td><td>@balance.CropYear</td><td>@balance.Lot</td><td>@balance.Variety</td><td>@balance.CurrentBins</td></tr>
                     }
                     </tbody></table>
+                }
+                @if (preview.RecordedMovements.Count > 0)
+                {
+                    <details><summary>Recorded receipt movements and consumption</summary>
+                        <p>Business time and recorded time can differ. These events remain unchanged by a new quantity correction. Unassigned movements are not attributed to this receipt without proof.</p>
+                        <table class="data-table"><thead><tr><th>Movement</th><th>Event</th><th>Bins</th><th>From room ID</th><th>To room ID</th><th>Treatment</th><th>Effective (UTC)</th><th>Recorded (UTC)</th></tr></thead><tbody>
+                        @foreach (var movement in preview.RecordedMovements)
+                        {
+                            <tr><td>@movement.Id</td><td>@movement.Kind</td><td>@movement.Bins</td><td>@movement.SourceRoomId</td><td>@movement.DestinationRoomId</td><td>@movement.Treatment</td><td>@movement.EffectiveAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td><td>@movement.RecordedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                        }
+                        </tbody></table>
+                    </details>
                 }
                 <section id="positiveTrueUpAllocation" class="wide" hidden>
                     <h3>@(CanonicalMode.Enabled ? "Which current inventory should be corrected?" : "Where is the additional inventory now?")</h3>
@@ -173,6 +187,20 @@
                     @if (preview.TrueUpPositions.Count == 0)
                     {
                         <p class="notice warning">No current matching inventory or custody position was found. This true-up cannot be placed automatically.</p>
+                        @if (preview.AdditionalStockTargets.Count > 0)
+                        {
+                            <div id="additionalStockDestination">
+                            <p>An increase can record additional stock without recalling consumed bins. Existing dumps, movements and treatment applications stay unchanged. A decrease still requires proven current stock or a separately reviewed compensating operation.</p>
+                            <label>Where are the additional bins now?
+                                <select name="AdditionalStockTarget"><option value="">Select the actual current room</option>
+                                    @foreach (var target in preview.AdditionalStockTargets)
+                                    { <option value="@target.Key">@target.RoomName</option> }
+                                </select>
+                            </label>
+                            <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalStockPresent" value="true" /> These additional bins belong to this receipt and are physically present in the selected room. They are not bins already recorded as consumed or in another custody location.</label>
+                            <input type="hidden" name="ConfirmAdditionalStockPresent" value="false" />
+                            </div>
+                        }
                     }
                     else
                     {
@@ -353,6 +381,11 @@
                     additionalTreatment.hidden = !(delta > 0);
                     additionalTreatment.querySelector('input[type="checkbox"]').disabled = !(delta > 0);
                 }
+                const additionalDestination = document.getElementById("additionalStockDestination");
+                if (additionalDestination) {
+                    additionalDestination.hidden = !(delta > 0);
+                    for (const field of additionalDestination.querySelectorAll("select, input")) field.disabled = !(delta > 0);
+                }
                 for (const allocation of document.querySelectorAll(".true-up-allocation")) {
                     allocation.disabled = !(delta > 0 || allocateReduction && delta < 0);
                 }
@@ -363,7 +396,6 @@
                 document.getElementById("overrideRoom").textContent = roomSelect?.selectedOptions[0]?.textContent?.trim() || "-";
                 const negativeAcknowledgment = document.getElementById("negativeInventoryAcknowledgment");
                 negativeAcknowledgment.hidden = allocateReduction || @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (delta ?? 0) >= 0;
-                if (negativeAcknowledgment.hidden) negativeAcknowledgment.querySelector("input[type='checkbox']").checked = false;
             }
             for (const name of watched) {
                 const field = document.querySelector(`[name='${name}']`);
