@@ -255,6 +255,7 @@ builder.Services.AddScoped<IGoogleCredentialStore, GoogleCredentialStore>();
 builder.Services.AddScoped<IQcEmailSender, GmailUserEmailSender>();
 builder.Services.AddScoped<IQcPhotoRequirementPolicy, QcPhotoRequirementPolicy>();
 builder.Services.AddScoped<IQcSummaryEmailComposer, QcSummaryEmailComposer>();
+builder.Services.AddScoped<IQcEmailSizeSnapshotService, QcEmailSizeSnapshotService>();
 builder.Services.AddScoped<IQcEmailRecipientResolver, QcEmailRecipientResolver>();
 builder.Services.AddScoped<IOrchardRecipientAdminService, OrchardRecipientAdminService>();
 builder.Services.AddScoped<IGrowerRecipientAdminService, GrowerRecipientAdminService>();
