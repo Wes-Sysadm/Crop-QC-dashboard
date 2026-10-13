@@ -1,0 +1,54 @@
+DEMO-10 QC Summary
+Summary
+Target sample size: 10
+Entered fruit count: 10
+Average Pressure: 14.48 lbs
+Pressure std dev lbs: 0.21
+Average starch:
+Average Box Size: 100
+Grade summary: None
+Defect summary: Insect: 1, Moderate Watercore: 1
+Notes: Safe demonstration data only
+
+Current Sample — Size Distribution
+Commercial box-count size: number of sampled fruit
+88: 4
+100: 2
+113: 2
+125: 0
+138: 2
+Entire Lot — Size Distribution
+Commercial box-count size: number of sampled fruit
+88: 4
+100: 5
+113: 2
+125: 0
+138: 5
+Lot snapshot: 10/12/2026 11:00 AM PDT; 2 qualifying sample(s).
+
+Fruit Overview
+Row 1: P1 14 lbs, P2 14.5 lbs, Avg 14.25 lbs, Weight 215 g, Size 88, Grade , Starch , Defects Insect
+Row 2: P1 14.1 lbs, P2 14.5 lbs, Avg 14.3 lbs, Weight 215 g, Size 88, Grade , Starch , Defects Moderate Watercore, Notes Small central area
+Row 3: P1 14.2 lbs, P2 14.5 lbs, Avg 14.35 lbs, Weight 215 g, Size 88, Grade , Starch
+Row 4: P1 14.3 lbs, P2 14.5 lbs, Avg 14.4 lbs, Weight 215 g, Size 88, Grade , Starch
+Row 5: P1 14.4 lbs, P2 14.5 lbs, Avg 14.45 lbs, Weight 190 g, Size 100, Grade , Starch
+Row 6: P1 14.5 lbs, P2 14.5 lbs, Avg 14.5 lbs, Weight 190 g, Size 100, Grade , Starch
+Row 7: P1 14.6 lbs, P2 14.5 lbs, Avg 14.55 lbs, Weight 167 g, Size 113, Grade , Starch
+Row 8: P1 14.7 lbs, P2 14.5 lbs, Avg 14.6 lbs, Weight 167 g, Size 113, Grade , Starch
+Row 9: P1 14.8 lbs, P2 14.5 lbs, Avg 14.65 lbs, Weight 136 g, Size 138, Grade , Starch
+Row 10: P1 14.9 lbs, P2 14.5 lbs, Avg 14.7 lbs, Weight 136 g, Size 138, Grade , Starch
+
+Photo sections:
+
+Receiving Sample Details
+Sample type: Receiving Sample
+Warehouse/Room: DEMO / ROOM
+Receipt ID: DEMO-10
+Receipt type / received: Truck receipt / 10/12/2026 8:00 AM PDT
+Grower: Safe demo grower
+Grower number: DEMO
+Bins received: 40
+Variety: GALA
+Sample date/time: 10/12/2026 9:00 AM PDT
+Inspector:
+Target sample size: 10

@@ -22,7 +22,8 @@ public sealed record QcEmailInlineImage(string ContentId, string FileName, strin
 public sealed class QcSummaryEmailComposer(
     IFileStorageService fileStorageService,
     IQcPhotoRequirementPolicy photoRequirementPolicy,
-    ILogger<QcSummaryEmailComposer> logger) : IQcSummaryEmailComposer
+    ILogger<QcSummaryEmailComposer> logger,
+    IQcEmailSizeSnapshotService sizeSnapshotService) : IQcSummaryEmailComposer
 {
     public const int MaxInlineImageBytes = 1_500_000;
     public const int MaxTotalInlineImageBytes = 12_000_000;
@@ -45,13 +46,17 @@ public sealed class QcSummaryEmailComposer(
 
     public async Task<QcEmailContent> ComposeAsync(QcSample sample, ReadinessViewModel readiness, User? sendingUser, bool isOverride, string? overrideReason, CancellationToken cancellationToken)
     {
+        var sizes = await sizeSnapshotService.CaptureAsync(sample, cancellationToken);
+        var charts = new List<QcEmailInlineImage>();
+        if (sizes.CurrentSample.Counts.Count > 0) charts.Add(QcSizeChart.Render(sizes.CurrentSample, "current", "Current Sample — Size Distribution"));
+        if (sizes.EntireLot.Counts.Count > 0) charts.Add(QcSizeChart.Render(sizes.EntireLot, "lot", "Entire Lot — Size Distribution"));
         var enteredRows = sample.FruitReadings.Where(HasEnteredData).OrderBy(x => x.RowNumber).ToList();
         var requirements = photoRequirementPolicy.GetAvailablePhotoTypes(sample.SampleType.Name, sample.Receipt.FruitProfile.FruitType);
         var photos = SelectEmailPhotos(sample, requirements);
-        var inlineImages = new List<QcEmailInlineImage>();
+        var inlineImages = new List<QcEmailInlineImage>(charts);
         var imageReferences = new Dictionary<long, string>();
         var linkedPhotoNotes = new Dictionary<long, string>();
-        var totalInlineBytes = 0;
+        var totalInlineBytes = charts.Sum(x => x.Bytes.Length);
 
         foreach (var photo in photos)
         {
@@ -106,8 +111,8 @@ public sealed class QcSummaryEmailComposer(
 
         var subject = BuildSubject(sample);
         var inspector = FormatInspector(sample.TakenByUser) ?? FormatInspector(sendingUser) ?? "";
-        var html = BuildHtml(sample, readiness, enteredRows, requirements, photos, imageReferences, linkedPhotoNotes, inspector, isOverride, overrideReason);
-        var text = BuildText(sample, readiness, enteredRows, requirements, photos, linkedPhotoNotes, inspector, isOverride, overrideReason);
+        var html = BuildHtml(sample, readiness, enteredRows, requirements, photos, imageReferences, linkedPhotoNotes, inspector, isOverride, overrideReason, sizes, charts);
+        var text = BuildText(sample, readiness, enteredRows, requirements, photos, linkedPhotoNotes, inspector, isOverride, overrideReason, sizes);
         return new QcEmailContent(subject, html, text, inlineImages);
     }
 
@@ -246,7 +251,9 @@ public sealed class QcSummaryEmailComposer(
         IReadOnlyDictionary<long, string> linkedPhotoNotes,
         string inspector,
         bool isOverride,
-        string? overrideReason)
+        string? overrideReason,
+        QcEmailSizeSnapshot sizes,
+        IReadOnlyList<QcEmailInlineImage> charts)
     {
         var summary = BuildSummary(enteredRows);
         var html = new StringBuilder();
@@ -257,22 +264,6 @@ public sealed class QcSummaryEmailComposer(
             html.AppendLine($"<p style=\"color:#92400e;\"><strong>Override send:</strong> {Html(overrideReason ?? "")}</p>");
         }
 
-        html.AppendLine("<table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;\">");
-        AddInfoRow(html, "Sample type", sample.SampleType.Name);
-        AddInfoRow(html, "Warehouse", sample.Receipt.Warehouse.Code);
-        AddInfoRow(html, "Room", sample.Receipt.Room.Code);
-        AddInfoRow(html, "Receipt ID", sample.GetDisplayReceiptId());
-        AddInfoRow(html, "Receipt type", sample.Receipt.ReceiptType);
-        AddInfoRow(html, "Received", ReportTime.FormatPacific(sample.Receipt.ReceivedAt));
-        AddInfoRow(html, "Grower", sample.Receipt.GrowerName);
-        AddInfoRow(html, "Grower number", sample.Receipt.GrowerNumber ?? "");
-        AddInfoRow(html, "Bins received", sample.Receipt.BinCount.ToString());
-        AddInfoRow(html, "Variety", sample.Receipt.FruitProfile.VarietyCode);
-        AddInfoRow(html, "Sample date/time", ReportTime.FormatPacific(sample.SampleTakenAt));
-        AddInfoRow(html, "Inspector", inspector);
-        AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
-        html.AppendLine("</table>");
-
         html.AppendLine("<h2>Summary</h2>");
         html.AppendLine("<table cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;\">");
         AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
@@ -280,10 +271,9 @@ public sealed class QcSummaryEmailComposer(
         AddInfoRow(html, "Average Pressure", Format(summary.AveragePressure));
         AddInfoRow(html, "Pressure std dev lbs", Format(summary.PressureStandardDeviation));
         AddInfoRow(html, "Average starch", StarchSummaryText(sample, summary.AverageStarch));
-        AddInfoRow(html, "Average weight grams", Format(summary.AverageWeight));
+        AddInfoRow(html, "Average Box Size", sizes.AverageBoxSize);
         AddInfoRow(html, "Grade summary", summary.GradeSummary);
         AddInfoRow(html, "Defect summary", summary.DefectSummary);
-        AddInfoRow(html, "Size/status summary", summary.SizeSummary);
         if (!string.IsNullOrWhiteSpace(sample.Notes)) AddInfoRow(html, "Notes", sample.Notes);
         html.AppendLine("</table>");
 
@@ -291,6 +281,8 @@ public sealed class QcSummaryEmailComposer(
         {
             html.AppendLine("<p style=\"color:#92400e;\"><strong>Sample is incomplete;</strong> summary includes entered data only.</p>");
         }
+
+        AppendSizeCharts(html, sizes, charts);
 
         html.AppendLine("<h2>Fruit Overview</h2>");
         html.AppendLine("<table cellpadding=\"5\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #cbd5e1;table-layout:auto;width:100%;\">");
@@ -316,8 +308,66 @@ public sealed class QcSummaryEmailComposer(
 
         AppendPhotoSections(html, requirements, photos, imageReferences, linkedPhotoNotes);
 
+        html.AppendLine("<h2>Receiving Sample Details</h2>");
+        html.AppendLine("<table cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;\">");
+        AddInfoRow(html, "Sample type", sample.SampleType.Name);
+        AddInfoRow(html, "Warehouse", sample.Receipt.Warehouse.Code);
+        AddInfoRow(html, "Room", sample.Receipt.Room.Code);
+        AddInfoRow(html, "Receipt ID", sample.GetDisplayReceiptId());
+        AddInfoRow(html, "Receipt type", sample.Receipt.ReceiptType);
+        AddInfoRow(html, "Received", ReportTime.FormatPacific(sample.Receipt.ReceivedAt));
+        AddInfoRow(html, "Grower", sample.Receipt.GrowerName);
+        AddInfoRow(html, "Grower number", sample.Receipt.GrowerNumber ?? "");
+        AddInfoRow(html, "Bins received", sample.Receipt.BinCount.ToString());
+        AddInfoRow(html, "Variety", sample.Receipt.FruitProfile.VarietyCode);
+        AddInfoRow(html, "Sample date/time", ReportTime.FormatPacific(sample.SampleTakenAt));
+        AddInfoRow(html, "Inspector", inspector);
+        AddInfoRow(html, "Target sample size", sample.ActualSampleSize?.ToString() ?? "");
+        html.AppendLine("</table>");
+
         html.AppendLine("</body></html>");
         return html.ToString();
+    }
+
+    private static void AppendSizeCharts(StringBuilder html, QcEmailSizeSnapshot sizes, IReadOnlyList<QcEmailInlineImage> charts)
+    {
+        foreach (var (title, key, distribution) in SizeSections(sizes))
+        {
+            html.AppendLine($"<h2>{Html(title)}</h2>");
+            var chart = charts.SingleOrDefault(x => x.ContentId == $"cropqc-size-{key}@cropqc");
+            if (chart is not null)
+            {
+                html.AppendLine("<p>Number of sampled fruit</p>");
+                html.AppendLine($"<p><img src=\"cid:{Html(chart.ContentId)}\" alt=\"{Html(chart.AltText)}\" width=\"640\" style=\"display:block;width:100%;max-width:640px;height:auto;\" /></p>");
+                html.AppendLine("<p>Commercial box-count size</p>");
+            }
+            else html.AppendLine("<p>No valid recorded commercial sizes available.</p>");
+            if (distribution.UnclassifiedCount > 0)
+                html.AppendLine($"<p>Fruit without a valid recorded commercial size: {distribution.UnclassifiedCount}</p>");
+        }
+        html.AppendLine($"<p>Lot snapshot: {Html(ReportTime.FormatPacific(sizes.GeneratedAt))}; {sizes.LotSampleCount} qualifying sample(s).</p>");
+        if (!sizes.LotIdentityResolved) html.AppendLine("<p>Lot identity is unresolved; distribution includes the current sample only.</p>");
+    }
+
+    private static void AppendSizeText(StringBuilder text, QcEmailSizeSnapshot sizes)
+    {
+        foreach (var (title, _, distribution) in SizeSections(sizes))
+        {
+            text.AppendLine(title);
+            text.AppendLine("Commercial box-count size: number of sampled fruit");
+            foreach (var count in distribution.Counts) text.AppendLine($"{count.Size}: {count.Count}");
+            if (distribution.Counts.Count == 0) text.AppendLine("No valid recorded commercial sizes available.");
+            if (distribution.UnclassifiedCount > 0) text.AppendLine($"Fruit without a valid recorded commercial size: {distribution.UnclassifiedCount}");
+        }
+        text.AppendLine($"Lot snapshot: {ReportTime.FormatPacific(sizes.GeneratedAt)}; {sizes.LotSampleCount} qualifying sample(s).");
+        if (!sizes.LotIdentityResolved) text.AppendLine("Lot identity is unresolved; distribution includes the current sample only.");
+        text.AppendLine();
+    }
+
+    private static IEnumerable<(string Title, string Key, QcSizeDistribution Distribution)> SizeSections(QcEmailSizeSnapshot sizes)
+    {
+        yield return ("Current Sample — Size Distribution", "current", sizes.CurrentSample);
+        yield return ("Entire Lot — Size Distribution", "lot", sizes.EntireLot);
     }
 
     private static void AppendPhotoSections(StringBuilder html, IReadOnlyList<QcPhotoRequirement> requirements, IReadOnlyList<QcPhoto> photos, IReadOnlyDictionary<long, string> imageReferences, IReadOnlyDictionary<long, string> linkedPhotoNotes)
@@ -363,43 +413,32 @@ public sealed class QcSummaryEmailComposer(
         IReadOnlyDictionary<long, string> linkedPhotoNotes,
         string inspector,
         bool isOverride,
-        string? overrideReason)
+        string? overrideReason,
+        QcEmailSizeSnapshot sizes)
     {
         var summary = BuildSummary(enteredRows);
         var text = new StringBuilder();
         text.AppendLine($"{sample.GetDisplayReceiptId()} QC Summary");
-        text.AppendLine($"Sample type: {sample.SampleType.Name}");
-        text.AppendLine($"Warehouse/Room: {sample.Receipt.Warehouse.Code} / {sample.Receipt.Room.Code}");
-        text.AppendLine($"Receipt ID: {sample.GetDisplayReceiptId()}");
-        text.AppendLine($"Receipt type / received: {sample.Receipt.ReceiptType} / {ReportTime.FormatPacific(sample.Receipt.ReceivedAt)}");
-        text.AppendLine($"Grower: {sample.Receipt.GrowerName}");
-        text.AppendLine($"Grower number: {sample.Receipt.GrowerNumber}");
-        text.AppendLine($"Bins received: {sample.Receipt.BinCount}");
-        text.AppendLine($"Variety: {sample.Receipt.FruitProfile.VarietyCode}");
-        text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
-        text.AppendLine($"Inspector: {inspector}");
-        text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
-        text.AppendLine();
         text.AppendLine("Summary");
         text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
         text.AppendLine($"Entered fruit count: {summary.SampleSize}");
         text.AppendLine($"Average Pressure: {Format(summary.AveragePressure)} lbs");
         text.AppendLine($"Pressure std dev lbs: {Format(summary.PressureStandardDeviation)}");
         text.AppendLine($"Average starch: {StarchSummaryText(sample, summary.AverageStarch)}");
-        text.AppendLine($"Average weight grams: {Format(summary.AverageWeight)}");
+        text.AppendLine($"Average Box Size: {sizes.AverageBoxSize}");
         text.AppendLine($"Grade summary: {summary.GradeSummary}");
         text.AppendLine($"Defect summary: {summary.DefectSummary}");
-        text.AppendLine($"Size/status summary: {summary.SizeSummary}");
         if (!string.IsNullOrWhiteSpace(sample.Notes)) text.AppendLine($"Notes: {sample.Notes}");
         if (isOverride) text.AppendLine($"Override reason: {overrideReason}");
         if (!readiness.IsReady) text.AppendLine("Sample is incomplete; summary includes entered data only.");
         text.AppendLine();
+        AppendSizeText(text, sizes);
         text.AppendLine("Fruit Overview");
         foreach (var row in enteredRows)
         {
             var defects = DefectDisplay(row);
             var notes = DefectNotes(row);
-            text.AppendLine($"Row {row.RowNumber}: P1 {Format(row.Pressure1Lbs)} lbs, P2 {Format(row.Pressure2Lbs)} lbs, Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lbs, Weight {Format(row.WeightGrams)} g, Size {SizeText(row)}, Grade {row.Grade?.Code}, Starch {StarchText(sample, row)}, Defects {defects}, Notes {notes}");
+            text.AppendLine($"Row {row.RowNumber}: P1 {Format(row.Pressure1Lbs)} lbs, P2 {Format(row.Pressure2Lbs)} lbs, Avg {Format(Average(row.Pressure1Lbs, row.Pressure2Lbs))} lbs, Weight {Format(row.WeightGrams)} g, Size {SizeText(row)}, Grade {row.Grade?.Code}, Starch {StarchText(sample, row)}" + (defects.Length > 0 ? $", Defects {defects}" : "") + (notes.Length > 0 ? $", Notes {notes}" : ""));
         }
         text.AppendLine();
         text.AppendLine("Photo sections:");
@@ -416,6 +455,20 @@ public sealed class QcSummaryEmailComposer(
                 }
             }
         }
+        text.AppendLine();
+        text.AppendLine("Receiving Sample Details");
+        text.AppendLine($"Sample type: {sample.SampleType.Name}");
+        text.AppendLine($"Warehouse/Room: {sample.Receipt.Warehouse.Code} / {sample.Receipt.Room.Code}");
+        text.AppendLine($"Receipt ID: {sample.GetDisplayReceiptId()}");
+        text.AppendLine($"Receipt type / received: {sample.Receipt.ReceiptType} / {ReportTime.FormatPacific(sample.Receipt.ReceivedAt)}");
+        text.AppendLine($"Grower: {sample.Receipt.GrowerName}");
+        text.AppendLine($"Grower number: {sample.Receipt.GrowerNumber}");
+        text.AppendLine($"Bins received: {sample.Receipt.BinCount}");
+        text.AppendLine($"Variety: {sample.Receipt.FruitProfile.VarietyCode}");
+        text.AppendLine($"Sample date/time: {ReportTime.FormatPacific(sample.SampleTakenAt)}");
+        text.AppendLine($"Inspector: {inspector}");
+        text.AppendLine($"Target sample size: {sample.ActualSampleSize?.ToString() ?? ""}");
+        text.AppendLine();
         return text.ToString();
     }
 
@@ -424,16 +477,13 @@ public sealed class QcSummaryEmailComposer(
         var pressures = CropQc.Data.PressureCalculationService.ValidSideReadings(
             rows.Select(x => (x.Pressure1Lbs, x.Pressure2Lbs)));
         var starch = rows.Select(x => x.StarchScaleValue?.Value).Where(x => x is not null).Select(x => x!.Value).ToList();
-        var weights = rows.Select(x => x.WeightGrams).Where(x => x is not null).Select(x => x!.Value).ToList();
         return new QcSummaryStats(
             rows.Count,
             pressures.Count == 0 ? null : pressures.Average(),
             StandardDeviation(pressures),
             starch.Count == 0 ? null : starch.Average(),
-            weights.Count == 0 ? null : weights.Average(),
             Summarize(rows.Select(x => x.Grade?.Code).Where(x => !string.IsNullOrWhiteSpace(x))!),
-            SummarizeDefects(rows),
-            SummarizeSizes(rows.Select(SizeText).Where(x => !string.IsNullOrWhiteSpace(x))));
+            SummarizeDefects(rows));
     }
 
     private static string Summarize(IEnumerable<string> values)
@@ -444,33 +494,8 @@ public sealed class QcSummaryEmailComposer(
 
     private static string SummarizeDefects(IReadOnlyList<QcFruitReading> rows)
     {
-        var inspected = rows.Where(HasEnteredData).ToList();
-        if (inspected.Count == 0) return "No defects found";
-        var affected = inspected.Count(x => x.Defects.Count > 0);
-        var distribution = Summarize(inspected.SelectMany(x => x.Defects).Select(x => x.DefectType.Name));
-        return affected == 0
-            ? $"No defects found ({inspected.Count} fruit inspected)"
-            : $"{affected} of {inspected.Count} inspected fruit affected; {distribution}";
-    }
-
-    private static string SummarizeSizes(IEnumerable<string> values)
-    {
-        var groups = values
-            .GroupBy(x => x)
-            .OrderByDescending(x => x.Count())
-            .ThenBy(x => AppleSizeSort(x.Key))
-            .ThenBy(x => x.Key)
-            .Select(x => $"{x.Count()} size {x.Key}")
-            .ToList();
-        return groups.Count == 0 ? "None" : string.Join(", ", groups);
-    }
-
-    private static int AppleSizeSort(string value)
-    {
-        var order = new[] { 56, 64, 72, 80, 88, 100, 113, 120, 125, 138, 150, 163, 175, 198 };
-        return int.TryParse(value, out var size)
-            ? Array.IndexOf(order, size) is var index && index >= 0 ? index : order.Length + size
-            : int.MaxValue;
+        return Summarize(rows.SelectMany(x => x.Defects).Select(x => x.DefectType.Name)
+            .Where(x => !string.IsNullOrWhiteSpace(x)));
     }
 
     private static decimal? StandardDeviation(IReadOnlyList<decimal> values)
@@ -504,7 +529,7 @@ public sealed class QcSummaryEmailComposer(
     {
         var names = DefectNames(row).ToList();
         if (names.Count > 0) return string.Join(", ", names);
-        return "No defects found";
+        return "";
     }
 
     private static string DefectNotes(QcFruitReading row) =>
@@ -580,5 +605,5 @@ public sealed class QcSummaryEmailComposer(
 
     private sealed record PreparedInlineImage(string FileName, string ContentType, byte[] Bytes);
     private sealed record InlineImageCompressionAttempt(int MaxWidth, int MaxHeight, int Quality);
-    private sealed record QcSummaryStats(int SampleSize, decimal? AveragePressure, decimal? PressureStandardDeviation, decimal? AverageStarch, decimal? AverageWeight, string GradeSummary, string DefectSummary, string SizeSummary);
+    private sealed record QcSummaryStats(int SampleSize, decimal? AveragePressure, decimal? PressureStandardDeviation, decimal? AverageStarch, string GradeSummary, string DefectSummary);
 }
