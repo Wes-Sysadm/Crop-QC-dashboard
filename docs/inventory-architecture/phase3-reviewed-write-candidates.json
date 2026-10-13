@@ -86,8 +86,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOperations.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "113DC18C75C29E8D821182056286A06F5E4C6D2F13ECC30CB8BF97E7F56A85DF"
+    "Reason": "Reviewed canonical writer: exact receipt origin credits use destination admission; untouched placement compensation uses independent cohort and origin proof; typed addition endpoints preserve lineage. Serializable, quantity, dependency and audit guards retained. See pr271-systemic-room-admission.md.",
+    "Sha256": "A04FFB4AC83BA3A0A4EB60F9A22C81DEAE216317AA3CA75A346D5E541C354F9B"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOrasDefinition.cs",
@@ -104,8 +104,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "4DD198E1EF6C93F0DDED40336CDC47ADAD08A57774791BA531E46CD12912F190"
+    "Reason": "Reviewed canonical writer: exact receipt origin credits use destination admission; untouched placement compensation uses independent cohort and origin proof; typed addition endpoints preserve lineage. Serializable, quantity, dependency and audit guards retained. See pr271-systemic-room-admission.md.",
+    "Sha256": "83AD22C43D9C4DC403F65A1F7A6677BCAE1C9EC35818C60A6FBA90D031EE27A0"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
@@ -134,8 +134,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptReversal.cs",
     "Classification": "Canonical transaction owner",
-    "Reason": "Exact receipt-held and untouched-placement compensation is owned by the Serializable executor; immutable linked reversal, full conservation proof and shared journal; no direct external writer.",
-    "Sha256": "2B75126F996144DEF890E8512E04D0102854359CFA5FD4528662CE432756DAEC"
+    "Reason": "Reviewed canonical writer: exact receipt origin credits use destination admission; untouched placement compensation uses independent cohort and origin proof; typed addition endpoints preserve lineage. Serializable, quantity, dependency and audit guards retained. See pr271-systemic-room-admission.md.",
+    "Sha256": "6FFB19FEC8BF2405FAA1337D70B3FDF747D258B3A1CFED8911C53660B4E022B3"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",

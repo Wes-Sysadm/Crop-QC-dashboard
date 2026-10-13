@@ -38,6 +38,11 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
         Assert.DoesNotContain("ReconstructRecordedCohortsAsync", destination);
         Assert.DoesNotContain(".CurrentAsync", destination);
         Assert.Contains("InventoryOriginGuard.ValidateAsync", destination);
+        var corrections = File.ReadAllText(Path.Combine(path, "InventoryCommandReceiptChanges.cs"));
+        Assert.Contains("if (delta > 0)\n                await PrepareDestinationAsync", corrections.Replace("\r\n", "\n"));
+        var reversal = File.ReadAllText(Path.Combine(path, "InventoryCommandReceiptReversal.cs"));
+        Assert.Contains("InventoryCohortEvidence.Proven(evidence)", reversal);
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", reversal);
         // Runtime cases prove missing, inconsistent and negative projections admit
         // valid incoming stock, while origin, overdraw and custody checks reject.
     }

@@ -463,12 +463,8 @@ public sealed partial class InventoryCommandExecutor
                     Require(a.Segment.CurrentBins >= 0, "Projection consumption exceeded its proven current quantity.");
                     if (a.Segment.CurrentBins == 0) CanonicalProjectionFactory.Retire(a.Segment, c.OperationKey, now);
                 }
-            if (increase)
-                foreach (var movement in movements)
-                {
-                    movement.DestinationSegment = movement.SourceSegment; movement.SourceSegment = null;
-                    movement.DestinationRoomId = loc.RoomId; movement.SourceRoomId = null;
-                }
+            // Increase handlers already record an arrival with no source segment.
+            // Reversing its endpoints here would erase that destination evidence.
             db.RoomInventoryAdjustments.AddRange(entries);
             await Stage($"Source{index + 1}", db, attempt, ct);
             await Stage("Movement", db, attempt, ct);

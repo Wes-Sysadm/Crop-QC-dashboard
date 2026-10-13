@@ -1,0 +1,5 @@
+SELECT now() AS captured_at,
+(SELECT jsonb_agg(x) FROM (SELECT w."Code" warehouse,count(*) events,count(DISTINCT a."RoomId") rooms,count(DISTINCT a."FruitProfileId") profiles FROM "RoomInventoryAdjustments" a JOIN "Warehouses" w ON w."Id"=a."WarehouseId" GROUP BY w."Code") x) AS scope,
+(SELECT jsonb_agg(x) FROM (SELECT "AdjustmentType",count(*) events FROM "RoomInventoryAdjustments" GROUP BY "AdjustmentType" ORDER BY "AdjustmentType") x) AS operations,
+(SELECT jsonb_agg(x) FROM (SELECT r."Code",s."RoomId",s."Id",s."FruitProfileId",s."LotNumberSnapshot",s."VarietyCodeSnapshot",s."CurrentBins",s."TreatmentState",s."ReceiptId" FROM "TreatmentLineageSegments" s JOIN "Rooms" r ON r."Id"=s."RoomId" WHERE s."Disposition"='Current' AND s."CurrentBins"=0 AND split_part(s."IdentityKey",'|',9)<>'' AND upper(split_part(s."IdentityKey",'|',9))=upper(s."ProductionTypeSnapshot") ORDER BY s."RoomId",s."Id") x) AS zero_aliases,
+(SELECT jsonb_agg(x) FROM (SELECT r."Id",r."Code",r."WarehouseId",r."IsActive",r."IsSealed",r."CapacityBins" FROM "Rooms" r WHERE NOT r."IsActive" OR r."IsSealed" ORDER BY r."Id") x) AS restricted_rooms;

@@ -1,0 +1,900 @@
+{
+  "captured_at": "2026-10-13T20:53:38.240426Z",
+  "operations": [
+    {
+      "AdjustmentType": "BinsRun",
+      "events": 458
+    },
+    {
+      "AdjustmentType": "BinsRunReversal",
+      "events": 21
+    },
+    {
+      "AdjustmentType": "Depletion",
+      "events": 6
+    },
+    {
+      "AdjustmentType": "DroppedBins",
+      "events": 8
+    },
+    {
+      "AdjustmentType": "InterCrewTransferDispatch",
+      "events": 42
+    },
+    {
+      "AdjustmentType": "InterCrewTransferReceive",
+      "events": 22
+    },
+    {
+      "AdjustmentType": "InventoryIdentityCorrection",
+      "events": 118
+    },
+    {
+      "AdjustmentType": "OutsideWarehouseTransfer",
+      "events": 47
+    },
+    {
+      "AdjustmentType": "OutsideWarehouseTransferReversal",
+      "events": 1
+    },
+    {
+      "AdjustmentType": "ReceiptAdd",
+      "events": 2574
+    },
+    {
+      "AdjustmentType": "ReceiptAdminOverride",
+      "events": 173
+    },
+    {
+      "AdjustmentType": "ReceiptEdit",
+      "events": 36
+    },
+    {
+      "AdjustmentType": "StartingInventoryImport",
+      "events": 20
+    },
+    {
+      "AdjustmentType": "TransferIn",
+      "events": 409
+    },
+    {
+      "AdjustmentType": "TransferOut",
+      "events": 409
+    }
+  ],
+  "restricted_rooms": [
+    {
+      "CapacityBins": 410,
+      "Code": "DH-1",
+      "Id": 33,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 410,
+      "Code": "DH-2",
+      "Id": 34,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 650,
+      "Code": "DH-5",
+      "Id": 37,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 650,
+      "Code": "DH-6",
+      "Id": 38,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 410,
+      "Code": "DH-7",
+      "Id": 39,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 410,
+      "Code": "DH-8",
+      "Id": 40,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 410,
+      "Code": "DH-9",
+      "Id": 41,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 650,
+      "Code": "DH-10",
+      "Id": 42,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 650,
+      "Code": "DH-12",
+      "Id": 44,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 410,
+      "Code": "DH-13",
+      "Id": 45,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-15",
+      "Id": 47,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-16",
+      "Id": 48,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-17",
+      "Id": 49,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-18",
+      "Id": 50,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-19",
+      "Id": 51,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-20",
+      "Id": 52,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-21",
+      "Id": 53,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1450,
+      "Code": "DH-22",
+      "Id": 54,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 2
+    },
+    {
+      "CapacityBins": 1695,
+      "Code": "MCD-05",
+      "Id": 57,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1695,
+      "Code": "MCD-06",
+      "Id": 58,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1695,
+      "Code": "MCD-07",
+      "Id": 59,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1456,
+      "Code": "MCD-11",
+      "Id": 63,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1276,
+      "Code": "MCD-13",
+      "Id": 65,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1276,
+      "Code": "MCD-15",
+      "Id": 67,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    },
+    {
+      "CapacityBins": 1276,
+      "Code": "MCD-16",
+      "Id": 68,
+      "IsActive": true,
+      "IsSealed": true,
+      "WarehouseId": 3
+    }
+  ],
+  "scope": [
+    {
+      "events": 362,
+      "profiles": 17,
+      "rooms": 21,
+      "warehouse": "DH"
+    },
+    {
+      "events": 2263,
+      "profiles": 15,
+      "rooms": 25,
+      "warehouse": "EBS"
+    },
+    {
+      "events": 1053,
+      "profiles": 18,
+      "rooms": 15,
+      "warehouse": "McDougall"
+    },
+    {
+      "events": 666,
+      "profiles": 22,
+      "rooms": 5,
+      "warehouse": "WP"
+    }
+  ],
+  "zero_aliases": [
+    {
+      "Code": "WP-4",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 273,
+      "LotNumberSnapshot": "1084",
+      "ReceiptId": null,
+      "RoomId": 1,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "WP-8",
+      "CurrentBins": 0,
+      "FruitProfileId": 18,
+      "Id": 551,
+      "LotNumberSnapshot": "4402",
+      "ReceiptId": null,
+      "RoomId": 5,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "DANJ"
+    },
+    {
+      "Code": "WP-8",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 558,
+      "LotNumberSnapshot": "4402",
+      "ReceiptId": 1181,
+      "RoomId": 5,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "WP-8",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 559,
+      "LotNumberSnapshot": "6270",
+      "ReceiptId": 1181,
+      "RoomId": 5,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "WP-8",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 581,
+      "LotNumberSnapshot": "6270",
+      "ReceiptId": null,
+      "RoomId": 5,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "LAMB-13",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 194,
+      "LotNumberSnapshot": "9221",
+      "ReceiptId": null,
+      "RoomId": 6,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "LAMB-13",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 196,
+      "LotNumberSnapshot": "9412",
+      "ReceiptId": null,
+      "RoomId": 6,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "LAMB-13",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 543,
+      "LotNumberSnapshot": "1022",
+      "ReceiptId": null,
+      "RoomId": 6,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-13",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 544,
+      "LotNumberSnapshot": "1021",
+      "ReceiptId": null,
+      "RoomId": 6,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "LAMB-13",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 572,
+      "LotNumberSnapshot": "1572",
+      "ReceiptId": null,
+      "RoomId": 6,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 284,
+      "LotNumberSnapshot": "9100",
+      "ReceiptId": null,
+      "RoomId": 7,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 400,
+      "LotNumberSnapshot": "9362",
+      "ReceiptId": null,
+      "RoomId": 7,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 427,
+      "LotNumberSnapshot": "3152",
+      "ReceiptId": null,
+      "RoomId": 7,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 429,
+      "LotNumberSnapshot": "9682",
+      "ReceiptId": null,
+      "RoomId": 7,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 555,
+      "LotNumberSnapshot": "9380",
+      "ReceiptId": null,
+      "RoomId": 7,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-15",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 391,
+      "LotNumberSnapshot": "9342",
+      "ReceiptId": null,
+      "RoomId": 8,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "LAMB-15",
+      "CurrentBins": 0,
+      "FruitProfileId": 1,
+      "Id": 591,
+      "LotNumberSnapshot": "1033",
+      "ReceiptId": null,
+      "RoomId": 8,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "FUJI"
+    },
+    {
+      "Code": "LAMB-15",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 613,
+      "LotNumberSnapshot": "9401",
+      "ReceiptId": null,
+      "RoomId": 8,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "LAMB-15",
+      "CurrentBins": 0,
+      "FruitProfileId": 1,
+      "Id": 629,
+      "LotNumberSnapshot": "3202",
+      "ReceiptId": null,
+      "RoomId": 8,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "FUJI"
+    },
+    {
+      "Code": "LAMB-16",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 47,
+      "LotNumberSnapshot": "3040",
+      "ReceiptId": null,
+      "RoomId": 9,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-16",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 131,
+      "LotNumberSnapshot": "9622",
+      "ReceiptId": null,
+      "RoomId": 9,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-16",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 132,
+      "LotNumberSnapshot": "9418",
+      "ReceiptId": null,
+      "RoomId": 9,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-16",
+      "CurrentBins": 0,
+      "FruitProfileId": 5,
+      "Id": 134,
+      "LotNumberSnapshot": "9532",
+      "ReceiptId": null,
+      "RoomId": 9,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "HONY"
+    },
+    {
+      "Code": "LAMB-16",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 614,
+      "LotNumberSnapshot": "9401",
+      "ReceiptId": null,
+      "RoomId": 9,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-3",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 590,
+      "LotNumberSnapshot": "9722",
+      "ReceiptId": null,
+      "RoomId": 13,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-3",
+      "CurrentBins": 0,
+      "FruitProfileId": 8,
+      "Id": 601,
+      "LotNumberSnapshot": "9671",
+      "ReceiptId": null,
+      "RoomId": 13,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORGD"
+    },
+    {
+      "Code": "EVANS-4",
+      "CurrentBins": 0,
+      "FruitProfileId": 7,
+      "Id": 486,
+      "LotNumberSnapshot": "9332",
+      "ReceiptId": null,
+      "RoomId": 14,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORGA"
+    },
+    {
+      "Code": "EVANS-05",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 433,
+      "LotNumberSnapshot": "9401",
+      "ReceiptId": null,
+      "RoomId": 15,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-6",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 570,
+      "LotNumberSnapshot": "9691",
+      "ReceiptId": null,
+      "RoomId": 16,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-7",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 89,
+      "LotNumberSnapshot": "9682",
+      "ReceiptId": null,
+      "RoomId": 17,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-8",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 92,
+      "LotNumberSnapshot": "3050",
+      "ReceiptId": null,
+      "RoomId": 18,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-9",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 85,
+      "LotNumberSnapshot": "9362",
+      "ReceiptId": null,
+      "RoomId": 19,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-9",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 88,
+      "LotNumberSnapshot": "9682",
+      "ReceiptId": null,
+      "RoomId": 19,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-10",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 417,
+      "LotNumberSnapshot": "9392",
+      "ReceiptId": null,
+      "RoomId": 20,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-10",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 537,
+      "LotNumberSnapshot": "9541",
+      "ReceiptId": null,
+      "RoomId": 20,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-10",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 562,
+      "LotNumberSnapshot": "3290",
+      "ReceiptId": null,
+      "RoomId": 20,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-10",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 605,
+      "LotNumberSnapshot": "9414",
+      "ReceiptId": null,
+      "RoomId": 20,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-10",
+      "CurrentBins": 0,
+      "FruitProfileId": 10,
+      "Id": 608,
+      "LotNumberSnapshot": "9820",
+      "ReceiptId": null,
+      "RoomId": 20,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORHC"
+    },
+    {
+      "Code": "EVANS-11",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 547,
+      "LotNumberSnapshot": "3152",
+      "ReceiptId": null,
+      "RoomId": 21,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "EVANS-11",
+      "CurrentBins": 0,
+      "FruitProfileId": 2,
+      "Id": 556,
+      "LotNumberSnapshot": "9092",
+      "ReceiptId": null,
+      "RoomId": 21,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "GALA"
+    },
+    {
+      "Code": "MCD-06",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 147,
+      "LotNumberSnapshot": "1372",
+      "ReceiptId": null,
+      "RoomId": 58,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "MCD-07",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 153,
+      "LotNumberSnapshot": "1372",
+      "ReceiptId": null,
+      "RoomId": 59,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "MCD-07",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 357,
+      "LotNumberSnapshot": "2825",
+      "ReceiptId": null,
+      "RoomId": 59,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-07",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 359,
+      "LotNumberSnapshot": "1538",
+      "ReceiptId": null,
+      "RoomId": 59,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-07",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 361,
+      "LotNumberSnapshot": "1543",
+      "ReceiptId": null,
+      "RoomId": 59,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 229,
+      "LotNumberSnapshot": "1270",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 29,
+      "Id": 233,
+      "LotNumberSnapshot": "1272",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "RDAN"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 244,
+      "LotNumberSnapshot": "2825",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 26,
+      "Id": 333,
+      "LotNumberSnapshot": "1270",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDR"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 29,
+      "Id": 526,
+      "LotNumberSnapshot": "2822",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "RDAN"
+    },
+    {
+      "Code": "MCD-08",
+      "CurrentBins": 0,
+      "FruitProfileId": 21,
+      "Id": 541,
+      "LotNumberSnapshot": "1600",
+      "ReceiptId": null,
+      "RoomId": 60,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "ORDA"
+    },
+    {
+      "Code": "MCD-09",
+      "CurrentBins": 0,
+      "FruitProfileId": 29,
+      "Id": 345,
+      "LotNumberSnapshot": "1537",
+      "ReceiptId": null,
+      "RoomId": 61,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "RDAN"
+    },
+    {
+      "Code": "MCD-09",
+      "CurrentBins": 0,
+      "FruitProfileId": 29,
+      "Id": 347,
+      "LotNumberSnapshot": "1539",
+      "ReceiptId": null,
+      "RoomId": 61,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "RDAN"
+    },
+    {
+      "Code": "MCD-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 148,
+      "LotNumberSnapshot": "1372",
+      "ReceiptId": 720,
+      "RoomId": 66,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    },
+    {
+      "Code": "MCD-14",
+      "CurrentBins": 0,
+      "FruitProfileId": 17,
+      "Id": 154,
+      "LotNumberSnapshot": "1372",
+      "ReceiptId": 626,
+      "RoomId": 66,
+      "TreatmentState": "Untreated",
+      "VarietyCodeSnapshot": "BART"
+    }
+  ]
+}

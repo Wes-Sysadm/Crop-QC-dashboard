@@ -13,11 +13,13 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReceiptCustodyCorrectionTests
 {
-    [InventoryPostgresFact]
-    public async Task Held_placement_preserves_destination_discrepancy_and_exact_incoming_custody()
+    [InventoryPostgresTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Held_placement_preserves_destination_discrepancy_and_exact_incoming_custody(bool treated)
     {
         await using var f = await Fixture.Create();
-        var receiving = await f.ReceiveCommand(async () => { await InventoryMovementDestinationTests.SeedDestination(f, 9, 9007, 9006); });
+        var receiving = await f.ReceiveCommand(treated: treated, prepareDestination: async () => { await InventoryMovementDestinationTests.SeedDestination(f, 9, 9007, 9006); });
         await Commit(f, receiving, InventoryCommandKind.AcknowledgeTransfer, 19);
         var place = await Build(f, receiving, InventoryCommandKind.PlaceReceiptCustody, 7);
         await using var db = f.CreateDbContext();
@@ -29,13 +31,26 @@ public sealed class ReceiptCustodyCorrectionTests
         var incoming = await db.TreatmentLineageSegments.Include(x => x.Applications).SingleAsync(x => x.CohortKey == place.OperationKey);
         Assert.Equal(7, incoming.CurrentBins);
         Assert.Equal(100000, incoming.ReceiptId);
-        Assert.Equal("u", incoming.TreatmentSignature);
-        Assert.Empty(incoming.Applications);
+        Assert.Equal(treated ? "Confirmed" : "Untreated", incoming.TreatmentState);
+        Assert.Equal(treated ? 1 : 0, incoming.Applications.Count);
+        var applicationIds = incoming.Applications.Select(x => x.RoomTreatmentApplicationId).Order().ToArray();
         Assert.Equal(19, await db.ReceiptCustodyAcknowledgments.SumAsync(x => x.Quantity));
         Assert.Equal(7, await db.ReceiptCustodyPlacements.SumAsync(x => x.Quantity));
         var snapshot = await f.Snapshot();
         Assert.Equal(InventoryCommandStatus.Replayed, (await f.Execute(place)).Status);
         Assert.Equal(snapshot, await f.Snapshot());
+        // The untouched seven-bin cohort can return to held custody even though
+        // the unrelated destination remainder still has a projection gap.
+        await Commit(f, receiving, InventoryCommandKind.ReverseReceiptPlacement, 3);
+        Assert.Equal(21, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(await db.TreatmentLineageSegments.AsNoTracking().Where(x => x.RoomId == 9007 && x.CohortKey != place.OperationKey).OrderBy(x => x.Id).ToArrayAsync()));
+        Assert.Equal(3, await db.ReceiptCustodyReversals.SumAsync(x => x.Quantity));
+        await Commit(f, receiving, InventoryCommandKind.PlaceReceiptCustody, 3);
+        Assert.Equal(24, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        var returned = await db.TreatmentLineageSegments.AsNoTracking().Include(x => x.Applications)
+            .Where(x => x.RoomId == 9007 && x.CurrentBins > 0 && x.CohortKey != place.OperationKey && x.ReceiptId == 100000).SingleAsync();
+        Assert.Equal(3, returned.CurrentBins);
+        Assert.Equal(applicationIds, returned.Applications.Select(x => x.RoomTreatmentApplicationId).Order());
     }
 
     [InventoryPostgresTheory]

@@ -347,9 +347,27 @@
           "member": "Invalid_application_allocations_are_diagnostics_without_throwing_or_blocking_incoming_inventory",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCorrectionTreatmentTests",
+          "member": "Positive_correction_credits_its_own_origin_without_reconstructing_existing_receipt_projection",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCustodyCorrectionTests",
+          "member": "Held_placement_preserves_destination_discrepancy_and_exact_incoming_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCorrectionTreatmentTests",
+          "member": "Legacy_typed_addition_retains_its_recorded_destination",
+          "kind": "postgres",
+          "required": true
         }
       ],
-      "gap": "Open/sealed/facility policy remains enforced; no new capacity or commodity segregation rule is invented. #271 placement eligibility needs its own review."
+      "gap": "Open/sealed/facility policy remains enforced; no new capacity or commodity segregation rule is invented. See PR271 systemic room-admission review for independent manual-origin/baseline follow-on scope and historical proof limitations."
     },
     {
       "id": "AUD-001",

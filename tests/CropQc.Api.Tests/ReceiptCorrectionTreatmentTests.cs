@@ -8,6 +8,58 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReceiptCorrectionTreatmentTests
 {
+    [InventoryPostgresTheory]
+    [InlineData(InventoryCommandKind.ReceiptCorrection)]
+    [InlineData(InventoryCommandKind.BaselineAdjustment)]
+    public async Task Legacy_typed_addition_retains_its_recorded_destination(InventoryCommandKind kind)
+    {
+        await using var f = await Fixture.Create();
+        var command = await f.Command(kind, 2);
+        command = command with
+        {
+            Lines = [command.Lines[0] with
+        { ReceiptId = kind == InventoryCommandKind.ReceiptCorrection ? 100000 : null, AdjustmentDirection = InventoryAdjustmentDirection.Increase }]
+        };
+        var result = await f.Execute(command);
+        Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail);
+        await using var db = f.CreateDbContext();
+        var movement = await db.TreatmentLineageMovements.SingleAsync();
+        Assert.Null(movement.SourceSegmentId); Assert.Null(movement.SourceRoomId);
+        var destination = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == movement.DestinationSegmentId);
+        Assert.Equal(9002, destination.RoomId); Assert.Equal(9002, movement.DestinationRoomId);
+        Assert.Equal("Current", destination.Disposition); Assert.Equal(21, destination.CurrentBins);
+        Assert.Equal("u", destination.TreatmentSignature);
+        Assert.Equal(2, movement.BinCount); Assert.Equal(21, await f.Physical());
+    }
+
+    [InventoryPostgresFact]
+    public async Task Positive_correction_credits_its_own_origin_without_reconstructing_existing_receipt_projection()
+    {
+        await using var f = await Fixture.Create();
+        await using var db = f.CreateDbContext();
+        var old = await db.TreatmentLineageSegments.SingleAsync(x => x.Id == 100000);
+        old.CurrentBins = 9; // Disposable stale projection; the recorded receipt still proves nineteen.
+        await db.SaveChangesAsync();
+        var before = System.Text.Json.JsonSerializer.Serialize(old);
+        var state = (await new InventoryReceiptAvailability(db).ReadAsync(100000, default))!;
+        Assert.Null(state.Blocker); Assert.Equal(19, state.RoomQuantity);
+        var command = new InventoryCommand(Guid.NewGuid().ToString("N"), InventoryCommandKind.CorrectReceiptQuantity, 8000,
+            DateTimeOffset.UtcNow, "Additional two bins confirmed at this current receipt location", [],
+            ReceiptChange: new(100000, state.Receipt.ConcurrencyVersion, state.Fingerprint, 21,
+                [new(state.Allocations.Single().Key, 2)], ConfirmAdditionalBinsUntreated: true));
+        var result = await f.Execute(command);
+        Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail);
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(await db.TreatmentLineageSegments.AsNoTracking().SingleAsync(x => x.Id == old.Id)));
+        Assert.Equal(21, await f.Physical());
+        Assert.Equal(11, await db.TreatmentLineageSegments.Where(x => x.Disposition == "Current").SumAsync(x => x.CurrentBins));
+        var incoming = await db.TreatmentLineageSegments.Include(x => x.Applications).SingleAsync(x => x.CohortKey == command.OperationKey);
+        Assert.Equal(2, incoming.CurrentBins); Assert.Equal("Untreated", incoming.TreatmentState); Assert.Empty(incoming.Applications);
+        Assert.Empty(await db.AuditLogs.Where(x => x.Action == "CanonicalInventoryNormalization").ToArrayAsync());
+        Assert.Single(await db.AuditLogs.Where(x => x.Action == "CanonicalDestinationReconciliation").ToArrayAsync());
+        var saved = await f.Snapshot();
+        Assert.Equal(InventoryCommandStatus.Replayed, (await f.Execute(command)).Status); Assert.Equal(saved, await f.Snapshot());
+    }
+
     [InventoryPostgresFact]
     public async Task Added_bins_do_not_inherit_the_selected_allocations_historical_treatment()
     {
