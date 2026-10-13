@@ -226,7 +226,11 @@ public sealed class CanonicalReceivingWorkflowTests
         Assert.Equal(saved, await f.Snapshot());
         var positions = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db))
             .ResolveAsync(new(9001, [9002, 9003]), new(), DateTimeOffset.UtcNow)).Positions;
-        Assert.All(positions, p => { Assert.True(p.IsOperable); Assert.Equal(p.AuthoritativeQuantity, p.RawProjectionQuantity); });
+        Assert.All(positions, p => Assert.True(p.IsOperable));
+        // Arrival preserves the original ten-bin projection excess. Physical
+        // authority and each new receipt credit remain exact; receiving is not repair.
+        Assert.Equal(10, positions.Single(p => p.Location.RoomId == 9002).ProjectionExcess);
+        Assert.Equal(0, positions.Single(p => p.Location.RoomId == 9003).ProjectionExcess);
         Assert.Equal(37, positions.Sum(p => p.AuthoritativeQuantity));
         Assert.Equal(2, await db.InventoryCommands.CountAsync());
         Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.Action == "CanonicalReceiptCreated"));

@@ -81,6 +81,18 @@
           "member": "Incoming_cohort_coexists_with_defective_destination_and_can_move_again",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryDestinationAliasTests",
+          "member": "Depleted_destination_alias_cannot_veto_receiving_or_room_movement",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryDestinationAliasTests",
+          "member": "Concurrent_arrivals_into_depleted_alias_conserve_both_origins_and_replay_once",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Whole-production accounting requires a fresh read-only release report; no live quantities certified by CI."
@@ -172,6 +184,12 @@
           "type": "CropQc.Api.Tests.InventoryMovementReviewTests",
           "member": "Shared_withdrawal_does_not_move_later_arrivals_before_a_backdated_application",
           "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InventoryDestinationAliasTests",
+          "member": "Arrival_after_treatment_keeps_mixed_histories_through_repeated_partial_moves",
+          "kind": "postgres",
           "required": true
         }
       ],
@@ -268,6 +286,12 @@
         {
           "type": "CropQc.Api.Tests.InventoryMovementDestinationTests",
           "member": "Transfer_receipt_preserves_exclusive_custody_in_an_unresolved_destination",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
+          "member": "Partial_return_then_exact_receipt_into_depleted_alias_preserves_exclusive_custody",
           "kind": "postgres",
           "required": true
         }

@@ -27,7 +27,7 @@ public sealed class InventoryCommandProofTests
         if (plan == null) { Assert.Equal(e.AuthoritativeQuantity, e.Projections.Sum(x => x.Quantity)); return; }
         Assert.Equal(e.AuthoritativeQuantity, plan.ReplacementQuantity);
         Assert.All(plan.Changes, x => { Assert.Equal(0, x.AfterQuantity); Assert.Equal("Historical", x.AfterDisposition); Assert.Equal(x.BeforeVersion + 1, x.AfterVersion); });
-        Assert.Equal(e.Projections.Where(x => x.Quantity > 0).Select(x => x.Id).Order(), plan.Changes.Select(x => x.Id));
+        Assert.Equal(e.Projections.Where(x => x.Disposition == "Current").Select(x => x.Id).Order(), plan.Changes.Select(x => x.Id));
         Assert.All(plan.Changes, x => Assert.Equal(e.Projections.Single(p => p.Id == x.Id).ReceiptId, x.ReceiptId));
     }
 

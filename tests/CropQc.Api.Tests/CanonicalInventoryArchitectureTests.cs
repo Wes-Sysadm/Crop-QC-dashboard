@@ -34,6 +34,10 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
         Assert.Contains("InventoryDestinationAdmission.Assess", destination);
         Assert.Contains("afterProjection - beforeProjection == after.AuthoritativeQuantity - before.AuthoritativeQuantity", destination);
         Assert.Contains("CanonicalDestinationReconciliation", destination);
+        Assert.DoesNotContain("NormalizePositionAsync", destination);
+        Assert.DoesNotContain("ReconstructRecordedCohortsAsync", destination);
+        Assert.DoesNotContain(".CurrentAsync", destination);
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", destination);
         // Runtime cases prove missing, inconsistent and negative projections admit
         // valid incoming stock, while origin, overdraw and custody checks reject.
     }

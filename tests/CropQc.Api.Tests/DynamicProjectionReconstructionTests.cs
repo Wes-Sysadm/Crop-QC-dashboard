@@ -159,7 +159,10 @@ public sealed class DynamicProjectionReconstructionTests
         }
         var expected = opening + first + second - (scenario is "both-directions" or "reversal" ? 0 : deducted);
         Assert.Equal(expected, await Authority(f));
-        var preserved = await Current(f);
+        // Without a source operation, receipt creation deliberately leaves older
+        // unproven projection rows in place. Only the new recorded cohorts are
+        // protected current populations; the old excess still needs reconstruction.
+        var preserved = (await Current(f)).Where(x => deducted > 0 || !string.IsNullOrEmpty(x.CohortKey)).ToArray();
         await AddStaleAlias(f);
         var p = await f.Executor.PreviewProjectionReconstructionAsync(f.Target);
         Assert.True(p.Eligible, string.Join(";", p.Blockers));
@@ -168,7 +171,7 @@ public sealed class DynamicProjectionReconstructionTests
         var result = await Repair(f, p);
         Assert.Equal("Verified", (await f.Executor.VerifyProjectionReconstructionAsync(result.OperationKey)).Status);
         Assert.Equal(expected, await Authority(f));
-        Assert.Equal(JsonSerializer.Serialize(preserved), JsonSerializer.Serialize(await Current(f)));
+        Assert.Equal(JsonSerializer.Serialize(preserved), JsonSerializer.Serialize((await Current(f)).Where(x => preserved.Any(p => p.Id == x.Id))));
         Assert.Equal(0, result.AuthoritativeQuantityDelta);
     }
 
@@ -277,6 +280,7 @@ public sealed class DynamicProjectionReconstructionTests
     {
         await using var f = await Fixture.Create();
         var opening = await Authority(f);
+        var roomCorrectionDelta = corrected - 11;
         await Receive(f, 11, "CORRECT-LATER");
         if (afterMovement)
         {
@@ -291,6 +295,21 @@ public sealed class DynamicProjectionReconstructionTests
             if (!isVoid)
             {
                 var form = await CanonicalReceiptCorrectionWorkflowTests.Form(db, service, receipt.Id, corrected);
+                // A source move can now retain and move the exact newer receipt
+                // instead of collapsing its ancestry into an older shared pool.
+                // Select the recorded current allocations explicitly.
+                var state = (await new InventoryReceiptAvailability(db).ReadAsync(receipt.Id, default))!;
+                var remaining = Math.Abs(corrected - 11);
+                roomCorrectionDelta = 0;
+                foreach (var allocation in state.Allocations.OrderBy(x => x.Position.Location.RoomId))
+                {
+                    var quantity = corrected > 11 ? remaining : Math.Min(remaining, allocation.Slice.Quantity);
+                    if (quantity == 0) continue;
+                    form.TrueUpAllocations.Add(new() { TargetKey = allocation.Key, Bins = quantity });
+                    if (allocation.Position.Location.RoomId == 9002) roomCorrectionDelta += Math.Sign(corrected - 11) * quantity;
+                    remaining -= quantity;
+                }
+                Assert.Equal(0, remaining);
                 Assert.Null((await service.ApplyEditAsync(form, principal, default)).Error);
             }
             else
@@ -309,14 +328,15 @@ public sealed class DynamicProjectionReconstructionTests
                 }, principal, default)).Error);
             }
         }
-        Assert.Equal(opening + corrected, await Authority(f));
-        var preserved = await Current(f); await AddStaleAlias(f);
+        var expected = opening + 11 + roomCorrectionDelta;
+        Assert.Equal(expected, await Authority(f));
+        var preserved = (await Current(f)).Where(x => afterMovement || !string.IsNullOrEmpty(x.CohortKey)).ToArray(); await AddStaleAlias(f);
         var preview = await f.Executor.PreviewProjectionReconstructionAsync(f.Target);
         Assert.True(preview.Eligible, string.Join(';', preview.Blockers));
-        Assert.Equal(opening + corrected, preview.AuthoritativeQuantity);
+        Assert.Equal(expected, preview.AuthoritativeQuantity);
         var result = await Repair(f, preview);
         Assert.Equal("Verified", (await f.Executor.VerifyProjectionReconstructionAsync(result.OperationKey)).Status);
-        Assert.Equal(JsonSerializer.Serialize(preserved), JsonSerializer.Serialize(await Current(f)));
+        Assert.Equal(JsonSerializer.Serialize(preserved), JsonSerializer.Serialize((await Current(f)).Where(x => preserved.Any(p => p.Id == x.Id))));
     }
 
     [InventoryPostgresTheory]
@@ -473,14 +493,18 @@ public sealed class DynamicProjectionReconstructionTests
     private static TreatmentLineageSegment Clone(TreatmentLineageSegment row, long id, int quantity)
     {
         var clone = JsonSerializer.Deserialize<TreatmentLineageSegment>(JsonSerializer.Serialize(row))!;
-        clone.Id = id; clone.IdentityKey += "CONVENTIONAL"; clone.InventoryStatusSnapshot = "Conventional";
+        clone.Id = id; clone.IdentityKey = InventoryStatusIdentity.NormalizeLineageKey(row.IdentityKey) + "CONVENTIONAL"; clone.InventoryStatusSnapshot = "Conventional";
         clone.CurrentBins = quantity; clone.ReceiptId = null; clone.Applications.Clear(); return clone;
     }
     private static async Task AddStaleAlias(Fixture f)
     {
         await using var db = f.LegacyDb();
         var row = await db.TreatmentLineageSegments.AsNoTracking().FirstAsync(x => x.RoomId == 9002 && x.GrowerLotId == 100000 && x.Disposition == "Current" && x.CurrentBins > 0);
-        db.TreatmentLineageSegments.Add(Clone(row, 400000, 12)); await InjectFixtureChanges(f, db);
+        var alias = Clone(row, 400000, 12);
+        // The destination can already retain its original alias. Model a second
+        // stale cohort without violating current-only uniqueness in fixture setup.
+        alias.CohortKey = "fixture-stale-alias";
+        db.TreatmentLineageSegments.Add(alias); await InjectFixtureChanges(f, db);
     }
     private static async Task<ProjectionReconstructionResult> Repair(Fixture f, ProjectionReconstructionPreview p)
     {
