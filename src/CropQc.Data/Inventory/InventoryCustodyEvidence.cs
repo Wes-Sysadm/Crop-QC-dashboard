@@ -7,6 +7,14 @@ namespace CropQc.Data.Inventory;
 
 public sealed partial class InventoryEvidenceLoader
 {
+    internal static InventoryEffectiveTreatment? ReadCustodyTreatment(TreatmentLineageMovement movement,
+        ImmutableArray<InventoryApplicationEvidence> applications)
+    {
+        var source = movement.SourceSegment;
+        return source == null ? null : InventoryCustodyTreatment.Read(Projection(source, Identity(source), source.WarehouseId),
+            Movement(movement, Identity(source), source.RoomId), applications);
+    }
+
     private sealed record CustodyParent(long Id, string ParentKey, InventoryIdentity Identity, int Warehouse, int Room,
         string Name, int Quantity, bool Active, long Version, DateTimeOffset At);
 
@@ -150,10 +158,15 @@ public sealed partial class InventoryEvidenceLoader
                     RetiredQuantity = null,
                     Signature = x.Movement.TreatmentSignatureSnapshot,
                     State = x.Movement.TreatmentStateSnapshot,
-                    ReceiptId = x.Movement.ReceiptId
+                    ReceiptId = x.Movement.ReceiptId,
+                    CustodyTreatment = new(Movement(x.Movement, x.Original, parent.Room),
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].TreatmentSignature,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].TreatmentState,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].ReceiptId,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].Applications.Select(a => a.RoomTreatmentApplicationId).ToImmutableArray())
                 }).ToImmutableArray();
                 var originalAppIds = projections.SelectMany(x => x.ApplicationIds).ToHashSet();
-                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
+                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId) { RecordedAt = x.CreatedAt }).ToImmutableArray();
                 projections = projections.Select(p =>
                 {
                     var effective = InventoryEffectiveTreatment.Read(p.Signature, p.State, p.ApplicationIds, allApplications);

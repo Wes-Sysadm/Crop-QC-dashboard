@@ -313,6 +313,7 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
 
     private static bool ValidTreatment(InventoryProjectionEvidence p, InventoryPositionEvidence e)
     {
+        if (e.Location.Custody != InventoryCustody.Room) return InventoryCustodyTreatment.Proves(p, e);
         if (p.State == "Untreated")
         {
             var earliestArrival = e.Ledger.Where(x => x.Quantity > 0).Select(x => x.At).DefaultIfEmpty(p.CreatedAt).Min();

@@ -111,7 +111,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned serializable acknowledgement and placement of immutable dispatch allocations; bounds, parent versions, journal replay and linked ledger/movement proof.",
-    "Sha256": "7426F90547D01147061679E93F9C9E8A48F8FFCFBCF8A544453150552BFED4E0"
+    "Sha256": "7852941B89E223A925B60AB699810B0D0F3300E92C7F095FB4AD487CBBFB6E19"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptIdentity.cs",
@@ -183,7 +183,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "8FF373838A812BBF9E6844F86594DF9580307122691ED993F03CA9D849F92CF1"
+    "Sha256": "1AFD066D8BABA32DD6CA666AEB86C2746E10517388A0672CCBE9D2D807601B01"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
@@ -207,7 +207,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptHeldEvidence.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Read-only receipt-held evidence and current identity overlays; local collection Add does not write physical records.",
-    "Sha256": "39E4FA29EA9D88CA36F8AE46A885E7EE00306E5628DADAAD075B497BDE8497F6"
+    "Sha256": "814BD82B57F1466DC7CBDAA1EE31051F70C312E61FC3BE9DF7766B6B9F4A5FDF"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryRunCorrectionAvailability.cs",
@@ -261,7 +261,7 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "A64A9AA56A73BAE862D04242F3B91C66654C3DEBD8AB23CC2C4382B46794F57F"
+    "Sha256": "966EBF0F8158CD1933BA750B6E92F3876F6C32A991AFA28A360D73F1C732FD8B"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryEventReplay.cs",

@@ -10,13 +10,12 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 
-// UNAPPROVED REHEARSAL: forward currently stops at mixed-cohort dispatch.
-// Later phases are prepared, not validated. See docs/investigations/pr271-compensation-rollback.md.
+// Unapproved release rehearsal. Every phase must pass; a prepared phase is not evidence.
 // This executable is test instrumentation, never an application/production entrypoint.
 // Run beside the frozen application's DLLs using its deps/runtimeconfig, not rebuilt Data DLLs.
 if (args.Length != 2 || args[0] is not ("forward" or "rollback" or "verify"))
     throw new ArgumentException("forward|rollback|verify evidence-directory");
-const string connection = "Host=localhost;Database=pr271_rollback_test;Username=postgres;Pooling=false";
+const string connection = "Host=localhost;Database=pr271_treatment_rollback_test;Username=postgres;Pooling=false";
 if (!File.Exists(Path.Combine(args[1], "isolated-only.marker"))) throw new Exception("Missing isolated rehearsal marker");
 ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connection);
 var role = args[0]; var output = args[1];
@@ -87,7 +86,11 @@ if (role == "forward")
     await db.SaveChangesAsync(); state.Receipt = receipt.Id;
     state.TreatedDispatch = await db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == state.Transfer && x.MovementType == "InterCrewDispatch" && x.ReceiptId == state.TreatedReceipt).Select(x => x.Id).SingleAsync();
     state.UntreatedDispatch = await db.TreatmentLineageMovements.Where(x => x.InterCrewTransferId == state.Transfer && x.MovementType == "InterCrewDispatch" && x.ReceiptId == state.UntreatedReceipt).Select(x => x.Id).SingleAsync();
-    await Commit(await Custody(InventoryCommandKind.AcknowledgeTransfer, [new(state.TreatedDispatch, 12), new(state.UntreatedDispatch, 10)], "r271-ack"));
+    var firstAck = await Custody(InventoryCommandKind.AcknowledgeTransfer, [new(state.TreatedDispatch, 12), new(state.UntreatedDispatch, 10)], "r271-ack");
+    await Commit(firstAck);
+    var beforeAckReplay = await HashAll(await Columns());
+    Check((await executor.ExecuteAsync(firstAck)).Status == InventoryCommandStatus.Replayed, "Forward acknowledgement must replay");
+    Check(Equal(beforeAckReplay, await HashAll(await Columns())), "Forward replay wrote data");
     state.TreatedAck = await db.ReceiptCustodyAcknowledgments.Where(x => x.DispatchMovementId == state.TreatedDispatch).Select(x => x.Id).SingleAsync();
     state.UntreatedAck = await db.ReceiptCustodyAcknowledgments.Where(x => x.DispatchMovementId == state.UntreatedDispatch).Select(x => x.Id).SingleAsync();
     await Commit(await Custody(InventoryCommandKind.PlaceReceiptCustody, [new(state.TreatedAck, 8), new(state.UntreatedAck, 6)], "r271-place"));
@@ -137,6 +140,8 @@ else if (role == "rollback")
     Check(Equal(saved, await HashAll(await Columns())), "Compensation replay changed history");
     await Commit(await Custody(InventoryCommandKind.ReverseReceiptPlacement, [new(state.TreatedPlacement, 1)], "r271-rollback-unplace"));
     await Commit(await Custody(InventoryCommandKind.PlaceReceiptCustody, [new(state.TreatedAck, 1)], "r271-rollback-replace", 990003));
+    await Commit(await Movement(InventoryCommandKind.RoomMove, 990002, 990001, 1, $"u|a:{state.Application}", "r271-rollback-treated-move", 990003));
+    await Commit(await Movement(InventoryCommandKind.RoomMove, 990002, 990001, 1, "u", "r271-rollback-untreated-move", 990003));
     await Commit(await Custody(InventoryCommandKind.AcknowledgeTransfer, [new(state.UntreatedDispatch, 1)], "r271-rollback-ack"));
     var newAck = await db.ReceiptCustodyAcknowledgments.Where(x => x.OperationKey == "r271-rollback-ack").Select(x => x.Id).SingleAsync();
     await Commit(await Custody(InventoryCommandKind.PlaceReceiptCustody, [new(newAck, 1)], "r271-rollback-new-place"));
@@ -192,8 +197,12 @@ async Task<InventoryCommand> Custody(InventoryCommandKind kind, ImmutableArray<I
 }
 async Task<InventoryCommandResult> Commit(InventoryCommand command)
 {
-    var result = await executor.ExecuteAsync(command); Check(result.Status == InventoryCommandStatus.Committed, command.OperationKey + ": " + result.Detail);
-    results.Add(result); db.ChangeTracker.Clear(); return result;
+    var result = await executor.ExecuteAsync(command);
+    results.Add(result);
+    File.WriteAllText(Path.Combine(output, role + "-progress.json"), JsonSerializer.Serialize(results, json));
+    Console.WriteLine(command.OperationKey + ": " + result.Status + " " + result.Detail);
+    Check(result.Status == InventoryCommandStatus.Committed, command.OperationKey + ": " + result.Detail);
+    db.ChangeTracker.Clear(); return result;
 }
 async Task Reject(InventoryCommand command, InventoryCommandStatus expected)
 {
@@ -300,7 +309,7 @@ sealed class Factory : IDbContextFactory<CropQcDbContext>
 {
     public CropQcDbContext CreateDbContext()
     {
-        var options = new DbContextOptionsBuilder<CropQcDbContext>(); CropQcDatabase.Configure(options, "PostgreSql", "Host=localhost;Database=pr271_rollback_test;Username=postgres;Pooling=false");
+        var options = new DbContextOptionsBuilder<CropQcDbContext>(); CropQcDatabase.Configure(options, "PostgreSql", "Host=localhost;Database=pr271_treatment_rollback_test;Username=postgres;Pooling=false");
         return new(options.Options, new CanonicalInventoryMode(true));
     }
 }
