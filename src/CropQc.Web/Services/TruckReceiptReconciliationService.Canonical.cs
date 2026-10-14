@@ -28,7 +28,9 @@ public sealed partial class TruckReceiptReconciliationService
         var positions = batch.Positions.Where(x => ids.Contains(x.Location.CustodyRecordId ?? 0)).ToArray();
         var allocations = positions.Where(x => x.IsOperable).SelectMany(x => x.CustodyAllocations).ToArray();
         var movementIds = allocations.Select(x => x.MovementId).Distinct().ToArray();
-        var movements = await db.TreatmentLineageMovements.AsNoTracking().Include(x => x.SourceSegment).Where(x => movementIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var movements = await db.TreatmentLineageMovements.AsNoTracking().Include(x => x.SourceSegment)
+            .ThenInclude(x => x!.Applications).ThenInclude(x => x.RoomTreatmentApplication)
+            .Where(x => movementIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
         var growerIds = allocations.Select(x => x.Identity.GrowerLotId).Distinct().ToArray();
         var growers = await db.GrowerLots.AsNoTracking().Where(x => growerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Grower, ct);
         return parents.ToDictionary(p => p.Id, p => (IReadOnlyList<TransitAllocation>)(positions.Any(x => x.Location.CustodyRecordId == p.Id && !x.IsOperable)
@@ -40,6 +42,8 @@ public sealed partial class TruckReceiptReconciliationService
     {
         await RequireAccessAsync(ApplicationAreas.Transfers, PageAccessLevel.Edit, ct);
         Require(form.Bins > 0 && !string.IsNullOrWhiteSpace(form.Reason), "A positive quantity and edit reason are required.");
+        Require(!await db.ReceiptCustodyAcknowledgments.AnyAsync(x => x.InterCrewTransferId == form.TransferId, ct),
+            "Partially acknowledged loads require an allocation-specific audited correction; manifest editing is blocked.");
         var kind = form.DispatchMovementId.HasValue ? InventoryCommandKind.ReturnTransitAllocation : InventoryCommandKind.TransferEdit;
         var key = $"transit-edit:{form.TransferId}:v{form.TransferVersion}";
         var submission = JsonSerializer.Serialize(form);

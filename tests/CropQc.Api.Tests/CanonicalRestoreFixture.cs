@@ -41,6 +41,9 @@ internal static class CanonicalRestoreFixture
             const string phase3 = "20261001203105_CanonicalIdentityRestorationSides";
             const string backup = "20261002031709_BoundedBackupSnapshotProgress";
             const string movementCohorts = "20261009150448_IsolatedInventoryMovementCohorts";
+            const string heldCustody = "20261007212154_ReceiptHeldTransferCustody";
+            const string custodyCompensations = "20261007235352_ReceiptCustodyCompensations";
+            const string custodyGuards = "20261007235822_ReceiptCustodyGuardrails";
             const string truck = "20260923202144_AddTruckReceiptReconciliation";
             Assert.Contains(truck, applied);
             if (!applied.Contains(phase3))
@@ -55,9 +58,18 @@ internal static class CanonicalRestoreFixture
                 var script = db.GetService<IMigrator>().GenerateScript(phase3, backup);
                 await db.Database.ExecuteSqlRawAsync(script);
             }
+            // These earlier-dated additive migrations are new to a post-#281
+            // database even though its later CohortKey migration is applied.
+            var previous = backup;
+            foreach (var migration in new[] { heldCustody, custodyCompensations, custodyGuards })
+            {
+                if (!applied.Contains(migration))
+                    await db.Database.ExecuteSqlRawAsync(db.GetService<IMigrator>().GenerateScript(previous, migration));
+                previous = migration;
+            }
             if (!applied.Contains(movementCohorts))
             {
-                var script = db.GetService<IMigrator>().GenerateScript(backup, movementCohorts);
+                var script = db.GetService<IMigrator>().GenerateScript(custodyGuards, movementCohorts);
                 await db.Database.ExecuteSqlRawAsync(script);
             }
             Assert.Contains(phase2, await db.Database.GetAppliedMigrationsAsync());

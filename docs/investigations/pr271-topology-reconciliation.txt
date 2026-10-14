@@ -1,0 +1,51 @@
+BEGIN
+ Id |  Status   | BinsLoaded | BinsReceived | DestinationWarehouseId | DestinationRoomId | ReceivingReceiptId | ConcurrencyVersion 
+----+-----------+------------+--------------+------------------------+-------------------+--------------------+--------------------
+ 43 | InTransit |         30 |           20 |                      1 |            990002 |               2656 |                 14
+(1 row)
+
+ Id | DispatchMovementId | Quantity | NetAcknowledged | NetPlaced 
+----+--------------------+----------+-----------------+-----------
+  1 |               1080 |       12 |              12 |         7
+  2 |               1081 |       10 |               7 |         6
+  3 |               1081 |        1 |               1 |         1
+(3 rows)
+
+  Id  |       MovementType       | BinCount | SourceSegmentId | DestinationSegmentId | ReceiptId | TreatmentSignatureSnapshot | TreatmentStateSnapshot | ReversesTreatmentLineageMovementId |                         OperationKey                          |          OccurredAt           |           CreatedAt           
+------+--------------------------+----------+-----------------+----------------------+-----------+----------------------------+------------------------+------------------------------------+---------------------------------------------------------------+-------------------------------+-------------------------------
+ 1080 | InterCrewDispatch        |       15 |             972 |                      |      2654 | u|a:30                     | Confirmed              |                                    | r271-dispatch:0:s972                                          | 2026-10-14 05:39:58.368889+00 | 2026-10-14 05:39:58.419048+00
+ 1081 | InterCrewDispatch        |       15 |             973 |                      |      2655 | u                          | Untreated              |                                    | r271-dispatch:1:s973                                          | 2026-10-14 05:39:58.368889+00 | 2026-10-14 05:39:58.419048+00
+ 1082 | InterCrewReceive         |        8 |             972 |                  974 |      2654 | u|a:30                     | Confirmed              |                                    | r271-place:1:s972                                             | 2026-10-14 05:40:06.860429+00 | 2026-10-14 05:40:06.867126+00
+ 1083 | InterCrewReceive         |        6 |             973 |                  975 |      2655 | u                          | Untreated              |                                    | r271-place:2:s973                                             | 2026-10-14 05:40:06.860429+00 | 2026-10-14 05:40:06.867126+00
+ 1084 | ReceiptPlacementReversal |        3 |             974 |                      |      2654 | u|a:30                     | Confirmed              |                               1082 | r271-undo-place:1:s974                                        | 2026-10-14 05:40:07.154966+00 | 2026-10-14 05:40:07.159408+00
+ 1085 | InterCrewReceive         |        2 |             972 |                  976 |      2654 | u|a:30                     | Confirmed              |                                    | r271-replace:1:s972                                           | 2026-10-14 05:40:07.305437+00 | 2026-10-14 05:40:07.310054+00
+ 1090 | ReceiptPlacementReversal |        1 |             974 |                      |      2654 | u|a:30                     | Confirmed              |                               1082 | r271-rollback-unplace:1:s974                                  | 2026-10-14 05:42:43.887017+00 | 2026-10-14 05:42:43.892709+00
+ 1091 | InterCrewReceive         |        1 |             972 |                  979 |      2654 | u|a:30                     | Confirmed              |                                    | r271-rollback-replace:1:s972                                  | 2026-10-14 05:42:44.112571+00 | 2026-10-14 05:42:44.118766+00
+ 1094 | InterCrewReceive         |        1 |             973 |                  982 |      2655 | u                          | Untreated              |                                    | r271-rollback-new-place:3:s973                                | 2026-10-14 05:42:44.941806+00 | 2026-10-14 05:42:44.946691+00
+ 1097 | InterCrewReceive         |        1 |             972 |                  985 |      2654 | u|a:30                     | Confirmed              |                                    | truck:C1700BC8B43C6F2E20DD05736A207FE38AC94AE9FCAC439B:1:s972 | 2026-10-14 05:46:11.013261+00 | 2026-10-14 05:46:11.056661+00
+ 1098 | ReceiptPlacementReversal |        1 |             985 |                      |      2654 | u|a:30                     | Confirmed              |                               1097 | truck:7640B940BBDAEEC46723E9294474D07F42A48D38EBA98C4F:6:s985 | 2026-10-14 05:46:36.493167+00 | 2026-10-14 05:46:36.497738+00
+(11 rows)
+
+ RoomId | AuthoritativeRoomBins 
+--------+-----------------------
+ 990001 |                    10
+ 990002 |                    11
+ 990003 |                     3
+(3 rows)
+
+ ReceiptId | TreatmentSignature | RoomId | ProjectionBins 
+-----------+--------------------+--------+----------------
+      2654 | u|a:30             | 990001 |              5
+      2654 | u|a:30             | 990002 |              5
+      2654 | u|a:30             | 990003 |              2
+      2655 | u                  | 990001 |              5
+      2655 | u                  | 990002 |              6
+      2655 | u                  | 990003 |              1
+(6 rows)
+
+                                                                                                                                                                                                                                                         row_to_json                                                                                                                                                                                                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"Id":41,"RoomTreatmentApplicationId":30,"CropYear":2026,"GrowerLotId":990001,"FruitProfileId":1,"IdentityKey":"2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|","GrowerNumberSnapshot":"R271-MIXED","GrowerNameSnapshot":"Isolated rollback","LotNumberSnapshot":"R271-MIXED","VarietyCodeSnapshot":"FUJI","ProductionTypeSnapshot":"Conventional","IsOrganicSnapshot":false,"InventoryStatusSnapshot":"","BinsTreated":20,"PriorTreatmentSignature":"u","ResultTreatmentSignature":"u|a:30","ReceiptId":2654}
+(1 row)
+
+ROLLBACK

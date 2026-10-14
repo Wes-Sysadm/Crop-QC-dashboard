@@ -8,7 +8,8 @@ public enum InventoryCommandKind
     RoomMove, WarehouseTransfer, Dump, ProcessorSale, OutsideWarehouseTransfer, InterCompanyDispatch,
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
-    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition
+    LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition,
+    AcknowledgeTransfer, PlaceReceiptCustody, ReverseReceiptAcknowledgment, ReverseReceiptPlacement
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -28,7 +29,12 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     long? DispatchMovementId = null, InventoryLegacyRunMetadata? LegacyRun = null, InventoryReceiptChange? ReceiptChange = null,
     InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null, InventoryReceiptLocationChange? ReceiptLocation = null,
     InventoryReceiptIdentityChange? ReceiptIdentity = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptCustodyIntent? ReceiptCustody = null);
+public sealed record InventoryReceiptCustodyIntent(long TransferId, long ReceiptId, long TransferVersion, long ReceiptVersion,
+    ImmutableArray<InventoryCustodyQuantity> Allocations, InventoryCommandDestination? Destination = null);
+// AcknowledgeTransfer uses dispatch movement IDs; PlaceReceiptCustody uses acknowledgement IDs.
+public sealed record InventoryCustodyQuantity(long Id, int Quantity);
 public sealed record InventoryProductDefinitionChange(int FruitProfileId, string ExpectedFingerprint);
 public sealed record InventoryReceiptIdentityChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint,
     InventoryReceiptIntent ExpectedReceipt, InventoryIdentity Target);
@@ -42,7 +48,10 @@ public sealed record InventoryBaselineRow(int CropYear, int WarehouseId, int Roo
 public sealed record InventoryReceiptMetadata(long ReceiptId, long ExpectedVersion, DateTimeOffset ReceivedAt, string ReceiptNumber,
     string GrowerName, InventoryReceiptIntent ExpectedReceipt, bool SameDayOnly = false);
 public sealed record InventoryReceiptChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint, int NewQuantity,
-    ImmutableArray<InventoryReceiptQuantityAllocation> Allocations, string? VoidConfirmation = null);
+    ImmutableArray<InventoryReceiptQuantityAllocation> Allocations, string? VoidConfirmation = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ConfirmAdditionalBinsUntreated = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptAdditionalStock? AdditionalStock = null);
+public sealed record InventoryReceiptAdditionalStock(int RoomId, string ExpectedFingerprint, bool ConfirmPresent);
 public sealed record InventoryReceiptQuantityAllocation(string Key, int Quantity);
 public sealed record InventoryLegacyRunMetadata(int? FacilityWarehouseId, string? FacilityCode, string AssignmentSource);
 public sealed record InventoryReceiptIntent(int CropYear, int WarehouseId, int RoomId, int GrowerLotId,

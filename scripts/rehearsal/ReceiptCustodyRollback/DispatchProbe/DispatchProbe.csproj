@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(FrozenApplicationPath)' == ''">
+    <ProjectReference Include="../../../../src/CropQc.Data/CropQc.Data.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FrozenApplicationPath)' != ''">
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="$(FrozenApplicationPath)/*.dll" />
+  </ItemGroup>
+</Project>

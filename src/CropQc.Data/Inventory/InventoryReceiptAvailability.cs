@@ -23,6 +23,27 @@ public sealed record InventoryReceiptAvailabilityResult(Receipt Receipt, string 
 /// treatment pool cannot substitute for exact surviving receipt ownership.</summary>
 public sealed class InventoryReceiptAvailability(CropQcDbContext db)
 {
+    public static InventoryIdentity ReceiptIdentity(Receipt r) => new(r.CropYear, r.GrowerLotId, r.FruitProfileId,
+        r.LotCode, r.GrowerNumber ?? r.LotCode, r.FruitProfile.VarietyCode, r.FruitProfile.ProductionType, r.FruitProfile.IsOrganic, "");
+
+    // Choices for an explicit new correction origin, never surviving allocations.
+    public async Task<IReadOnlyList<InventoryReceiptAdditionTarget>> AdditionTargetsAsync(InventoryReceiptAvailabilityResult state, CancellationToken ct)
+    {
+        if (state.Blocker != null || !state.Allocations.IsEmpty) return [];
+        var receipt = state.Receipt;
+        var identity = ReceiptIdentity(receipt);
+        if (!identity.IsComplete) return [];
+        var rooms = await db.Rooms.AsNoTracking().Where(x => x.WarehouseId == receipt.WarehouseId && x.IsActive && x.Warehouse.IsActive && !x.IsSealed)
+            .OrderBy(x => x.Name).ToListAsync(ct);
+        var evidence = await new InventoryEvidenceLoader(db).LoadAsync(new(receipt.WarehouseId, rooms.Select(x => x.Id).ToImmutableArray()), DateTimeOffset.UtcNow, ct);
+        return rooms.Select(room =>
+        {
+            var p = evidence.Positions.SingleOrDefault(x => x.Location.RoomId == room.Id && x.Identity.Key == identity.Key);
+            return new InventoryReceiptAdditionTarget(room.Id, room.Name,
+                p == null ? "empty" : InventoryAvailabilityResolver.Resolve(p, new()).Watermark.Fingerprint);
+        }).ToArray();
+    }
+
     public async Task<InventoryReceiptAvailabilityResult?> ReadAsync(long receiptId, CancellationToken ct)
     {
         var receipt = await db.Receipts.AsNoTracking().Include(x => x.FruitProfile).Include(x => x.GrowerLot).Include(x => x.Warehouse).Include(x => x.Room)
@@ -37,7 +58,7 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
         var positions = ImmutableArray.CreateBuilder<InventoryAvailabilityResult>();
         var asOf = DateTimeOffset.UtcNow;
         var rooms = roomIds.Distinct().ToImmutableArray();
-        foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor })
+        foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor, InventoryCustody.ReceiptHeld })
         {
             var batch = await loader.LoadAsync(new(null, rooms, custody), asOf, ct);
             // Same-lot inventory elsewhere does not belong to this receipt merely
@@ -79,4 +100,9 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
         })));
         return new(receipt, fingerprint, allocation.ToImmutable(), positions.ToImmutable(), blocker);
     }
+}
+
+public sealed record InventoryReceiptAdditionTarget(int RoomId, string RoomName, string Fingerprint)
+{
+    public string Key => $"{RoomId}:{Fingerprint}";
 }

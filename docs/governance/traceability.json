@@ -147,7 +147,8 @@
     {
       "id": "TRT-001",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs"
       ],
       "tests": [
         {
@@ -191,16 +192,47 @@
           "member": "Arrival_after_treatment_keeps_mixed_histories_through_repeated_partial_moves",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCorrectionTreatmentTests",
+          "member": "Added_bins_do_not_inherit_the_selected_allocations_historical_treatment",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DepletedReceiptCorrectionTests",
+          "member": "Additional_origin_after_complete_consumption_preserves_old_treatment_and_movement",
+          "kind": "postgres",
+          "required": true
         }
       ],
-      "gap": "Current main's post-treatment quantity correction implementation conflicts with TRT-001; #269/#271 address it. New receiving coverage does not certify that outstanding correction path."
+      "gap": "Additional stock requires explicit known untreated evidence. Earlier or uncertain treatment attribution needs separate evidence review; correction reasons never establish membership."
     },
     {
       "id": "TRT-002",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs",
+        "src/CropQc.Shared/Inventory/InventoryCustodyTreatment.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Same_lot_departures_preserve_exact_treatment_and_exclusive_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Custody_requires_original_membership_and_movement_proof",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Unknown_receipt_ancestry_is_not_invented_by_transit_treatment_proof",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.InventoryCommandTests",
           "member": "Whole_room_treatment_is_one_application_across_multiple_lots_and_reverses_atomically",
@@ -214,7 +246,7 @@
           "required": true
         }
       ],
-      "gap": "Partial mixed receipt-held lineage belongs to #271 and must be integrated without cross-branch contamination."
+      "gap": "PR #271 now exercises immutable same-lot mixed transit/held cohorts; runtime rollback rehearsal remains a separate mandatory gate, not implied by these tests."
     },
     {
       "id": "REC-001",
@@ -240,7 +272,9 @@
     {
       "id": "REC-002",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCommandTransitEdits.cs"
+        "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandTransitEdits.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs"
       ],
       "tests": [
         {
@@ -248,9 +282,51 @@
           "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCustodyWorkflowTests",
+          "member": "Partial_acknowledgement_placement_and_later_settlement_conserve_original_dispatch",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCustodyWorkflowTests",
+          "member": "Same_variety_mixed_lots_and_treatment_require_and_preserve_the_exact_arrived_allocation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCustodyCorrectionTests",
+          "member": "Partial_or_complete_placement_can_be_compensated_then_placed_in_the_correct_room",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Proven_partial_custody_passes_but_corrupt_recorded_relationships_block",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Readiness_observes_one_snapshot_while_a_separate_writer_acknowledges",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Recorded_return_before_acknowledgement_preserves_the_reduced_transit_allocation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Release_readiness_has_one_compensation_aware_topology_decision",
+          "kind": "structural",
+          "required": true
         }
       ],
-      "gap": "PARTIAL COVERAGE: main proves partial transit return, not 50 dispatched / 49 acknowledged. ReceiptCustodyWorkflowTests and ReceiptCustodyCorrectionTests exist only in draft #271; port traceability and require them on integration."
+      "gap": "Integrated partial custody and compensation contracts are mandatory. Release still requires a compatible rollback package and production-shaped verification."
     },
     {
       "id": "MOV-001",
@@ -315,9 +391,27 @@
           "member": "Invalid_application_allocations_are_diagnostics_without_throwing_or_blocking_incoming_inventory",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCorrectionTreatmentTests",
+          "member": "Positive_correction_credits_its_own_origin_without_reconstructing_existing_receipt_projection",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCustodyCorrectionTests",
+          "member": "Held_placement_preserves_destination_discrepancy_and_exact_incoming_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCorrectionTreatmentTests",
+          "member": "Legacy_typed_addition_retains_its_recorded_destination",
+          "kind": "postgres",
+          "required": true
         }
       ],
-      "gap": "Open/sealed/facility policy remains enforced; no new capacity or commodity segregation rule is invented. #271 placement eligibility needs its own review."
+      "gap": "Open/sealed/facility policy remains enforced; no new capacity or commodity segregation rule is invented. See PR271 systemic room-admission review for independent manual-origin/baseline follow-on scope and historical proof limitations."
     },
     {
       "id": "AUD-001",

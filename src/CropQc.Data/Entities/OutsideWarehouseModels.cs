@@ -39,6 +39,7 @@ public static class InterCrewTransferAdjustmentTypes
 
 public sealed class InterCrewTransfer
 {
+    public ICollection<ReceiptCustodyAcknowledgment> CustodyAcknowledgments { get; } = new List<ReceiptCustodyAcknowledgment>();
     // Persisted at creation; flag changes never reclassify a load. Only reviewed release SQL can adopt historical loads.
     public bool RequiresTruckReceipt { get; init; }
     public long? ReceivingReceiptId { get; set; }

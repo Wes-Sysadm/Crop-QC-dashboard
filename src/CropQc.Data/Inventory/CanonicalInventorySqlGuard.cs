@@ -8,7 +8,7 @@ namespace CropQc.Data.Inventory;
 internal sealed class CanonicalInventorySqlGuard : DbCommandInterceptor
 {
     private static readonly Regex PhysicalDml = new(
-        @"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+(?:[""\[]?\w+[""\]]?\.)?[""\[]?(RoomInventoryAdjustments|TreatmentLineageSegments|TreatmentLineageMovements|TreatmentLineageSegmentApplications|RoomTreatmentApplications|RoomTreatmentApplicationSources|RoomTransfers|RoomDepletions|RoomInventoryLosses|BinsRunEntries|ReceiptInventoryOverrides|InventoryIdentityCorrections|InventoryCommands|Receipts|InterCrewTransfers|OutsideWarehouseTransfers|ProcessorShipmentLines|ProcessorShipments|ActualRuns|ActualRunRevisions)\b",
+        @"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+(?:[""\[]?\w+[""\]]?\.)?[""\[]?(ReceiptCustodyAcknowledgments|ReceiptCustodyPlacements|ReceiptCustodyReversals|RoomInventoryAdjustments|TreatmentLineageSegments|TreatmentLineageMovements|TreatmentLineageSegmentApplications|RoomTreatmentApplications|RoomTreatmentApplicationSources|RoomTransfers|RoomDepletions|RoomInventoryLosses|BinsRunEntries|ReceiptInventoryOverrides|InventoryIdentityCorrections|InventoryCommands|Receipts|InterCrewTransfers|OutsideWarehouseTransfers|ProcessorShipmentLines|ProcessorShipments|ActualRuns|ActualRunRevisions)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static void Check(DbCommand command, CommandEventData eventData)
     {

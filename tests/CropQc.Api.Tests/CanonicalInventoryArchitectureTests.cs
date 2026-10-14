@@ -38,6 +38,11 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
         Assert.DoesNotContain("ReconstructRecordedCohortsAsync", destination);
         Assert.DoesNotContain(".CurrentAsync", destination);
         Assert.Contains("InventoryOriginGuard.ValidateAsync", destination);
+        var corrections = File.ReadAllText(Path.Combine(path, "InventoryCommandReceiptChanges.cs"));
+        Assert.Contains("if (delta > 0)\n                await PrepareDestinationAsync", corrections.Replace("\r\n", "\n"));
+        var reversal = File.ReadAllText(Path.Combine(path, "InventoryCommandReceiptReversal.cs"));
+        Assert.Contains("InventoryCohortEvidence.Proven(evidence)", reversal);
+        Assert.Contains("InventoryOriginGuard.ValidateAsync", reversal);
         // Runtime cases prove missing, inconsistent and negative projections admit
         // valid incoming stock, while origin, overdraw and custody checks reject.
     }
@@ -93,7 +98,7 @@ public sealed class CanonicalInventoryArchitectureTests(ITestOutputHelper output
 
     private static bool IsWriteCandidate(string source)
     {
-        string[] entities = "RoomInventoryAdjustment TreatmentLineageSegment TreatmentLineageMovement TreatmentLineageSegmentApplication RoomTreatmentApplication RoomTreatmentApplicationSource RoomTransfer RoomDepletion RoomInventoryLoss ReceiptInventoryOverride InventoryIdentityCorrection InventoryCommandRecord ActualRunRevision BinsRunEntry OutsideWarehouseTransfer ProcessorShipmentLine ProcessorShipment ActualRun InterCrewTransfer Receipt".Split(' ');
+        string[] entities = "ReceiptCustodyAcknowledgment ReceiptCustodyPlacement ReceiptCustodyReversal RoomInventoryAdjustment TreatmentLineageSegment TreatmentLineageMovement TreatmentLineageSegmentApplication RoomTreatmentApplication RoomTreatmentApplicationSource RoomTransfer RoomDepletion RoomInventoryLoss ReceiptInventoryOverride InventoryIdentityCorrection InventoryCommandRecord ActualRunRevision BinsRunEntry OutsideWarehouseTransfer ProcessorShipmentLine ProcessorShipment ActualRun InterCrewTransfer Receipt".Split(' ');
         var names = entities.Concat(entities.Select(x => x.EndsWith('y') ? x[..^1] + "ies" : x + "s")).Append("InventoryCommands");
         return Regex.IsMatch(source, @"\b(?:" + string.Join("|", names) + @")\b")
             && Regex.IsMatch(source, "\\.\\s*(?:Add(?:Async|Range|RangeAsync)?|Remove(?:Range)?|Update(?:Range)?|ExecuteUpdate(?:Async)?|ExecuteDelete(?:Async)?|ExecuteSql\\w*|SaveChanges(?:Async)?)\\s*[(<]|\\b(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+[\"\\[]");

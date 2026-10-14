@@ -823,12 +823,8 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
         .Where(x => x.IsActive)
         .GroupBy(x => x.Code.ToUpper())
         .CountAsync(x => x.Count() > 1, CancellationToken.None);
-    var invalidInterCrew = await readinessDb.InterCrewTransfers.AsNoTracking().CountAsync(x =>
-        x.BinsLoaded <= 0
-        || (x.Status == InterCrewTransferStatuses.InTransit && (x.DestinationWarehouseId != null || x.DestinationRoomId != null || x.BinsReceived != null))
-        || ((x.Status == InterCrewTransferStatuses.Received || x.Status == InterCrewTransferStatuses.ReceivedNeedsReview)
-            && (x.DestinationWarehouseId == null || x.DestinationRoomId == null || x.BinsReceived == null)),
-        CancellationToken.None);
+    var interCrew = await CropQc.Data.Inventory.InterCrewTopologyReadiness.VerifyAsync(readinessDb, CancellationToken.None);
+    var invalidInterCrew = interCrew.Issues.Count;
     var invalidOutside = await readinessDb.OutsideWarehouseTransfers.AsNoTracking().CountAsync(x =>
         x.BinCount <= 0 || x.OutsideWarehouseId <= 0 || x.SourceWarehouseId <= 0 || x.SourceRoomId <= 0,
         CancellationToken.None);
@@ -843,7 +839,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
     {
         success = releaseReady,
         expectedMigration = releaseMigration,
-        expectedSchemaObjects = 979,
+        expectedSchemaObjects = 1007,
         schemaReady,
         inventory = new
         {
@@ -862,6 +858,7 @@ if (args.Contains(TreatmentLineage144CorrectionConstants.ReleaseReadinessCommand
             invalidOutsideWarehouseMasterRows,
             duplicateOutsideWarehouseCodes,
             invalidInterCrew,
+            interCrew,
             invalidOutside
         }
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }));

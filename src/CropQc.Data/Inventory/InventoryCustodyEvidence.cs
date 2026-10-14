@@ -7,6 +7,14 @@ namespace CropQc.Data.Inventory;
 
 public sealed partial class InventoryEvidenceLoader
 {
+    internal static InventoryEffectiveTreatment? ReadCustodyTreatment(TreatmentLineageMovement movement,
+        ImmutableArray<InventoryApplicationEvidence> applications)
+    {
+        var source = movement.SourceSegment;
+        return source == null ? null : InventoryCustodyTreatment.Read(Projection(source, Identity(source), source.WarehouseId),
+            Movement(movement, Identity(source), source.RoomId), applications);
+    }
+
     private sealed record CustodyParent(long Id, string ParentKey, InventoryIdentity Identity, int Warehouse, int Room,
         string Name, int Quantity, bool Active, long Version, DateTimeOffset At);
 
@@ -22,7 +30,7 @@ public sealed partial class InventoryEvidenceLoader
             parents.AddRange(loads.Select(x => new CustodyParent(x.Id, $"crew:{x.Id}",
                 new(x.CropYear, x.GrowerLotId, x.FruitProfileId, x.LotNumberSnapshot, x.GrowerNumberSnapshot, x.VarietyCodeSnapshot,
                     x.ProductionTypeSnapshot, x.IsOrganicSnapshot, x.InventoryStatusSnapshot ?? ""), x.SourceWarehouseId, x.SourceRoomId,
-                x.DestinationCustodyGroup, x.BinsLoaded, x.Status == InterCrewTransferStatuses.InTransit && x.BinsReceived == null,
+                x.DestinationCustodyGroup, x.BinsLoaded, x.Status == InterCrewTransferStatuses.InTransit,
                 x.ConcurrencyVersion, x.LoadedAt)));
         }
         else if (scope.Custody == InventoryCustody.OutsideWarehouse)
@@ -48,6 +56,9 @@ public sealed partial class InventoryEvidenceLoader
         }
         else throw new ArgumentOutOfRangeException(nameof(scope));
         var parentIds = parents.Select(x => x.Id).ToArray();
+        var acknowledgments = scope.Custody == InventoryCustody.InTransit
+            ? await Bounded(db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Include(x => x.Placements)
+                .Where(x => parentIds.Contains(x.InterCrewTransferId)), ct) : [];
         var ledgerQuery = db.RoomInventoryAdjustments.AsNoTracking();
         var movementQuery = db.TreatmentLineageMovements.AsNoTracking();
         if (scope.Custody == InventoryCustody.InTransit)
@@ -84,16 +95,27 @@ public sealed partial class InventoryEvidenceLoader
             var pm = movementsByParent[parent.ParentKey].OrderBy(x => x.Id).ToArray();
             var pr = rowsByParent[parent.ParentKey].OrderBy(x => x.Id).ToArray();
             var kind = scope.Custody switch { InventoryCustody.InTransit => "InterCrewDispatch", InventoryCustody.Processor => "ProcessorShipment", _ => "OutsideWarehouseTransfer" };
+            var acks = acknowledgments.Where(x => x.InterCrewTransferId == parent.Id).ToArray();
+            var placements = acks.SelectMany(x => x.Placements).ToArray();
+            var acknowledged = acks.Sum(x => x.NetQuantity);
+            var placed = acks.Sum(x => x.PlacedQuantity);
             var allocations = pm.Where(x => x.MovementType == kind && x.ReversesTreatmentLineageMovementId == null)
-                .Select(x => (Movement: x, Quantity: x.BinCount - reversals[x.Id].Sum(y => y.BinCount))).ToArray();
+                .Select(x => (Movement: x, Quantity: x.BinCount - reversals[x.Id].Sum(y => y.BinCount)
+                    - acks.Where(a => a.DispatchMovementId == x.Id).Sum(a => a.NetQuantity))).ToArray();
             var valid = parent.Active && parent.At <= asOf && parent.Quantity > 0 && allocations.Length > 0
                 && allocations.All(x => x.Quantity >= 0 && x.Movement.SourceSegmentId != null && segmentIndex.ContainsKey(x.Movement.SourceSegmentId.Value))
-                && allocations.Sum(x => x.Quantity) == parent.Quantity && pr.Sum(x => x.ChangeAmount) == -parent.Quantity
+                && allocations.Sum(x => x.Quantity) == parent.Quantity - acknowledged && pr.Sum(x => x.ChangeAmount) == -parent.Quantity + placed
                 && pr.Where(x => x.WarehouseId == parent.Warehouse && x.RoomId == parent.Room).Sum(x => x.ChangeAmount) == -parent.Quantity
                 && pr.Where(x => x.WarehouseId != parent.Warehouse || x.RoomId != parent.Room)
                     .GroupBy(x => new { x.WarehouseId, x.RoomId })
-                    .All(x => x.Sum(y => y.ChangeAmount) == 0)
-                && !pm.Any(x => x.MovementType == "InterCrewReceive" && x.BinCount != reversals[x.Id].Sum(y => y.BinCount));
+                    .All(x => x.Sum(y => y.ChangeAmount) == placements.Where(p => x.Any(r => r.Id == p.InventoryAdjustmentId)).Sum(p => p.Quantity)
+                        - acks.SelectMany(a => a.Reversals).Where(r => x.Any(l => l.Id == r.InventoryAdjustmentId)).Sum(r => r.Quantity))
+                && !pm.Any(x => x.MovementType == "InterCrewReceive" && x.BinCount != reversals[x.Id].Sum(y => y.BinCount)
+                    && !placements.Any(p => p.MovementId == x.Id && p.Quantity == x.BinCount))
+                && acks.All(a => ReceiptCustodyProof.Valid(a)
+                    && allocations.Any(x => x.Movement.Id == a.DispatchMovementId))
+                && placements.All(p => p.Quantity > 0 && pm.Any(m => m.Id == p.MovementId && m.BinCount == p.Quantity)
+                    && pr.Any(l => l.Id == p.InventoryAdjustmentId && l.ChangeAmount == p.Quantity));
             valid &= InventoryPhysicalFlow.Matches(pr, pm, segmentIndex);
             foreach (var reversed in pm.Where(x => x.ReversesTreatmentLineageMovementId != null))
             {
@@ -121,7 +143,7 @@ public sealed partial class InventoryEvidenceLoader
             if (groups.Length == 0)
             {
                 result.Add(new(parent.Identity, new(scope.Custody, parent.Warehouse, null, "", parent.Name, parent.Id),
-                    parent.Active ? parent.Quantity : 0, 0, parent.Identity.IsComplete, false, [], [], [], [], [],
+                    parent.Active ? parent.Quantity - acknowledged : 0, 0, parent.Identity.IsComplete, valid, [], [], [], [], [],
                     Watermark(new { parent, pr = pr.Select(x => new { x.Id, x.ChangeAmount }) }, consistency, [])));
                 continue;
             }
@@ -136,10 +158,15 @@ public sealed partial class InventoryEvidenceLoader
                     RetiredQuantity = null,
                     Signature = x.Movement.TreatmentSignatureSnapshot,
                     State = x.Movement.TreatmentStateSnapshot,
-                    ReceiptId = x.Movement.ReceiptId
+                    ReceiptId = x.Movement.ReceiptId,
+                    CustodyTreatment = new(Movement(x.Movement, x.Original, parent.Room),
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].TreatmentSignature,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].TreatmentState,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].ReceiptId,
+                        segmentIndex[x.Movement.SourceSegmentId!.Value].Applications.Select(a => a.RoomTreatmentApplicationId).ToImmutableArray())
                 }).ToImmutableArray();
                 var originalAppIds = projections.SelectMany(x => x.ApplicationIds).ToHashSet();
-                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
+                var allApplications = apps.Where(x => originalAppIds.Contains(x.Id)).Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId) { RecordedAt = x.CreatedAt }).ToImmutableArray();
                 projections = projections.Select(p =>
                 {
                     var effective = InventoryEffectiveTreatment.Read(p.Signature, p.State, p.ApplicationIds, allApplications);

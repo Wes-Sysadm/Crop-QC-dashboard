@@ -109,6 +109,7 @@ public sealed class CanonicalReceiptCorrectionWorkflowTests
             GrowerName = r.GrowerName,
             LotCode = r.LotCode,
             BinCount = quantity,
+            ConfirmAdditionalBinsUntreated = quantity > r.BinCount,
             ConfirmInventoryChange = true,
             Reason = "Local correction"
         };

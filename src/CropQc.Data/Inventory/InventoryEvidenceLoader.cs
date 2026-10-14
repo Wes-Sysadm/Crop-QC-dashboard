@@ -47,7 +47,9 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         {
             return scope.Custody == InventoryCustody.Room
                 ? await LoadRoomsAsync(scope, asOf, consistency, cancellationToken)
-                : await LoadCustodyAsync(scope, asOf, consistency, cancellationToken);
+                : scope.Custody == InventoryCustody.ReceiptHeld
+                    ? await LoadReceiptHeldAsync(scope, asOf, consistency, cancellationToken)
+                    : await LoadCustodyAsync(scope, asOf, consistency, cancellationToken);
         }
         finally
         {

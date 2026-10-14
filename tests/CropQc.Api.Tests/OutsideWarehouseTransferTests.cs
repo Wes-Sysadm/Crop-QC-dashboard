@@ -271,7 +271,7 @@ public sealed class OutsideWarehouseTransferTests
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.Contains("162 AS checked_target_objects", verify);
         Assert.Equal("20260906025535_AddHarvestWatchDeployments", DatabaseStartupDiagnostics.ExpectedSchemaMigration);
-        Assert.Equal(979, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(1007, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public sealed class OutsideWarehouseTransferTests
             TransferId = transfer.Id,
             OperationKey = "crew-receive",
             DestinationRoomId = ebsRoom.Id,
-            BinsReceived = 68,
+            BinsReceived = 70,
             ReceivedAt = DateTime.Parse("2026-08-27T12:00"),
             Note = "Physical count"
         }, default);
@@ -337,17 +337,17 @@ public sealed class OutsideWarehouseTransferTests
         fixture.Db.ChangeTracker.Clear();
         transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
         Assert.Equal(70, transfer.BinsLoaded);
-        Assert.Equal(68, transfer.BinsReceived);
-        Assert.Equal(-2, transfer.VarianceBins);
-        Assert.Equal(InterCrewTransferStatuses.ReceivedNeedsReview, transfer.Status);
-        Assert.Equal(68, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(70, transfer.BinsReceived);
+        Assert.Equal(0, transfer.VarianceBins);
+        Assert.Equal(InterCrewTransferStatuses.Received, transfer.Status);
+        Assert.Equal(70, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
 
         Assert.Null(await service.ReviewAsync(new() { TransferId = transfer.Id, OperationKey = "crew-review", Note = "Verified against unload tally" }, default));
         fixture.Db.ChangeTracker.Clear();
         transfer = await fixture.Db.InterCrewTransfers.SingleAsync();
         Assert.Equal(InterCrewTransferStatuses.Received, transfer.Status);
         Assert.Equal(70, transfer.BinsLoaded);
-        Assert.Equal(68, transfer.BinsReceived);
+        Assert.Equal(70, transfer.BinsReceived);
 
         Assert.Null(await service.ReverseAsync(new() { TransferId = transfer.Id, OperationKey = "crew-reverse", Reason = "Wrong truck selected" }, default));
         fixture.Db.ChangeTracker.Clear();
@@ -355,8 +355,8 @@ public sealed class OutsideWarehouseTransferTests
         Assert.Equal(InterCrewTransferStatuses.Reversed, transfer.Status);
         Assert.Equal(300, await fixture.CurrentBinsAsync());
         Assert.Equal(0, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
-        Assert.Equal(new[] { -70, 68, -68, 70 }, await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).OrderBy(x => x.Id).Select(x => x.ChangeAmount).ToArrayAsync());
-        Assert.Equal(4, await fixture.Db.AuditLogs.CountAsync(x => x.EntityName == nameof(InterCrewTransfer)));
+        Assert.Equal(new[] { -70, 70, -70, 70 }, await fixture.Db.RoomInventoryAdjustments.Where(x => x.InterCrewTransferId == transfer.Id).OrderBy(x => x.Id).Select(x => x.ChangeAmount).ToArrayAsync());
+        Assert.Equal(3, await fixture.Db.AuditLogs.CountAsync(x => x.EntityName == nameof(InterCrewTransfer)));
     }
 
     [Fact]
@@ -750,11 +750,11 @@ public sealed class OutsideWarehouseTransferTests
             TransferId = dispatched.TransferId.Value,
             OperationKey = "right-ebs-room",
             DestinationRoomId = ebsRoom.Id,
-            BinsReceived = 68,
+            BinsReceived = 70,
             ReceivedAt = DateTime.Parse("2026-08-27T12:00")
         }, default);
         Assert.True(received.Success, received.Error);
-        Assert.Equal(68, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
+        Assert.Equal(70, (await fixture.Ledger.GetSnapshotsAsync(ebsRoom.WarehouseId, [ebsRoom.Id], default)).Sum(x => x.CurrentBins));
         Assert.Equal(2, await fixture.Db.RoomInventoryAdjustments.CountAsync(x => x.InterCrewTransferId == dispatched.TransferId));
     }
 

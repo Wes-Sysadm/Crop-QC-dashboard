@@ -15,7 +15,7 @@ public static class InventoryLedgerKinds
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryCustody>))]
-public enum InventoryCustody { Room, InTransit, OutsideWarehouse, Processor }
+public enum InventoryCustody { Room, InTransit, OutsideWarehouse, Processor, ReceiptHeld }
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryConfidence>))]
 public enum InventoryConfidence { Unknown, Proven, Ambiguous }
 [JsonConverter(typeof(JsonStringEnumConverter<InventoryBlockerCode>))]
@@ -115,7 +115,11 @@ public sealed record InventoryProjectionEvidence(long Id, string RawKey, int Qua
     long Version, bool ExactIdentity, ImmutableArray<long> ApplicationIds, string Disposition = "Current", int? RetiredQuantity = null)
 {
     public string CohortKey { get; init; } = "";
+    public InventoryCustodyTreatmentProof? CustodyTreatment { get; init; }
 }
+// Original source membership and immutable departure, never a new inventory origin.
+public sealed record InventoryCustodyTreatmentProof(InventoryMovementEvidence Movement,
+    string SourceSignature, string SourceState, long? SourceReceiptId, ImmutableArray<long> ApplicationIds);
 public sealed record InventoryMovementEvidence(long Id, string Kind, int Quantity, DateTimeOffset At,
     DateTimeOffset CreatedAt, string Signature, string State, long? ReceiptId, long? SourceProjectionId,
     long? DestinationProjectionId, bool Incoming, bool Outgoing, string? Parent, long? ReversesId, bool ExactIdentity)

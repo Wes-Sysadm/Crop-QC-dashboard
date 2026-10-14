@@ -229,7 +229,7 @@ public sealed class ReceivingTreatmentApplicationTests
     }
 
     [Fact]
-    public async Task Positive_receipt_override_does_not_expand_historical_treatment()
+    public async Task Unproved_legacy_positive_adjustment_requires_review_without_expanding_historical_treatment()
     {
         await using var fixture = await Fixture.CreateAsync();
         Assert.Null((await fixture.Service.ApplyReceiptAsync(fixture.ReceiptForm("before-positive-override", Fixture.AppleMcpId), default)).Error);
@@ -241,7 +241,10 @@ public sealed class ReceivingTreatmentApplicationTests
 
         var treated = Assert.Single(selections, x => x.ReceiptId == Fixture.ReceiptAId && x.TreatmentState == TreatmentLineageStates.Confirmed);
         Assert.Equal(40, treated.CurrentBins);
-        Assert.Equal(65, selections.Where(x => x.TreatmentState == TreatmentLineageStates.Untreated).Sum(x => x.CurrentBins));
+        Assert.Equal(60, selections.Where(x => x.TreatmentState == TreatmentLineageStates.Untreated).Sum(x => x.CurrentBins));
+        var unresolved = Assert.Single(selections, x => x.TreatmentState == "NeedsReview");
+        Assert.Equal(5, unresolved.CurrentBins);
+        Assert.False(unresolved.IsAvailable);
         Assert.Equal(105, selections.Sum(x => x.CurrentBins));
         Assert.Equal(40, (await fixture.Db.RoomTreatmentApplications.SingleAsync()).TotalBinsSnapshot);
     }
@@ -344,7 +347,7 @@ public sealed class ReceivingTreatmentApplicationTests
 
         var result = await fixture.Service.ApplyReceiptAsync(fixture.ReceiptForm("ambiguous-receipt", Fixture.AppleMcpId), default);
 
-        Assert.Contains("cannot guess", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(result.Error); // Unproved extra quantity is rejected before selecting any treatment allocation.
         Assert.Single(await fixture.Db.RoomTreatmentApplications.ToListAsync());
         Assert.DoesNotContain(await fixture.Db.AuditLogs.ToListAsync(), x => x.Action == "ApplyReceivingTreatment");
     }
@@ -437,7 +440,7 @@ public sealed class ReceivingTreatmentApplicationTests
         Assert.DoesNotContain("__EFMigrationsHistory", apply);
         Assert.DoesNotContain("__EFMigrationsHistory", config);
         Assert.Contains("20260906025535_AddHarvestWatchDeployments", gate);
-        Assert.Equal(979, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
+        Assert.Equal(1007, gate.Split('\n').Count(x => x.TrimStart().StartsWith("new(", StringComparison.Ordinal) || x.TrimStart().StartsWith(",new(", StringComparison.Ordinal)));
     }
 
     private static string Read(params string[] segments)

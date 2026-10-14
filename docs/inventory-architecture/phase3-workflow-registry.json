@@ -93,13 +93,19 @@
     "WritePath": "Canonical",
     "Source": "src/CropQc.Web/Services/TruckReceiptReconciliationService.cs",
     "OperationIntents": [
-      "ReceiveTransfer"
+      "ReceiveTransfer",
+      "AcknowledgeTransfer",
+      "PlaceReceiptCustody",
+      "ReverseReceiptAcknowledgment",
+      "ReverseReceiptPlacement"
     ],
-    "Reversal": "ReopenTransfer",
-    "Evidence": "Dispatch remainder; exact variety reconciliation; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
+    "Reversal": "Immutable allocation-linked compensation; held acknowledgement returns to unresolved custody; proven untouched placement debits its current room to held custody. Downstream dependencies block reversal.",
+    "Evidence": "Exact dispatch allocation selection; receipt-held acknowledgements; independent room placement; original load = unresolved + held + placed",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs",
+      "tests/CropQc.Api.Tests/ReceiptCustodyCorrectionTests.cs",
       "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"

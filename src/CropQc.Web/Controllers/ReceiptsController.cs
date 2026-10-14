@@ -341,10 +341,12 @@ public sealed class ReceiptsController(
     public async Task<IActionResult> Edit(long id, CancellationToken cancellationToken)
     {
         var model = await dataService.GetReceiptEditAsync(id, cancellationToken);
+        model.CanCorrectInventoryIdentity = await userAccessService.HasAccessAsync(
+            User, ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken);
         model.CanAdminOverride = await userAccessService.HasAccessAsync(
             User,
             ApplicationAreas.Receipts,
-            PageAccessLevel.Admin,
+            PageAccessLevel.Create,
             cancellationToken);
         if (model.CanAdminOverride)
         {
@@ -366,7 +368,7 @@ public sealed class ReceiptsController(
             : RedirectToAction(nameof(Edit), new { id });
     }
 
-    [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]
+    [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/AdminInventoryOverride")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> AdminInventoryOverride(
@@ -386,7 +388,9 @@ public sealed class ReceiptsController(
         TempData["Success"] = result.WasIdempotent
             ? $"Receipt inventory override {result.OverrideId:D} was already applied."
             : $"Receipt inventory override {result.OverrideId:D} was applied.";
-        return RedirectToAction(nameof(OverrideDetails), new { overrideId = result.OverrideId });
+        return await userAccessService.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken)
+            ? RedirectToAction(nameof(OverrideDetails), new { overrideId = result.OverrideId })
+            : RedirectToAction(nameof(Details), new { id });
     }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]

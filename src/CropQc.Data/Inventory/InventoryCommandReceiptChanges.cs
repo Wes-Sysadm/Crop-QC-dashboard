@@ -25,6 +25,14 @@ public sealed partial class InventoryCommandExecutor
             "Voiding requires the exact receipt confirmation and no remaining external/transit custody.");
         var delta = isVoid ? -state.RoomQuantity : checked(change.NewQuantity - receipt.BinCount);
         Require(isVoid || delta != 0, "No quantity correction was requested.");
+        Require(delta <= 0 || change.ConfirmAdditionalBinsUntreated, ReceiptCorrectionTreatmentPolicy.ConfirmationRequired);
+        if (change.AdditionalStock != null)
+        {
+            Require(!isVoid && delta > 0 && state.Allocations.IsEmpty && change.Allocations.IsEmpty,
+                "New correction stock requires a positive change with no surviving receipt allocation; do not mix addition and removal intents.");
+            return await AddDepletedReceiptStockAsync(db, factory, c, state, receipt, delta, now, attempt, ct);
+        }
+        var posting = delta > 0 ? c with { EffectiveAt = now } : c;
         var allocations = change.Allocations;
         if (isVoid) allocations = state.Allocations.Where(x => x.Position.Location.Custody == InventoryCustody.Room)
             .Select(x => new InventoryReceiptQuantityAllocation(x.Key, x.Slice.Quantity)).ToImmutableArray();
@@ -47,7 +55,10 @@ public sealed partial class InventoryCommandExecutor
             var evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(p.Location.WarehouseId, [p.Location.RoomId!.Value]), now, ct)).Positions.Single(x => x.Identity.Key == p.Identity.Key);
             var originFailure = await InventoryOriginGuard.ValidateAsync(db, [evidence], now, ct);
             Require(originFailure == null, originFailure ?? "Receipt origin validation failed.");
-            await NormalizePositionAsync(db, factory, c, evidence, p, now, attempt, ct);
+            if (delta > 0)
+                await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
+            else
+                await NormalizePositionAsync(db, factory, c, evidence, p, now, attempt, ct);
         }
         var beforeJson = ReceiptValues(receipt);
         var operation = new ReceiptInventoryOverride
@@ -80,13 +91,17 @@ public sealed partial class InventoryCommandExecutor
             var rows = await db.TreatmentLineageSegments.Include(x => x.Applications).Where(x => x.RoomId == room && x.Disposition == "Current" && x.CurrentBins > 0
                 && x.ReceiptId == receipt.Id && x.TreatmentSignature == slice.Signature).OrderBy(x => x.Id).ToListAsync(ct);
             rows = rows.Where(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == p.Identity.Key).ToList();
-            Require(rows.Count > 0 && rows.Sum(x => x.CurrentBins) == slice.Quantity, "Exact receipt allocation changed during correction.");
+            // A positive correction originates its own allocation. The selected
+            // receipt location was proven from events above; it need not consume
+            // or reconstruct an older projection to authorize this credit.
+            Require(delta > 0 || rows.Count > 0 && rows.Sum(x => x.CurrentBins) == slice.Quantity, "Exact receipt allocation changed during correction.");
             var moves = new List<TreatmentLineageMovement>();
             if (delta > 0)
             {
-                var target = await factory.CurrentAsync(p.Identity, warehouse, room, slice.Signature, slice.State, receipt.Id, slice.ApplicationIds, now, ct);
+                // A count correction proves additional origin, not historical treatment membership.
+                var target = await factory.CurrentAsync(p.Identity, warehouse, room, "u", "Untreated", receipt.Id, [], now, ct);
                 Credit(target, input.Quantity, now);
-                var movement = Move(c, p.Identity, new(target, input.Quantity), target, null, room, c.OperationKey + ":correct:" + index, now, "ReceiptQuantityCorrection");
+                var movement = Move(posting, p.Identity, new(target, input.Quantity), target, null, room, c.OperationKey + ":correct:" + index, now, "ReceiptQuantityCorrection");
                 movement.SourceSegment = null; movement.SourceSegmentId = null; moves.Add(movement);
             }
             else
@@ -103,7 +118,7 @@ public sealed partial class InventoryCommandExecutor
                 }
                 Require(remaining == 0, "Receipt correction would consume unproven stock.");
             }
-            var ledger = Ledger(c, p.Identity, warehouse, room, signed, before, c.OperationKey + ":correct:" + index, now);
+            var ledger = Ledger(posting, p.Identity, warehouse, room, signed, before, c.OperationKey + ":correct:" + index, now);
             ledger.Receipt = receipt; ledger.ReceiptInventoryOverride = operation; ledger.AdjustmentType = "ReceiptAdminOverride";
             db.RoomInventoryAdjustments.Add(ledger); db.TreatmentLineageMovements.AddRange(moves);
             await Stage("Movement", db, attempt, ct); await db.SaveChangesAsync(ct);
@@ -139,13 +154,92 @@ public sealed partial class InventoryCommandExecutor
         {
             var after = (await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(p.Location.WarehouseId, [p.Location.RoomId!.Value]), new(), now, ct))
                 .Positions.Single(x => x.PositionKey == p.PositionKey);
-            Require(p.UsesIndependentCohorts
+            Require(IsAdmittedDestination(factory, p.Location.RoomId!.Value, p.Identity.Key) || (p.UsesIndependentCohorts
                 ? after.AuthoritativeQuantity >= 0
                     && after.RawProjectionQuantity - p.RawProjectionQuantity == after.AuthoritativeQuantity - p.AuthoritativeQuantity
-                : after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity,
+                : after.IsOperable && after.RawProjectionQuantity == after.AuthoritativeQuantity),
                 "Receipt correction left inconsistent current projections.");
         }
         return effects.ToImmutable();
+    }
+
+    private async Task<ImmutableArray<InventoryCommandEffect>> AddDepletedReceiptStockAsync(CropQcDbContext db,
+        CanonicalProjectionFactory factory, InventoryCommand c, InventoryReceiptAvailabilityResult state, Receipt receipt,
+        int delta, DateTimeOffset now, int attempt, CancellationToken ct)
+    {
+        var input = c.ReceiptChange!.AdditionalStock!;
+        Require(input.ConfirmPresent, "Confirm that these additional bins belong to this receipt and are physically present in the selected room.");
+        var identity = InventoryReceiptAvailability.ReceiptIdentity(state.Receipt);
+        Require(identity.IsComplete, "Receipt origin identity is incomplete.");
+        var loader = new InventoryEvidenceLoader(db);
+        var history = (await loader.LoadAsync(new(null, state.Positions.Where(x => x.Location.RoomId != null)
+            .Select(x => x.Location.RoomId!.Value).Distinct().ToImmutableArray()), now, ct)).Positions
+            .Where(x => x.Receipts.Any(r => r.Id == receipt.Id) || x.Movements.Any(m => m.ReceiptId == receipt.Id)).ToArray();
+        Require(history.Any(x => x.Ledger.Any(l => l.ReceiptId == receipt.Id && l.Kind == "ReceiptAdd" && l.Quantity > 0)),
+            "A recorded receipt origin is required; an empty projection is not an inventory origin.");
+        var originFailure = await InventoryOriginGuard.ValidateAsync(db, history, now, ct, includeEmptyHistory: true);
+        Require(originFailure == null, originFailure ?? "Receipt origin history is inconsistent.");
+        var room = await db.Rooms.Include(x => x.Warehouse).SingleOrDefaultAsync(x => x.Id == input.RoomId, ct);
+        Require(room != null && room.WarehouseId == receipt.WarehouseId && room.IsActive && room.Warehouse.IsActive && !room.IsSealed,
+            "Select an active unsealed room in the receipt warehouse for the additional stock.");
+        var beforeEvidence = (await loader.LoadAsync(new(receipt.WarehouseId, [input.RoomId]), now, ct)).Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
+        var fingerprint = beforeEvidence == null ? "empty" : InventoryAvailabilityResolver.Resolve(beforeEvidence, new()).Watermark.Fingerprint;
+        Require(input.ExpectedFingerprint == fingerprint, "Correction destination changed; reload and review the additional stock.", InventoryCommandStatus.Stale);
+        if (beforeEvidence != null) await PrepareDestinationAsync(db, factory, c, beforeEvidence, now, attempt, ct);
+        var before = await PhysicalAsync(db, identity, receipt.WarehouseId, input.RoomId, ct);
+        var receiptBefore = ReceiptValues(receipt);
+        var operation = new ReceiptInventoryOverride
+        {
+            Id = Guid.NewGuid(),
+            Receipt = receipt,
+            ActionType = ReceiptInventoryOverrideActionTypes.QuantityCorrection,
+            OldReceiptBinCount = receipt.BinCount,
+            NewReceiptBinCount = c.ReceiptChange.NewQuantity,
+            InventoryDelta = delta,
+            CurrentInventoryBefore = 0,
+            CurrentInventoryAfter = delta,
+            AdministratorUserId = c.ActorId,
+            Reason = c.Reason,
+            OperationKey = c.OperationKey,
+            CreatedAt = now,
+            BeforeReceiptSnapshotJson = receiptBefore,
+            AfterReceiptSnapshotJson = "{}",
+            AffectedInventorySnapshotJson = JsonSerializer.Serialize(new
+            {
+                allocations = new[] { new { location = new InventoryLocation(InventoryCustody.Room, receipt.WarehouseId, input.RoomId, room!.Warehouse.Name, room.Name), identity } },
+                PriorReceiptPositions = state.Positions,
+                DestinationBefore = beforeEvidence,
+                AdditionalStock = input,
+                c.ReceiptChange.ConfirmAdditionalBinsUntreated
+            }, Json)
+        };
+        db.ReceiptInventoryOverrides.Add(operation);
+        var target = await factory.CurrentAsync(identity, receipt.WarehouseId, input.RoomId, "u", "Untreated", receipt.Id, [], now, ct);
+        Credit(target, delta, now);
+        var posting = c with { EffectiveAt = now };
+        var ledger = Ledger(posting, identity, receipt.WarehouseId, input.RoomId, delta, before, c.OperationKey + ":correct:0", now);
+        ledger.Receipt = receipt; ledger.ReceiptInventoryOverride = operation; ledger.AdjustmentType = "ReceiptAdminOverride";
+        var movement = Move(posting, identity, new(target, delta), target, null, input.RoomId, c.OperationKey + ":correct:0", now, "ReceiptQuantityCorrection");
+        movement.SourceSegment = null; movement.SourceSegmentId = null;
+        db.RoomInventoryAdjustments.Add(ledger); db.TreatmentLineageMovements.Add(movement);
+        await Stage("Movement", db, attempt, ct); await db.SaveChangesAsync(ct);
+        Require(await PhysicalAsync(db, identity, receipt.WarehouseId, input.RoomId, ct) == before + delta && target.CurrentBins == delta,
+            "Additional correction stock failed exact quantity conservation.");
+        receipt.BinCount = c.ReceiptChange.NewQuantity; receipt.ConcurrencyVersion++; receipt.UpdatedAt = now;
+        operation.AfterReceiptSnapshotJson = ReceiptValues(receipt); operation.ExpectedAdjustmentCount = 1; operation.IsComplete = true;
+        AddAudit(db, c, "CanonicalReceiptQuantityCorrected", operation.Id.ToString(), receiptBefore,
+            new
+            {
+                operation.AfterReceiptSnapshotJson,
+                operation.InventoryDelta,
+                receipt.Id,
+                receipt.ConcurrencyVersion,
+                AdditionalStock = input,
+                HistoricalConsumptionUnchanged = true,
+                TreatmentEvidence = "Operator confirmed additional bins untreated; no historical applications inherited"
+            }, now);
+        await db.SaveChangesAsync(ct);
+        return [new($"Room:{receipt.WarehouseId}:{input.RoomId}::{identity.Key}", before, before + delta, delta, receipt.Id, [ledger.Id], [movement.Id])];
     }
 
     private static string ReceiptValues(Receipt r) => JsonSerializer.Serialize(new

@@ -68,7 +68,7 @@ public sealed class ReceiptLocationHttpTests
         Assert.DoesNotContain("could not be translated", await detail.Content.ReadAsStringAsync());
     }
 
-    internal sealed class ReceiptHost(string connection) : WebApplicationFactory<ReceiptsController>
+    internal sealed class ReceiptHost(string connection, bool truckCustody = false) : WebApplicationFactory<ReceiptsController>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -82,6 +82,8 @@ public sealed class ReceiptLocationHttpTests
                 ["Backups:Enabled"] = "false",
                 ["EbsDailyBinsEmail:Enabled"] = "false",
                 ["Email:Provider"] = "None"
+                ,
+                ["TruckReceiptReconciliation:Enabled"] = truckCustody.ToString()
             }));
             builder.ConfigureServices(services =>
             {

@@ -38,7 +38,8 @@ public sealed record InventoryConservationReport(
     int InvalidTreatmentIdentityMovements,
     IReadOnlyDictionary<string, long> OtherHistoricalTreatmentCorrections,
     long InterCrewTransitBins,
-    long OutsideWarehouseCustodyBins)
+    long OutsideWarehouseCustodyBins,
+    long ReceiptHeldBins = 0)
 {
     public long TreatmentIdentityDifference => TreatmentIdentityCredit - TreatmentIdentityDebit;
     public bool IsReady => Receiving.MismatchCount == 0 && Global.Difference == 0
@@ -122,9 +123,13 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             treatment.Count(x => x.SourceSegmentId == null || x.DestinationSegmentId == null || x.BinCount <= 0),
             otherTreatment.GroupBy(x => x.MovementType).ToDictionary(x => x.Key, x => x.Sum(y => (long)y.BinCount)),
             await db.InterCrewTransfers.Where(x => x.Status == InterCrewTransferStatuses.InTransit)
-                .SumAsync(x => (long?)x.BinsLoaded, cancellationToken) ?? 0,
+                .SumAsync(x => (long?)(x.BinsLoaded - (x.BinsReceived ?? 0)), cancellationToken) ?? 0,
             await db.OutsideWarehouseTransfers.Where(x => !x.IsReversed)
-                .SumAsync(x => (long?)x.BinCount, cancellationToken) ?? 0);
+                .SumAsync(x => (long?)x.BinCount, cancellationToken) ?? 0,
+            (await db.ReceiptCustodyAcknowledgments.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
+                - (await db.ReceiptCustodyReversals.Where(x => x.PlacementId == null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
+                + (await db.ReceiptCustodyReversals.Where(x => x.PlacementId != null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
+                - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0));
     }
 
     private static long EffectiveBins(RoomInventoryAdjustment x) =>

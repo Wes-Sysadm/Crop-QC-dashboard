@@ -689,9 +689,9 @@ public sealed partial class DashboardDataService(
             return "Current inventory cannot be allocated to this Receipt exactly. Use the current room inventory workflow or reconcile provenance before recording a legacy depletion.";
 
         var currentBins = await GetCurrentBinsForReceiptAsync(receipt.Id, cancellationToken);
-        if (form.BinCount > currentBins && !form.ConfirmOverDepletion)
+        if (form.BinCount > currentBins)
         {
-            return $"Cannot deplete {form.BinCount} bins because only {currentBins} bins are currently known in this room. Confirm override if the current bin count is unknown or needs correction.";
+            return $"Cannot deplete {form.BinCount} bins because only {currentBins} bins are currently known in this room. Correct receiving or custody evidence before consuming additional bins.";
         }
 
         var currentUser = await GetCurrentUserAsync(cancellationToken);
