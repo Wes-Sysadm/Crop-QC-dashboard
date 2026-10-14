@@ -272,6 +272,7 @@
     {
       "id": "REC-002",
       "code": [
+        "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
         "src/CropQc.Data/Inventory/InventoryCommandTransitEdits.cs",
         "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs"
       ],
@@ -298,6 +299,30 @@
           "type": "CropQc.Api.Tests.ReceiptCustodyCorrectionTests",
           "member": "Partial_or_complete_placement_can_be_compensated_then_placed_in_the_correct_room",
           "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Proven_partial_custody_passes_but_corrupt_recorded_relationships_block",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Readiness_observes_one_snapshot_while_a_separate_writer_acknowledges",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Recorded_return_before_acknowledgement_preserves_the_reduced_transit_allocation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewTopologyReadinessTests",
+          "member": "Release_readiness_has_one_compensation_aware_topology_decision",
+          "kind": "structural",
           "required": true
         }
       ],

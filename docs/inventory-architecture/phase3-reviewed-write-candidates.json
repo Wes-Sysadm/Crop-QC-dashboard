@@ -1,5 +1,11 @@
 [
   {
+    "Path": "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Release topology snapshot: AsNoTracking reads, read-only transaction and local result lists only. Reuses immutable custody, physical-flow, origin and treatment proofs; no physical write capability or SaveChanges.",
+    "Sha256": "E15214E5AD96E65E8EBF6C16005E3CA9A00854AF155A1DA81FB8D26BEC826B92"
+  },
+  {
     "Path": "src/CropQc.Api/Services/QcFruitReadingService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
@@ -285,7 +291,7 @@
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
     "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "D98697A7A0C4829A611BBE8CBEF2B882F97F6B7E43FBB24FF49EA61DB36AE888"
+    "Sha256": "BEC1EFBE99B8F0DCE55420ED4F101D1912DAD1955C643EB6EE0598621E5F43BA"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",

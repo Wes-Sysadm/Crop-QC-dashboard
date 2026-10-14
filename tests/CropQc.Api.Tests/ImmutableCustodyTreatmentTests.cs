@@ -154,6 +154,10 @@ public sealed class ImmutableCustodyTreatmentTests
             await Commit(await Custody(InventoryCommandKind.AcknowledgeTransfer, dispatch.Select(x => new InventoryCustodyQuantity(x.Id, 10)).ToImmutableArray(), "mixed-ack"));
             await Prove();
             var acks = await db.ReceiptCustodyAcknowledgments.OrderBy(x => x.Id).ToArrayAsync();
+            await Commit(await Custody(InventoryCommandKind.ReverseReceiptAcknowledgment, [new(acks[1].Id, 2)], "mixed-unack"));
+            await Prove();
+            await Commit(await Custody(InventoryCommandKind.AcknowledgeTransfer, [new(dispatch[1].Id, 2)], "mixed-reack"));
+            await Prove();
             await Commit(await Custody(InventoryCommandKind.PlaceReceiptCustody, acks.Select(x => new InventoryCustodyQuantity(x.Id, 7)).ToImmutableArray(), "mixed-place"));
             await Prove();
             var placement = await db.ReceiptCustodyPlacements.OrderBy(x => x.Id).FirstAsync();
@@ -178,6 +182,10 @@ public sealed class ImmutableCustodyTreatmentTests
         async Task Prove()
         {
             db.ChangeTracker.Clear();
+            var beforeReadiness = await f.Snapshot();
+            var topology = await InterCrewTopologyReadiness.VerifyAsync(db, default);
+            Assert.True(topology.Issues.Count == 0, JsonSerializer.Serialize(topology));
+            Assert.Equal(beforeReadiness, await f.Snapshot());
             var resolver = new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db));
             var positions = new List<InventoryAvailabilityResult>();
             foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.ReceiptHeld })

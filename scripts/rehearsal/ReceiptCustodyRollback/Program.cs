@@ -19,7 +19,7 @@ using System.Text.RegularExpressions;
 // Run beside the frozen application's DLLs using its deps/runtimeconfig, not rebuilt Data DLLs.
 if (args.Length != 2 || args[0] is not ("forward" or "rollback" or "http" or "verify"))
     throw new ArgumentException("forward|rollback|http|verify evidence-directory");
-const string connection = "Host=localhost;Database=pr271_treatment_rollback_test;Username=postgres;Pooling=false";
+const string connection = "Host=localhost;Database=pr271_topology_rollback_test;Username=postgres;Pooling=false";
 if (!File.Exists(Path.Combine(args[1], "isolated-only.marker"))) throw new Exception("Missing isolated rehearsal marker");
 ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connection);
 var role = args[0]; var output = args[1];
@@ -249,6 +249,7 @@ File.WriteAllText(Path.Combine(output, role + "-result.json"), JsonSerializer.Se
     ForwardImmutableTablesPreserved = state.ForwardImmutable.Count,
     Custody = await CustodySummary(),
     OriginalTreatmentQuantity = await db.RoomTreatmentApplicationSources.Where(x => x.RoomTreatmentApplicationId == state.Application).SumAsync(x => x.BinsTreated),
+    Topology = await InterCrewTopologyReadiness.VerifyAsync(db, default),
     Passed = true
 }, json));
 Console.WriteLine($"{role} PASS; {results.Count} operation results; original history preserved; exclusive custody and treatment verified");
@@ -315,6 +316,9 @@ async Task<object> CustodySummary()
 async Task Prove(int acknowledged, int placed)
 {
     var before = await HashAll(await Columns());
+    var topology = await InterCrewTopologyReadiness.VerifyAsync(db, default);
+    Check(topology.Issues.Count == 0, JsonSerializer.Serialize(topology, json));
+    Check(topology.Custody.Single(x => x.TransferId == state.Transfer) == new InterCrewCustodyBalance(state.Transfer, 30, acknowledged, placed, acknowledged - placed, 30 - acknowledged), "Readiness custody differs from independent transaction proof");
     var acks = await db.ReceiptCustodyAcknowledgments.WithCustodyEvidence().AsNoTracking().Where(x => x.InterCrewTransferId == state.Transfer).ToArrayAsync();
     Check(acks.All(ReceiptCustodyProof.Valid) && acks.Sum(x => x.NetQuantity) == acknowledged && acks.Sum(x => x.PlacedQuantity) == placed, "Invalid compensated custody");
     var resolver = new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db));
@@ -386,7 +390,7 @@ sealed class Factory : IDbContextFactory<CropQcDbContext>
 {
     public CropQcDbContext CreateDbContext()
     {
-        var options = new DbContextOptionsBuilder<CropQcDbContext>(); CropQcDatabase.Configure(options, "PostgreSql", "Host=localhost;Database=pr271_treatment_rollback_test;Username=postgres;Pooling=false");
+        var options = new DbContextOptionsBuilder<CropQcDbContext>(); CropQcDatabase.Configure(options, "PostgreSql", "Host=localhost;Database=pr271_topology_rollback_test;Username=postgres;Pooling=false");
         return new(options.Options, new CanonicalInventoryMode(true));
     }
 }
