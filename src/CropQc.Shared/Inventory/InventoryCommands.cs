@@ -49,7 +49,9 @@ public sealed record InventoryReceiptMetadata(long ReceiptId, long ExpectedVersi
     string GrowerName, InventoryReceiptIntent ExpectedReceipt, bool SameDayOnly = false);
 public sealed record InventoryReceiptChange(long ReceiptId, long ExpectedVersion, string ExpectedFingerprint, int NewQuantity,
     ImmutableArray<InventoryReceiptQuantityAllocation> Allocations, string? VoidConfirmation = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ConfirmAdditionalBinsUntreated = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ConfirmAdditionalBinsUntreated = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptAdditionalStock? AdditionalStock = null);
+public sealed record InventoryReceiptAdditionalStock(int RoomId, string ExpectedFingerprint, bool ConfirmPresent);
 public sealed record InventoryReceiptQuantityAllocation(string Key, int Quantity);
 public sealed record InventoryLegacyRunMetadata(int? FacilityWarehouseId, string? FacilityCode, string AssignmentSource);
 public sealed record InventoryReceiptIntent(int CropYear, int WarehouseId, int RoomId, int GrowerLotId,

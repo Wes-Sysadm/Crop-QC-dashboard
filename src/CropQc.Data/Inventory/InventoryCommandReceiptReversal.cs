@@ -60,8 +60,15 @@ public sealed partial class InventoryCommandExecutor
             var identity = CanonicalIdentityMap.Historical(segment);
             var evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(segment.WarehouseId, [segment.RoomId]), now, ct))
                 .Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
-            Require(evidence != null && InventoryAvailabilityResolver.Resolve(evidence, new()).IsOperable
+            // This is a debit of the exact untouched placement, not a demand
+            // that unrelated room projections be repaired first. The original
+            // dispatch/acknowledgement/placement proof and dependencies above
+            // remain mandatory, including for shared receipt ancestry.
+            Require(evidence != null && (InventoryAvailabilityResolver.Resolve(evidence, new()).IsOperable
+                    || InventoryCohortEvidence.Proven(evidence).Any(x => x.Id == segment.Id))
                 && evidence.AuthoritativeQuantity >= item.Quantity && evidence.Projections.Any(x => x.Id == segment.Id), dependent);
+            var originFailure = await InventoryOriginGuard.ValidateAsync(db, [evidence!], now, ct);
+            Require(originFailure == null, originFailure ?? "Placement origin validation failed.");
             var quantityBefore = evidence!.AuthoritativeQuantity;
             var key = command.OperationKey + ":" + placement.Id;
             var debit = Ledger(command, identity, segment.WarehouseId, segment.RoomId, -item.Quantity, quantityBefore, key, now);

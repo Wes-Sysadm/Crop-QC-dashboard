@@ -86,8 +86,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOperations.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "113DC18C75C29E8D821182056286A06F5E4C6D2F13ECC30CB8BF97E7F56A85DF"
+    "Reason": "Compensation-aware rollback backport of reviewed 1947364 destination/cohort/arrival fixes. Retains canonical writer fence; fresh AdditionalStock intents explicitly blocked while committed intents retain their wire shape and replay.",
+    "Sha256": "A04FFB4AC83BA3A0A4EB60F9A22C81DEAE216317AA3CA75A346D5E541C354F9B"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOrasDefinition.cs",
@@ -104,8 +104,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "9D3861F98209B47BD22B8F7145D3C4C4018E5ABB26E277E77BFD4A9786D27EC0"
+    "Reason": "Compensation-aware rollback backport of reviewed 1947364 destination/cohort/arrival fixes. Retains canonical writer fence; fresh AdditionalStock intents explicitly blocked while committed intents retain their wire shape and replay.",
+    "Sha256": "87B3A5BDFB09E2362DB24B14B483D8955F19A8E677E7FB055BDC0102667A0A27"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
@@ -134,8 +134,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptReversal.cs",
     "Classification": "Canonical transaction owner",
-    "Reason": "Exact receipt-held and untouched-placement compensation is owned by the Serializable executor; immutable linked reversal, full conservation proof and shared journal; no direct external writer.",
-    "Sha256": "2B75126F996144DEF890E8512E04D0102854359CFA5FD4528662CE432756DAEC"
+    "Reason": "Compensation-aware rollback backport of reviewed 1947364 destination/cohort/arrival fixes. Retains canonical writer fence; fresh AdditionalStock intents explicitly blocked while committed intents retain their wire shape and replay.",
+    "Sha256": "6FFB19FEC8BF2405FAA1337D70B3FDF747D258B3A1CFED8911C53660B4E022B3"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
