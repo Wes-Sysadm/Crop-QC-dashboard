@@ -1,5 +1,9 @@
 # PR #271 immutable transit treatment proof — stopped at readiness
 
+Historical checkpoint: the later owner-authorized topology continuation is in
+[strict partial-custody readiness](pr271-partial-custody-topology.md). This report
+and its older frozen artifacts retain the original failed-gate evidence.
+
 Owner instruction: “Fix Immutable Transit Treatment Proof and Resume Rollback
 Rehearsal”, 2026-10-13 America/Los_Angeles. This authorizes implementation and
 disposable rehearsal, not merge, deployment or production mutation.

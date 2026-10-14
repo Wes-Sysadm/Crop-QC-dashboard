@@ -1,0 +1,938 @@
+{
+  "forward-result": {
+    "role": "forward",
+    "runtime": ".NET 9.0.20",
+    "binaries": {
+      "CropQc.Data.dll": "38C75BAE54D3C427EBA400D28EC9A356C4C2F74061B8EDE208493520B769791C",
+      "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+      "CropQc.Web.dll": "B19F0905D196296AFF113288FE68E84EBE69700DB015814A2CB21CC4EA7028F8"
+    },
+    "operations": [
+      {
+        "status": 0,
+        "operationKey": "r271-treated",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 0,
+            "after": 20,
+            "quantity": 20,
+            "parentId": 2654,
+            "ledgerIds": [
+              4381
+            ],
+            "movementIds": [
+              1078
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-treatment",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 20,
+            "after": 20,
+            "quantity": 20,
+            "parentId": 30,
+            "ledgerIds": [],
+            "movementIds": []
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-later-untreated",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 20,
+            "after": 40,
+            "quantity": 20,
+            "parentId": 2655,
+            "ledgerIds": [
+              4382
+            ],
+            "movementIds": [
+              1079
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-dispatch",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 40,
+            "after": 25,
+            "quantity": 15,
+            "parentId": 43,
+            "ledgerIds": [
+              4383
+            ],
+            "movementIds": [
+              1080
+            ]
+          },
+          {
+            "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 25,
+            "after": 10,
+            "quantity": 15,
+            "parentId": 43,
+            "ledgerIds": [
+              4384
+            ],
+            "movementIds": [
+              1081
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-ack",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "transit:43:1080",
+            "before": 15,
+            "after": 3,
+            "quantity": 12,
+            "parentId": 43,
+            "ledgerIds": [],
+            "movementIds": []
+          },
+          {
+            "positionKey": "transit:43:1081",
+            "before": 15,
+            "after": 5,
+            "quantity": 10,
+            "parentId": 43,
+            "ledgerIds": [],
+            "movementIds": []
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-place",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:1",
+            "before": 12,
+            "after": 4,
+            "quantity": 8,
+            "parentId": 43,
+            "ledgerIds": [
+              4385
+            ],
+            "movementIds": [
+              1082
+            ]
+          },
+          {
+            "positionKey": "receipt:2656:2",
+            "before": 10,
+            "after": 4,
+            "quantity": 6,
+            "parentId": 43,
+            "ledgerIds": [
+              4386
+            ],
+            "movementIds": [
+              1083
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-undo-ack",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:2",
+            "before": 4,
+            "after": 2,
+            "quantity": 2,
+            "parentId": 43,
+            "ledgerIds": [],
+            "movementIds": []
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-undo-place",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:placement:1",
+            "before": 14,
+            "after": 11,
+            "quantity": 3,
+            "parentId": 43,
+            "ledgerIds": [
+              4387
+            ],
+            "movementIds": [
+              1084
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-replace",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:1",
+            "before": 7,
+            "after": 5,
+            "quantity": 2,
+            "parentId": 43,
+            "ledgerIds": [
+              4388
+            ],
+            "movementIds": [
+              1085
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "forward-overdraw",
+        "detail": "Only receipt-held bins can have acknowledgement reversed. Undo a proven untouched placement first; moved, treated or consumed bins require their explicit current-custody resolution workflow.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "forward-sealed",
+        "detail": "Select the receipt's active unsealed destination room.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "forward-wrong-company",
+        "detail": "Select the receipt's active unsealed destination room.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-original-correction",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:30::2026|615|12|9501|9501|ORRD|ORGANIC|True|",
+            "before": 569,
+            "after": 568,
+            "quantity": 1,
+            "parentId": 2475,
+            "ledgerIds": [
+              4389
+            ],
+            "movementIds": [
+              1086
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-depleted",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990003::2026|990002|1|R271-EXTRA|R271-EXTRA|FUJI|CONVENTIONAL|False|",
+            "before": 0,
+            "after": 4,
+            "quantity": 4,
+            "parentId": 2657,
+            "ledgerIds": [
+              4390
+            ],
+            "movementIds": [
+              1087
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-deplete",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990003::2026|990002|1|R271-EXTRA|R271-EXTRA|FUJI|CONVENTIONAL|False|",
+            "before": 4,
+            "after": 0,
+            "quantity": 4,
+            "parentId": 9,
+            "ledgerIds": [
+              4391
+            ],
+            "movementIds": [
+              1088
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-additional",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990003::2026|990002|1|R271-EXTRA|R271-EXTRA|FUJI|CONVENTIONAL|False|",
+            "before": 0,
+            "after": 2,
+            "quantity": 2,
+            "parentId": 2657,
+            "ledgerIds": [
+              4392
+            ],
+            "movementIds": [
+              1089
+            ]
+          }
+        ],
+        "attempts": 1
+      }
+    ],
+    "historicalTablesPreserved": 16,
+    "forwardImmutableTablesPreserved": 13,
+    "custody": {
+      "dispatched": 30,
+      "acknowledged": 20,
+      "placed": 13,
+      "held": 7,
+      "transit": 10
+    },
+    "originalTreatmentQuantity": 20,
+    "topology": {
+      "issues": [],
+      "custody": [
+        {
+          "transferId": 43,
+          "dispatched": 30,
+          "acknowledged": 20,
+          "placed": 13,
+          "held": 7,
+          "transit": 10
+        }
+      ]
+    },
+    "passed": true
+  },
+  "rollback-result": {
+    "role": "rollback",
+    "runtime": ".NET 9.0.20",
+    "binaries": {
+      "CropQc.Data.dll": "0B294C5CFCCF2A5DB50AA144E450D0C672B5407348C4CE366D8C68C9D2CB9B26",
+      "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+      "CropQc.Web.dll": "AB41548E0FC3FDD3E25D96F36E25BD1EEAEBB202B6F684A2AF851B0ED05F6168"
+    },
+    "operations": [
+      {
+        "status": 3,
+        "operationKey": "r271-fresh-unsupported",
+        "detail": "This compatibility rollback does not accept new additional-stock corrections after complete consumption. Previously committed commands remain replayable.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-race-a",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:2",
+            "before": 2,
+            "after": 1,
+            "quantity": 1,
+            "parentId": 43,
+            "ledgerIds": [],
+            "movementIds": []
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 4,
+        "operationKey": "r271-race-b",
+        "detail": "Receipt or transfer changed; reload custody.",
+        "effects": [],
+        "attempts": 2
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-unplace",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:placement:1",
+            "before": 13,
+            "after": 12,
+            "quantity": 1,
+            "parentId": 43,
+            "ledgerIds": [
+              4393
+            ],
+            "movementIds": [
+              1090
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-replace",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:1",
+            "before": 6,
+            "after": 5,
+            "quantity": 1,
+            "parentId": 43,
+            "ledgerIds": [
+              4394
+            ],
+            "movementIds": [
+              1091
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-treated-move",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990002::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 12,
+            "after": 11,
+            "quantity": 1,
+            "parentId": 415,
+            "ledgerIds": [
+              4395,
+              4396
+            ],
+            "movementIds": [
+              1092
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-untreated-move",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990002::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "before": 11,
+            "after": 10,
+            "quantity": 1,
+            "parentId": 416,
+            "ledgerIds": [
+              4397,
+              4398
+            ],
+            "movementIds": [
+              1093
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-ack",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "transit:43:1081",
+            "before": 8,
+            "after": 7,
+            "quantity": 1,
+            "parentId": 43,
+            "ledgerIds": [],
+            "movementIds": []
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-new-place",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "receipt:2656:3",
+            "before": 1,
+            "after": 0,
+            "quantity": 1,
+            "parentId": 43,
+            "ledgerIds": [
+              4399
+            ],
+            "movementIds": [
+              1094
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "rollback-overdraw",
+        "detail": "Only receipt-held bins can have acknowledgement reversed. Undo a proven untouched placement first; moved, treated or consumed bins require their explicit current-custody resolution workflow.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "rollback-sealed",
+        "detail": "Select the receipt's active unsealed destination room.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 3,
+        "operationKey": "rollback-wrong-company",
+        "detail": "Select the receipt's active unsealed destination room.",
+        "effects": [],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-historical-correction",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:30::2026|615|12|9501|9501|ORRD|ORGANIC|True|",
+            "before": 568,
+            "after": 569,
+            "quantity": 1,
+            "parentId": 2475,
+            "ledgerIds": [
+              4400
+            ],
+            "movementIds": [
+              1095
+            ]
+          }
+        ],
+        "attempts": 1
+      },
+      {
+        "status": 0,
+        "operationKey": "r271-rollback-move-recognized",
+        "detail": "Command committed atomically.",
+        "effects": [
+          {
+            "positionKey": "Room:1:990003::2026|990002|1|R271-EXTRA|R271-EXTRA|FUJI|CONVENTIONAL|False|",
+            "before": 2,
+            "after": 1,
+            "quantity": 1,
+            "parentId": 417,
+            "ledgerIds": [
+              4401,
+              4402
+            ],
+            "movementIds": [
+              1096
+            ]
+          }
+        ],
+        "attempts": 1
+      }
+    ],
+    "historicalTablesPreserved": 16,
+    "forwardImmutableTablesPreserved": 13,
+    "custody": {
+      "dispatched": 30,
+      "acknowledged": 20,
+      "placed": 14,
+      "held": 6,
+      "transit": 10
+    },
+    "originalTreatmentQuantity": 20,
+    "topology": {
+      "issues": [],
+      "custody": [
+        {
+          "transferId": 43,
+          "dispatched": 30,
+          "acknowledged": 20,
+          "placed": 14,
+          "held": 6,
+          "transit": 10
+        }
+      ]
+    },
+    "passed": true
+  },
+  "http-result": {
+    "role": "http",
+    "runtime": ".NET 9.0.20",
+    "binaries": {
+      "CropQc.Data.dll": "0B294C5CFCCF2A5DB50AA144E450D0C672B5407348C4CE366D8C68C9D2CB9B26",
+      "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+      "CropQc.Web.dll": "AB41548E0FC3FDD3E25D96F36E25BD1EEAEBB202B6F684A2AF851B0ED05F6168"
+    },
+    "operations": [],
+    "historicalTablesPreserved": 16,
+    "forwardImmutableTablesPreserved": 13,
+    "custody": {
+      "dispatched": 30,
+      "acknowledged": 20,
+      "placed": 14,
+      "held": 6,
+      "transit": 10
+    },
+    "originalTreatmentQuantity": 20,
+    "topology": {
+      "issues": [],
+      "custody": [
+        {
+          "transferId": 43,
+          "dispatched": 30,
+          "acknowledged": 20,
+          "placed": 14,
+          "held": 6,
+          "transit": 10
+        }
+      ]
+    },
+    "passed": true
+  },
+  "verify-result": {
+    "role": "verify",
+    "runtime": ".NET 9.0.20",
+    "binaries": {
+      "CropQc.Data.dll": "38C75BAE54D3C427EBA400D28EC9A356C4C2F74061B8EDE208493520B769791C",
+      "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+      "CropQc.Web.dll": "B19F0905D196296AFF113288FE68E84EBE69700DB015814A2CB21CC4EA7028F8"
+    },
+    "operations": [],
+    "historicalTablesPreserved": 16,
+    "forwardImmutableTablesPreserved": 13,
+    "custody": {
+      "dispatched": 30,
+      "acknowledged": 20,
+      "placed": 14,
+      "held": 6,
+      "transit": 10
+    },
+    "originalTreatmentQuantity": 20,
+    "topology": {
+      "issues": [],
+      "custody": [
+        {
+          "transferId": 43,
+          "dispatched": 30,
+          "acknowledged": 20,
+          "placed": 14,
+          "held": 6,
+          "transit": 10
+        }
+      ]
+    },
+    "passed": true
+  },
+  "migration": {
+    "originalTables": 109,
+    "originalDataPreserved": true,
+    "applied": [
+      "20260521173857_InitialMvp1ReceivingQcModel",
+      "20260521220136_AddQcSummaryOverrideFields",
+      "20260529210944_AddDashboardConfiguration",
+      "20260529212812_AddUserAccessFields",
+      "20260529230504_AddGoogleDrivePhotoMetadata",
+      "20260530010358_AddQcStationEnrollmentFields",
+      "20260711195500_LinkVarietyColorsToFruitProfiles",
+      "20260711213000_AddCanonicalGrowers",
+      "20260717213000_AddFieldSamplesAndOrchardBlocks",
+      "20260721233604_AddOrchardReportRecipients",
+      "20260722233135_AddFieldSampleEmailHistory",
+      "20260723011519_AddFieldSampleAutosaveDefectInspection",
+      "20260723024710_AddProductionBackupHistory",
+      "20260723055241_AddBackupNotificationsAndReceiptPurgeAudit",
+      "20260723142741_AddFieldSampleDeletionAudit",
+      "20260723163704_AddRunProjections",
+      "20260723230325_AddRunProjectionPackoutAndGradeSnapshots",
+      "20260724003812_AddPreharvestRunProjectionMode",
+      "20260724020525_AddRunProjectionFacilityAndSoftDelete",
+      "20260724053022_AddCommercialPackProjectionConfiguration",
+      "20260724074306_AddOrchardManagerContactImports",
+      "20260724150253_AddRunProjectionOutcomeTrendSnapshots",
+      "20260724194806_AddRunProjectionCullSnapshot",
+      "20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels",
+      "20260804052104_AddFacilityRunReporting",
+      "20260805014812_AddReceiptInventoryOverrides",
+      "20260923202144_AddTruckReceiptReconciliation",
+      "20261001144023_CanonicalInventoryCommands",
+      "20261001203105_CanonicalIdentityRestorationSides",
+      "20261002031709_BoundedBackupSnapshotProgress",
+      "20261007212154_ReceiptHeldTransferCustody",
+      "20261007235352_ReceiptCustodyCompensations",
+      "20261007235822_ReceiptCustodyGuardrails",
+      "20261009150448_IsolatedInventoryMovementCohorts"
+    ]
+  },
+  "http-progress": [
+    {
+      "route": "/health",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "route": "/health/db",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "route": "/Receipts/2656/MatchTransfer",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "route": "/BinsRun/InterCrewTransfers/43/Reconciliation",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "route": "/Receipts/2656/PlaceTransferCustody",
+      "method": "POST",
+      "status": 400
+    },
+    {
+      "route": "/Receipts/2656/PlaceTransferCustody",
+      "method": "POST",
+      "status": 302
+    },
+    {
+      "route": "/Receipts/2656/PlaceTransferCustody",
+      "method": "POST",
+      "status": 302
+    },
+    {
+      "route": "/Receipts/2656/MatchTransfer",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "route": "/Receipts/2656/ReversePlacement",
+      "method": "POST",
+      "status": 302
+    }
+  ],
+  "forward-readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1133,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1040,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 440,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 440 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": [
+          {
+            "transferId": 43,
+            "dispatched": 30,
+            "acknowledged": 20,
+            "placed": 13,
+            "held": 7,
+            "transit": 10
+          }
+        ]
+      },
+      "invalidOutside": 0
+    }
+  },
+  "rollback-readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1137,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1044,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 442,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 442 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": [
+          {
+            "transferId": 43,
+            "dispatched": 30,
+            "acknowledged": 20,
+            "placed": 14,
+            "held": 6,
+            "transit": 10
+          }
+        ]
+      },
+      "invalidOutside": 0
+    }
+  },
+  "forward-final-readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1138,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1045,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 442,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 442 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": [
+          {
+            "transferId": 43,
+            "dispatched": 30,
+            "acknowledged": 20,
+            "placed": 14,
+            "held": 6,
+            "transit": 10
+          }
+        ]
+      },
+      "invalidOutside": 0
+    }
+  },
+  "rollback-final-readiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1138,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1045,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 442,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 442 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": [
+          {
+            "transferId": 43,
+            "dispatched": 30,
+            "acknowledged": 20,
+            "placed": 14,
+            "held": 6,
+            "transit": 10
+          }
+        ]
+      },
+      "invalidOutside": 0
+    }
+  },
+  "contract-verification": {
+    "Passed": 138,
+    "RequiredMethods": 53,
+    "Focused": 32,
+    "Failed": 0,
+    "Skipped": 0
+  }
+}
