@@ -117,9 +117,19 @@ internal static class InventoryEvidenceCorpus
             Projection(11, 10) with { Signature = "u|a:2", State = "Confirmed", ApplicationIds = [2] }],
         Applications = [new(1, Start, null, null), new(2, Start, null, null)]
     };
-    internal static InventoryPositionEvidence Custody(InventoryCustody custody) => Basic(19, 19) with
+    internal static InventoryPositionEvidence Custody(InventoryCustody custody)
     {
-        Location = new(custody, 903, null, "Test", "Destination", 50),
-        Ledger = []
-    };
+        var e = Basic(19, 19);
+        var source = e.Projections[0];
+        var kind = custody switch { InventoryCustody.Processor => "ProcessorShipment", InventoryCustody.OutsideWarehouse => "OutsideWarehouseTransfer", _ => "InterCrewDispatch" };
+        var movement = new InventoryMovementEvidence(50, kind, 19, source.CreatedAt, source.CreatedAt,
+            source.Signature, source.State, source.ReceiptId, source.Id, null, false, true, "crew:50", null, true);
+        return e with
+        {
+            Location = new(custody, 903, null, "Test", "Destination", 50),
+            Ledger = [],
+            Movements = [movement],
+            Projections = [source with { CustodyTreatment = new(movement, source.Signature, source.State, source.ReceiptId, source.ApplicationIds) }]
+        };
+    }
 }

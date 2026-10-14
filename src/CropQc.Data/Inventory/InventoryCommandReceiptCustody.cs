@@ -106,9 +106,9 @@ public sealed partial class InventoryCommandExecutor
                 var identity = Identity(original);
                 var appIds = source.Applications.Select(x => x.RoomTreatmentApplicationId).ToImmutableArray();
                 var applications = await db.RoomTreatmentApplications.Where(x => appIds.Contains(x.Id))
-                    .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToArrayAsync(ct);
-                var treatment = InventoryEffectiveTreatment.Read(original.TreatmentSignatureSnapshot, original.TreatmentStateSnapshot, appIds, applications);
-                Require(treatment.State is "Untreated" or "Confirmed", "Dispatch treatment must be proven before placement.");
+                    .Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId) { RecordedAt = x.CreatedAt }).ToArrayAsync(ct);
+                var treatment = InventoryEvidenceLoader.ReadCustodyTreatment(original, applications.ToImmutableArray());
+                Require(treatment != null, "Dispatch treatment requires matching immutable movement, source membership and application evidence before placement.");
                 var evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(destination!.WarehouseId, [destination.RoomId]), now, ct))
                     .Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
                 var before = evidence?.AuthoritativeQuantity ?? 0;
@@ -116,7 +116,7 @@ public sealed partial class InventoryCommandExecutor
                 {
                     await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
                 }
-                var target = await factory.CurrentAsync(identity, destination.WarehouseId, destination.RoomId, treatment.Signature,
+                var target = await factory.CurrentAsync(identity, destination.WarehouseId, destination.RoomId, treatment!.Signature,
                     treatment.State, original.ReceiptId, treatment.ApplicationIds, now, ct);
                 Credit(target, item.Quantity, now);
                 var key = c.OperationKey + ":" + item.Id;

@@ -50,7 +50,7 @@ public sealed partial class InventoryEvidenceLoader
         var identities = await CanonicalIdentityMap.LoadAsync(db, receiptIds, ct);
         var appIds = acks.SelectMany(x => x.DispatchMovement.SourceSegment?.Applications.Select(a => a.RoomTreatmentApplicationId) ?? []).Distinct().ToArray();
         var applications = await Bounded(db.RoomTreatmentApplications.AsNoTracking().Where(x => appIds.Contains(x.Id)), ct);
-        var apps = applications.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)).ToImmutableArray();
+        var apps = applications.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId) { RecordedAt = x.CreatedAt }).ToImmutableArray();
         var result = ImmutableArray.CreateBuilder<InventoryPositionEvidence>();
         foreach (var group in acks.Where(x => x.DispatchMovement.SourceSegment != null).GroupBy(x => new
         {
@@ -86,7 +86,10 @@ public sealed partial class InventoryEvidenceLoader
                     Signature = treatment.Signature,
                     State = treatment.State,
                     ApplicationIds = treatment.ApplicationIds,
-                    ReceiptId = x.DispatchMovement.ReceiptId
+                    ReceiptId = x.DispatchMovement.ReceiptId,
+                    CustodyTreatment = new(Movement(x.DispatchMovement, Identity(source), source.RoomId),
+                        source.TreatmentSignature, source.TreatmentState, source.ReceiptId,
+                        source.Applications.Select(a => a.RoomTreatmentApplicationId).ToImmutableArray())
                 };
             }).ToImmutableArray();
             var receipts = origins.Where(x => group.Any(a => a.DispatchMovement.ReceiptId == x.Id)).Select(x => Receipt(x, identity)).ToImmutableArray();
