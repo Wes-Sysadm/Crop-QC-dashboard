@@ -1,0 +1,45 @@
+{
+  "Status": "NO-GO: candidates built and frozen, post-custody rollback NOT PROVEN",
+  "ForwardCommit": "19473648ec84f99b7ae8793312b6adf40e125cc7",
+  "RollbackCommit": "4ee804d17874cb065f96a414600507fb1ef0944d",
+  "RollbackBaseline": "d3cf02362244cd8b4469ed4c42b2c1ec37c0b3e6",
+  "Main": "75b8dbe00210d413d35ae41d0b134b312a3ad66e",
+  "ForwardImage": "sha256:a1c41a898ac1b60d305a77658dd23ab3e93bbf832cd5fe3a861c19a1944bcac0",
+  "RollbackImage": "sha256:a7f33033824c9f6164317a0e4ecfa22dbb4dfb1803bd44180496535f1383e3dc",
+  "Runtime": {
+    "Architecture": "linux/amd64",
+    "DotNet": "9.0.20",
+    "AspNetCore": "9.0.20",
+    "Verification": "Executed inside frozen Linux runtime; matches retained PR281 production runtime evidence, not a fresh live observation",
+    "BaselineImage": "sha256:ac511f5269095db8450de319f549b341009c8673f7dabd3331a8d0dbba7b2cc4"
+  },
+  "Archive": {
+    "Bytes": 182548480,
+    "Location": "Task-local ignored local-test-runtime/pr271-rollback; not published or deployed",
+    "FileName": "pr271-forward-1947364-rollback-4ee804d.tar",
+    "Sha256": "536afc273c5d08ee5c1571875854d931ad01a5a8a9998fe93738e450c364dc08"
+  },
+  "Backup": {
+    "LocalHashesReverified": true,
+    "DumpSha256": "d694a8a3fab8b4e01c69e63c9667149d3c8b9ec8eb6f5bb5293d9e26e1c435e4",
+    "Id": 198,
+    "FreshReleaseBackup": false,
+    "PackageSha256": "4f6b3eb6cf7763328cd081ee72f709acbbfed48500dea5a20aea12de6ba07a29"
+  },
+  "Schema": {
+    "CohortKeyRetained": true,
+    "CustodyMigrationsAppliedOnRestore": true,
+    "DestructiveDownRun": false,
+    "Provider": "PostgreSQL 18.4",
+    "OriginalTablesPreserved": 109
+  },
+  "Blocker": "Same-identity receipt-treated + later untreated transit allocations are classified MixedTreatmentAmbiguity although custody/identity and 30-bin quantities match",
+  "ProductionMutations": false,
+  "RollbackHandoverCompleted": false,
+  "Limitations": [
+    "Candidate retains compensation-aware core; cannot replace it with main",
+    "Fresh AdditionalStock operations omitted; committed replay design unproven",
+    "Required post-acknowledgement and compensation phases not reached",
+    "No certified rollback or release readiness"
+  ]
+}

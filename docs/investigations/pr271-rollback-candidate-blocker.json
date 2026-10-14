@@ -1,0 +1,682 @@
+{
+  "role": "rollback",
+  "binaries": {
+    "CropQc.Data.dll": "BE7A523E90E5F594A3563C3E8FC96D725CF9EBE2299E78AC507A1925ABD0B9C4",
+    "CropQc.Shared.dll": "A8C7E7C3AFEBB1A909704DEDDB6D19B29E91D86B4AA01F429035C1892FE74693"
+  },
+  "before": {
+    "positionKey": "Room:4:990001::2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+    "identity": {
+      "cropYear": 2026,
+      "growerLotId": 990001,
+      "fruitProfileId": 1,
+      "lot": "R271-MIXED",
+      "growerNumber": "R271-MIXED",
+      "variety": "FUJI",
+      "productionType": "Conventional",
+      "isOrganic": false,
+      "status": "",
+      "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+      "isComplete": true
+    },
+    "location": {
+      "custody": "Room",
+      "warehouseId": 4,
+      "roomId": 990001,
+      "facility": "WP",
+      "name": "R271SRC",
+      "custodyRecordId": null
+    },
+    "occupiedSince": "2026-10-14T01:40:07.998664+00:00",
+    "authoritativeQuantity": 40,
+    "committedQuantity": 0,
+    "availableQuantity": 40,
+    "rawProjectionQuantity": 40,
+    "quantityConfidence": "Proven",
+    "treatmentConfidence": "Proven",
+    "treatmentSlices": [
+      {
+        "signature": "u|a:30",
+        "state": "Confirmed",
+        "quantity": 20,
+        "confidence": "Proven",
+        "projectionIds": [
+          972
+        ],
+        "applicationIds": [
+          30
+        ],
+        "receiptEvidenceIds": [
+          2654
+        ]
+      },
+      {
+        "signature": "u",
+        "state": "Untreated",
+        "quantity": 20,
+        "confidence": "Proven",
+        "projectionIds": [
+          973
+        ],
+        "applicationIds": [],
+        "receiptEvidenceIds": [
+          2655
+        ]
+      }
+    ],
+    "receiptProvenance": {
+      "confidence": "Proven",
+      "receiptIds": [
+        2654,
+        2655
+      ],
+      "explanation": "Exact receipt evidence is retained."
+    },
+    "historicalProjections": [
+      {
+        "projectionIds": [
+          971
+        ],
+        "excludedQuantity": 20,
+        "reason": "StaleHistoricalPool",
+        "evidenceProven": true,
+        "evidence": [
+          {
+            "entity": "TreatmentLineageSegment",
+            "id": "971"
+          }
+        ]
+      }
+    ],
+    "proof": {
+      "algorithm": "canonical-inventory-shadow/v1",
+      "evidenceVersion": "ledger-movement-application/v1",
+      "evidence": [
+        {
+          "entity": "RoomInventoryAdjustment",
+          "id": "4381"
+        },
+        {
+          "entity": "RoomInventoryAdjustment",
+          "id": "4382"
+        },
+        {
+          "entity": "TreatmentLineageMovement",
+          "id": "1078"
+        },
+        {
+          "entity": "TreatmentLineageMovement",
+          "id": "1079"
+        },
+        {
+          "entity": "TreatmentLineageSegment",
+          "id": "972"
+        },
+        {
+          "entity": "TreatmentLineageSegment",
+          "id": "973"
+        },
+        {
+          "entity": "RoomTreatmentApplication",
+          "id": "30"
+        },
+        {
+          "entity": "Receipt",
+          "id": "2654"
+        },
+        {
+          "entity": "Receipt",
+          "id": "2655"
+        }
+      ],
+      "candidates": [],
+      "chronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+      "backdatedLedgerIds": [],
+      "normalizationRequired": false
+    },
+    "blockers": [],
+    "watermark": {
+      "fingerprint": "60A8CF6F16A93936AFACFF0540298CCDE76EC3B00E272919B8D584F4A8939D38",
+      "consistency": "RepeatableRead",
+      "versions": [
+        {
+          "entity": "TreatmentLineageSegment",
+          "id": "971",
+          "version": 3,
+          "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+        },
+        {
+          "entity": "TreatmentLineageSegment",
+          "id": "972",
+          "version": 2,
+          "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+        },
+        {
+          "entity": "TreatmentLineageSegment",
+          "id": "973",
+          "version": 2,
+          "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+        },
+        {
+          "entity": "Receipt",
+          "id": "2654",
+          "version": 1,
+          "updatedAt": "2026-10-14T01:40:07.998664+00:00"
+        },
+        {
+          "entity": "Receipt",
+          "id": "2655",
+          "version": 1,
+          "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+        }
+      ]
+    },
+    "usesIndependentCohorts": false,
+    "usesRecordedCohorts": false,
+    "custodyAllocations": [],
+    "isOperable": true,
+    "projectionExcess": 0
+  },
+  "command": {
+    "operationKey": "r271-dispatch-probe",
+    "kind": 5,
+    "actorId": 12,
+    "effectiveAt": "2026-10-14T01:44:54.6891998+00:00",
+    "reason": "Isolated failed-guard diagnosis",
+    "lines": [
+      {
+        "source": {
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 990001,
+            "fruitProfileId": 1,
+            "lot": "R271-MIXED",
+            "growerNumber": "R271-MIXED",
+            "variety": "FUJI",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "isComplete": true
+          },
+          "location": {
+            "custody": "Room",
+            "warehouseId": 4,
+            "roomId": 990001,
+            "facility": "WP",
+            "name": "R271SRC",
+            "custodyRecordId": null
+          },
+          "expectedFingerprint": "60A8CF6F16A93936AFACFF0540298CCDE76EC3B00E272919B8D584F4A8939D38",
+          "expectedVersions": [
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "971",
+              "version": 3,
+              "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "972",
+              "version": 2,
+              "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "973",
+              "version": 2,
+              "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2654",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:40:07.998664+00:00"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2655",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+            }
+          ]
+        },
+        "quantity": 15,
+        "treatmentSignature": "u|a:30",
+        "destination": null,
+        "receiptId": null,
+        "adjustmentDirection": 0,
+        "poundsPerBin": null
+      },
+      {
+        "source": {
+          "identity": {
+            "cropYear": 2026,
+            "growerLotId": 990001,
+            "fruitProfileId": 1,
+            "lot": "R271-MIXED",
+            "growerNumber": "R271-MIXED",
+            "variety": "FUJI",
+            "productionType": "Conventional",
+            "isOrganic": false,
+            "status": "",
+            "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "isComplete": true
+          },
+          "location": {
+            "custody": "Room",
+            "warehouseId": 4,
+            "roomId": 990001,
+            "facility": "WP",
+            "name": "R271SRC",
+            "custodyRecordId": null
+          },
+          "expectedFingerprint": "60A8CF6F16A93936AFACFF0540298CCDE76EC3B00E272919B8D584F4A8939D38",
+          "expectedVersions": [
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "971",
+              "version": 3,
+              "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "972",
+              "version": 2,
+              "updatedAt": "2026-10-14T01:40:08.812606+00:00"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "973",
+              "version": 2,
+              "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2654",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:40:07.998664+00:00"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2655",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:40:09.140392+00:00"
+            }
+          ]
+        },
+        "quantity": 15,
+        "treatmentSignature": "u",
+        "destination": null,
+        "receiptId": null,
+        "adjustmentDirection": 0,
+        "poundsPerBin": null
+      }
+    ],
+    "counterpartyId": null,
+    "custodyGroup": "EBS",
+    "treatmentApplicationId": null,
+    "treatmentChemicalId": null,
+    "originalOperationKey": null,
+    "receivingEvidence": null,
+    "processorTerms": null,
+    "expectedTransferVersion": null,
+    "run": null,
+    "applicationIntent": null,
+    "dispatch": null,
+    "receipt": null,
+    "physicalParentId": null,
+    "expectedParentVersion": null,
+    "dispatchMovementId": null,
+    "legacyRun": null,
+    "receiptChange": null,
+    "receiptMetadata": null,
+    "baseline": null,
+    "receiptLocation": null,
+    "receiptIdentity": null
+  },
+  "result": {
+    "status": 3,
+    "operationKey": "r271-dispatch-probe",
+    "detail": "Dispatch ledger, immutable allocations and custody parent do not conserve quantity.",
+    "effects": [],
+    "attempts": 1
+  },
+  "diagnosis": {
+    "id": 47,
+    "binsLoaded": 30,
+    "positions": [
+      {
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 990001,
+          "fruitProfileId": 1,
+          "lot": "R271-MIXED",
+          "growerNumber": "R271-MIXED",
+          "variety": "FUJI",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "InTransit",
+          "warehouseId": 4,
+          "roomId": null,
+          "facility": "",
+          "name": "EBS",
+          "custodyRecordId": 47
+        },
+        "authoritativeQuantity": 30,
+        "committedQuantity": 0,
+        "identityVerified": true,
+        "custodyVerified": true,
+        "ledger": [
+          {
+            "id": 4391,
+            "quantity": -15,
+            "kind": "InterCrewTransferDispatch",
+            "at": "2026-10-14T01:44:54.689199+00:00",
+            "receiptId": null,
+            "movementParent": "crew:47",
+            "exactIdentity": true,
+            "recordedAt": null,
+            "operationKey": null,
+            "invariantVersion": 0
+          },
+          {
+            "id": 4392,
+            "quantity": -15,
+            "kind": "InterCrewTransferDispatch",
+            "at": "2026-10-14T01:44:54.689199+00:00",
+            "receiptId": null,
+            "movementParent": "crew:47",
+            "exactIdentity": true,
+            "recordedAt": null,
+            "operationKey": null,
+            "invariantVersion": 0
+          }
+        ],
+        "projections": [
+          {
+            "id": 972,
+            "rawKey": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "quantity": 15,
+            "state": "Confirmed",
+            "signature": "u|a:30",
+            "receiptId": 2654,
+            "createdAt": "2026-10-14T01:40:08.812606+00:00",
+            "updatedAt": "2026-10-14T01:44:54.750911+00:00",
+            "version": 3,
+            "exactIdentity": true,
+            "applicationIds": [
+              30
+            ],
+            "disposition": "Current",
+            "retiredQuantity": null,
+            "cohortKey": "r271-treatment"
+          },
+          {
+            "id": 973,
+            "rawKey": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+            "quantity": 15,
+            "state": "Untreated",
+            "signature": "u",
+            "receiptId": 2655,
+            "createdAt": "2026-10-14T01:40:09.140392+00:00",
+            "updatedAt": "2026-10-14T01:44:54.750911+00:00",
+            "version": 3,
+            "exactIdentity": true,
+            "applicationIds": [],
+            "disposition": "Current",
+            "retiredQuantity": null,
+            "cohortKey": "r271-later-untreated"
+          }
+        ],
+        "movements": [
+          {
+            "id": 1088,
+            "kind": "InterCrewDispatch",
+            "quantity": 15,
+            "at": "2026-10-14T01:44:54.689199+00:00",
+            "createdAt": "2026-10-14T01:44:54.750911+00:00",
+            "signature": "u|a:30",
+            "state": "Confirmed",
+            "receiptId": 2654,
+            "sourceProjectionId": 972,
+            "destinationProjectionId": null,
+            "incoming": false,
+            "outgoing": true,
+            "parent": "crew:47",
+            "reversesId": null,
+            "exactIdentity": true,
+            "operationKey": "r271-dispatch-probe:0:s972"
+          },
+          {
+            "id": 1089,
+            "kind": "InterCrewDispatch",
+            "quantity": 15,
+            "at": "2026-10-14T01:44:54.689199+00:00",
+            "createdAt": "2026-10-14T01:44:54.750911+00:00",
+            "signature": "u",
+            "state": "Untreated",
+            "receiptId": 2655,
+            "sourceProjectionId": 973,
+            "destinationProjectionId": null,
+            "incoming": false,
+            "outgoing": true,
+            "parent": "crew:47",
+            "reversesId": null,
+            "exactIdentity": true,
+            "operationKey": "r271-dispatch-probe:1:s973"
+          }
+        ],
+        "receipts": [
+          {
+            "id": 2654,
+            "quantity": 20,
+            "exactIdentity": true,
+            "isDeleted": false,
+            "isTransferReceipt": false,
+            "updatedAt": "2026-10-14T01:40:07.998664+00:00",
+            "version": 1,
+            "originalQuantity": null,
+            "originalIdentityVerified": null
+          },
+          {
+            "id": 2655,
+            "quantity": 20,
+            "exactIdentity": true,
+            "isDeleted": false,
+            "isTransferReceipt": false,
+            "updatedAt": "2026-10-14T01:40:09.140392+00:00",
+            "version": 1,
+            "originalQuantity": null,
+            "originalIdentityVerified": null
+          }
+        ],
+        "applications": [
+          {
+            "id": 30,
+            "appliedAt": "2026-10-14T01:40:08.802971+00:00",
+            "reversedAt": null,
+            "receiptId": 2654,
+            "roomId": 990001,
+            "recordedAt": null,
+            "allocations": []
+          }
+        ],
+        "watermark": {
+          "fingerprint": "9B864901E5A441820F25072337BC6F476A0DD8F4C21E57D16CA57284CCE41FAF",
+          "consistency": "Serializable",
+          "versions": [
+            {
+              "entity": "InTransit",
+              "id": "47",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:44:54.689199+00:00"
+            }
+          ]
+        },
+        "historicalSnapshotUnavailable": false,
+        "applicationAllocationsLoaded": false,
+        "identityCorrections": [],
+        "custodyAllocations": [
+          {
+            "movementId": 1088,
+            "sourceProjectionId": 972,
+            "quantity": 15,
+            "identity": {
+              "cropYear": 2026,
+              "growerLotId": 990001,
+              "fruitProfileId": 1,
+              "lot": "R271-MIXED",
+              "growerNumber": "R271-MIXED",
+              "variety": "FUJI",
+              "productionType": "Conventional",
+              "isOrganic": false,
+              "status": "",
+              "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+              "isComplete": true
+            },
+            "treatmentSignature": "u|a:30",
+            "treatmentState": "Confirmed",
+            "receiptId": 2654
+          },
+          {
+            "movementId": 1089,
+            "sourceProjectionId": 973,
+            "quantity": 15,
+            "identity": {
+              "cropYear": 2026,
+              "growerLotId": 990001,
+              "fruitProfileId": 1,
+              "lot": "R271-MIXED",
+              "growerNumber": "R271-MIXED",
+              "variety": "FUJI",
+              "productionType": "Conventional",
+              "isOrganic": false,
+              "status": "",
+              "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+              "isComplete": true
+            },
+            "treatmentSignature": "u",
+            "treatmentState": "Untreated",
+            "receiptId": 2655
+          }
+        ]
+      }
+    ],
+    "resolved": [
+      {
+        "positionKey": "InTransit:4::47:2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+        "identity": {
+          "cropYear": 2026,
+          "growerLotId": 990001,
+          "fruitProfileId": 1,
+          "lot": "R271-MIXED",
+          "growerNumber": "R271-MIXED",
+          "variety": "FUJI",
+          "productionType": "Conventional",
+          "isOrganic": false,
+          "status": "",
+          "key": "2026|990001|1|R271-MIXED|R271-MIXED|FUJI|CONVENTIONAL|False|",
+          "isComplete": true
+        },
+        "location": {
+          "custody": "InTransit",
+          "warehouseId": 4,
+          "roomId": null,
+          "facility": "",
+          "name": "EBS",
+          "custodyRecordId": 47
+        },
+        "occupiedSince": null,
+        "authoritativeQuantity": 30,
+        "committedQuantity": 0,
+        "availableQuantity": 0,
+        "rawProjectionQuantity": 30,
+        "quantityConfidence": "Proven",
+        "treatmentConfidence": "Ambiguous",
+        "treatmentSlices": [],
+        "receiptProvenance": {
+          "confidence": "Unknown",
+          "receiptIds": [],
+          "explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+        },
+        "historicalProjections": [],
+        "proof": {
+          "algorithm": "canonical-inventory-shadow/v1",
+          "evidenceVersion": "ledger-movement-application/v1",
+          "evidence": [
+            {
+              "entity": "RoomInventoryAdjustment",
+              "id": "4391"
+            },
+            {
+              "entity": "RoomInventoryAdjustment",
+              "id": "4392"
+            },
+            {
+              "entity": "TreatmentLineageMovement",
+              "id": "1088"
+            },
+            {
+              "entity": "TreatmentLineageMovement",
+              "id": "1089"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "972"
+            },
+            {
+              "entity": "TreatmentLineageSegment",
+              "id": "973"
+            },
+            {
+              "entity": "RoomTreatmentApplication",
+              "id": "30"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2654"
+            },
+            {
+              "entity": "Receipt",
+              "id": "2655"
+            }
+          ],
+          "candidates": [],
+          "chronologyBasis": "Recorded ledger sequence for current occupancy; effective dates retained, never rewritten",
+          "backdatedLedgerIds": [],
+          "normalizationRequired": false
+        },
+        "blockers": [
+          {
+            "code": "MixedTreatmentAmbiguity",
+            "detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+          }
+        ],
+        "watermark": {
+          "fingerprint": "9B864901E5A441820F25072337BC6F476A0DD8F4C21E57D16CA57284CCE41FAF",
+          "consistency": "Serializable",
+          "versions": [
+            {
+              "entity": "InTransit",
+              "id": "47",
+              "version": 1,
+              "updatedAt": "2026-10-14T01:44:54.689199+00:00"
+            }
+          ]
+        },
+        "usesIndependentCohorts": false,
+        "usesRecordedCohorts": false,
+        "custodyAllocations": [],
+        "isOperable": false,
+        "projectionExcess": 0
+      }
+    ]
+  },
+  "atomicRollback": true
+}

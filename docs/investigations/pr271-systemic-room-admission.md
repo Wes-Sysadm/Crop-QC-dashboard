@@ -366,3 +366,7 @@ No production data, configuration, schema or backup was changed. Live evidence
 was obtained only by SELECT. The backup198 census ran in an explicit read-only
 transaction on an isolated restored database. No production correction or
 historical reconstruction is proposed for automatic execution.
+
+Subsequent rollback preparation stopped at a newly reproduced mixed-treatment
+transit proof failure. See [the NO-GO rollback report](pr271-compensation-rollback.md).
+No compatible post-custody rollback is certified by that work.
