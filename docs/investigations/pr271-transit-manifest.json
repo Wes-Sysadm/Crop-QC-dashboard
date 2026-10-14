@@ -1,0 +1,65 @@
+{
+  "Status": "NO-GO: rollback treatment compatibility proven; strict topology readiness failed",
+  "ForwardCommit": "5846f03f2e6f1317e684ef6d12413359931ea6e0",
+  "RollbackCommit": "a3c79e257695396db782d670031b7f1a55ee4c9a",
+  "Main": "75b8dbe00210d413d35ae41d0b134b312a3ad66e",
+  "ForwardImage": "sha256:806c2bdd2ee78235233afcc83da793f19c4da1d8659a4949291b35a94e1476ae",
+  "RollbackImage": "sha256:04248b654989ce4def70105f0508f7d21ad08d7adc24fe275e8618c2b68dedc1",
+  "Runtime": {
+    "Verification": "Both exact packages executed; recorded PR281 production-matching runtime, no new live observation",
+    "AspNetCore": "9.0.20",
+    "BaseImage": "sha256:ac511f5269095db8450de319f549b341009c8673f7dabd3331a8d0dbba7b2cc4",
+    "Architecture": "linux/amd64",
+    "DotNet": "9.0.20"
+  },
+  "Archive": {
+    "ImmutableIdentity": "Docker image IDs and SHA256 archive; retain bytes for future release",
+    "Sha256": "f6e59a6b1f3d5e9ee1f8a1d56bf2a3490c31cfafcf806a8ed56dc1bba906acaa",
+    "Bytes": 182548480,
+    "FileName": "pr271-transit-forward-5846f03-rollback-a3c79e2.tar",
+    "Location": "Task-local local-test-runtime/pr271-transit-proof; not deployed or uploaded"
+  },
+  "ForwardBinaries": {
+    "CropQc.Data.dll": "4B759045FCFBF7EA631A6A1F6CF620480A82AD47467AD7B5466CF5455008A6C3",
+    "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+    "CropQc.Web.dll": "FD1EE69268681CA9F159B078A64D3F2D0084056EBEF2B2460D68C254B8C83477"
+  },
+  "RollbackBinaries": {
+    "CropQc.Data.dll": "7137C9B7F4B003C57D4362C12E57D6EF6E70379DD1F37BD091D72763B484AECE",
+    "CropQc.Shared.dll": "6E4CCE37D866269EFE56352653E848C736CF922E09CF5CC95B09C6161EE2EC5E",
+    "CropQc.Web.dll": "9FF160415D370E66CA62ADABB42A01FFFBDAAC80516D713B96351AD1F3F76911"
+  },
+  "Backup": {
+    "DumpSha256": "d694a8a3fab8b4e01c69e63c9667149d3c8b9ec8eb6f5bb5293d9e26e1c435e4",
+    "Id": 198,
+    "LocalHashesReverified": true,
+    "FreshReleaseBackup": false,
+    "PackageSha256": "4f6b3eb6cf7763328cd081ee72f709acbbfed48500dea5a20aea12de6ba07a29"
+  },
+  "Configuration": {
+    "WriterCapability": "cropqc.receipt_custody_writer=compensations-v1",
+    "CanonicalInventoryCommandsEnabled": true,
+    "StartupMigration": false,
+    "IsolatedNetwork": true,
+    "TruckReceiptReconciliationEnabled": true,
+    "ExternalEmailProvider": "None"
+  },
+  "Schema": {
+    "Provider": "PostgreSQL 18.4",
+    "CohortKeyRetained": true,
+    "CustodyMigrationsAppliedOnRestore": true,
+    "OriginalTablesPreserved": 109,
+    "DestructiveDownRun": false
+  },
+  "RollbackHandoverCompleted": true,
+  "AuthenticatedRollbackWritesVerified": true,
+  "CrossVersionReplayVerified": true,
+  "ProductionAccessed": false,
+  "ProductionMutations": false,
+  "Limitations": [
+    "Use compensation-aware rollback, never unchanged main",
+    "Rollback blocks new AdditionalStock intents; committed intents replay and their data remains operable",
+    "Strict readiness topology rejects valid partially acknowledged InTransit transfer 43; gate unchanged",
+    "Fresh production backup and live runtime comparison remain future release safeguards"
+  ]
+}

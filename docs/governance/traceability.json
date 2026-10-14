@@ -211,9 +211,28 @@
     {
       "id": "TRT-002",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandTreatmentReversal.cs",
+        "src/CropQc.Shared/Inventory/InventoryCustodyTreatment.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Same_lot_departures_preserve_exact_treatment_and_exclusive_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Custody_requires_original_membership_and_movement_proof",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ImmutableCustodyTreatmentTests",
+          "member": "Unknown_receipt_ancestry_is_not_invented_by_transit_treatment_proof",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.InventoryCommandTests",
           "member": "Whole_room_treatment_is_one_application_across_multiple_lots_and_reverses_atomically",
@@ -227,7 +246,7 @@
           "required": true
         }
       ],
-      "gap": "Partial mixed receipt-held lineage belongs to #271 and must be integrated without cross-branch contamination."
+      "gap": "PR #271 now exercises immutable same-lot mixed transit/held cohorts; runtime rollback rehearsal remains a separate mandatory gate, not implied by these tests."
     },
     {
       "id": "REC-001",

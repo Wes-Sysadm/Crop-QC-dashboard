@@ -9,12 +9,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using System.Text.RegularExpressions;
 
 // Unapproved release rehearsal. Every phase must pass; a prepared phase is not evidence.
 // This executable is test instrumentation, never an application/production entrypoint.
 // Run beside the frozen application's DLLs using its deps/runtimeconfig, not rebuilt Data DLLs.
-if (args.Length != 2 || args[0] is not ("forward" or "rollback" or "verify"))
-    throw new ArgumentException("forward|rollback|verify evidence-directory");
+if (args.Length != 2 || args[0] is not ("forward" or "rollback" or "http" or "verify"))
+    throw new ArgumentException("forward|rollback|http|verify evidence-directory");
 const string connection = "Host=localhost;Database=pr271_treatment_rollback_test;Username=postgres;Pooling=false";
 if (!File.Exists(Path.Combine(args[1], "isolated-only.marker"))) throw new Exception("Missing isolated rehearsal marker");
 ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connection);
@@ -149,6 +153,79 @@ else if (role == "rollback")
     await Guards();
     await CorrectHistorical(35, "r271-rollback-historical-correction");
     await Commit(await Movement(InventoryCommandKind.RoomMove, 990003, 990002, 1, "u", "r271-rollback-move-recognized", 990002));
+    await VerifyProtected(state.ForwardImmutable);
+    state.Handover = await HashAll(await Columns());
+    File.WriteAllText(statePath, JsonSerializer.Serialize(state, json));
+}
+else if (role == "http")
+{
+    Check(Equal(state.Handover, await HashAll(await Columns())), "Database changed before authenticated rollback proof");
+    var user = await db.Users.AsNoTracking().SingleAsync(x => x.Email == "wes@fruitandland.com" && x.IsActive);
+    var services = new ServiceCollection();
+    services.AddDataProtection().SetApplicationName("CropQcDashboard").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(output, "keys")));
+    using var provider = services.BuildServiceProvider();
+    var format = new Microsoft.AspNetCore.Authentication.TicketDataFormat(provider.GetRequiredService<IDataProtectionProvider>()
+        .CreateProtector("Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationMiddleware", "Cookies", "v2"));
+    // Disposable host only. No live login/session or external identity is used.
+    var identity = new System.Security.Claims.ClaimsIdentity(new[] {
+        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Email, user.Email),
+        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "Isolated rollback HTTP rehearsal") }, "Cookies");
+    var auth = format.Protect(new Microsoft.AspNetCore.Authentication.AuthenticationTicket(new System.Security.Claims.ClaimsPrincipal(identity),
+        new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(15) }, "Cookies"));
+    using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { BaseAddress = new Uri("http://localhost:8080") };
+    var cookies = new Dictionary<string, string> { [".AspNetCore.Cookies"] = auth };
+    var httpResults = new List<object>();
+    async Task<string> Send(string route, Dictionary<string, string>? form = null, HttpStatusCode expected = HttpStatusCode.OK)
+    {
+        using var request = new HttpRequestMessage(form == null ? HttpMethod.Get : HttpMethod.Post, route);
+        request.Headers.Add("Cookie", string.Join("; ", cookies.Select(x => x.Key + "=" + x.Value)));
+        if (form != null) request.Content = new FormUrlEncodedContent(form);
+        using var response = await client.SendAsync(request);
+        if (response.Headers.TryGetValues("Set-Cookie", out var values)) foreach (var value in values)
+        { var pair = value.Split(';')[0].Split('=', 2); cookies[pair[0]] = pair[1]; }
+        httpResults.Add(new { route, method = request.Method.Method, status = (int)response.StatusCode });
+        File.WriteAllText(Path.Combine(output, "http-progress.json"), JsonSerializer.Serialize(httpResults, json));
+        Check(response.StatusCode == expected, "Authenticated rollback route failed: " + route + " " + response.StatusCode);
+        return await response.Content.ReadAsStringAsync();
+    }
+    await Send("/health"); await Send("/health/db");
+    var url = $"/Receipts/{state.Receipt}";
+    var html = await Send(url + "/MatchTransfer");
+    Check(html.Contains("6 receipt-held, 10 unresolved"), "HTTP custody presentation disagrees with authoritative state");
+    await Send($"/BinsRun/InterCrewTransfers/{state.Transfer}/Reconciliation");
+    Check(Equal(state.Handover, await HashAll(await Columns())), "Authenticated read changed database history");
+    async Task<Dictionary<string, string>> Form(long allocation, string page)
+    {
+        var t = await db.InterCrewTransfers.AsNoTracking().SingleAsync(x => x.Id == state.Transfer);
+        var r = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == state.Receipt);
+        var token = WebUtility.HtmlDecode(Regex.Match(page, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
+        Check(token.Length > 0, "Missing antiforgery token");
+        return new()
+        {
+            ["__RequestVerificationToken"] = token,
+            ["TransferId"] = t.Id.ToString(),
+            ["TransferVersion"] = t.ConcurrencyVersion.ToString(),
+            ["ReceiptVersion"] = r.ConcurrencyVersion.ToString(),
+            ["Allocations[0].Id"] = allocation.ToString(),
+            ["Allocations[0].Quantity"] = "1",
+            ["DestinationRoomId"] = "990002",
+            ["Reason"] = "Disposable authenticated rollback placement proof"
+        };
+    }
+    await Send(url + "/PlaceTransferCustody", [], HttpStatusCode.BadRequest);
+    Check(Equal(state.Handover, await HashAll(await Columns())), "Rejected antiforgery request changed data");
+    var place = await Form(state.TreatedAck, html);
+    await Send(url + "/PlaceTransferCustody", place, HttpStatusCode.Redirect);
+    await Prove(20, 15);
+    var placement = await db.ReceiptCustodyPlacements.AsNoTracking().OrderByDescending(x => x.Id).FirstAsync();
+    Check(placement.AcknowledgmentId == state.TreatedAck && placement.Quantity == 1, "HTTP did not commit the exact requested placement");
+    var afterPlacement = await HashAll(await Columns());
+    await Send(url + "/PlaceTransferCustody", place, HttpStatusCode.Redirect);
+    Check(Equal(afterPlacement, await HashAll(await Columns())), "HTTP placement replay wrote data");
+    html = await Send(url + "/MatchTransfer");
+    await Send(url + "/ReversePlacement", await Form(placement.Id, html), HttpStatusCode.Redirect);
+    await Prove(20, 14);
     await VerifyProtected(state.ForwardImmutable);
     state.Handover = await HashAll(await Columns());
     File.WriteAllText(statePath, JsonSerializer.Serialize(state, json));

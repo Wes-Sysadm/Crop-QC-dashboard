@@ -1,5 +1,9 @@
 # PR #271 compensation-aware rollback — NO-GO
 
+Historical stopped checkpoint. The [subsequent transit-proof repair and complete
+rollback rehearsal](pr271-immutable-transit-treatment.md) resolves this treatment
+blocker and records a different strict-readiness stop. Retain this original evidence.
+
 Owner request: “Resolve Compensation-Aware Rollback Release Blocker”, 2026-10-13
 (America/Los_Angeles). This is preparation/rehearsal authority, not release authority.
 Reviewed feature source: `19473648ec84f99b7ae8793312b6adf40e125cc7`.
