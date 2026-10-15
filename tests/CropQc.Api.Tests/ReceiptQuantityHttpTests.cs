@@ -22,7 +22,7 @@ public sealed class ReceiptQuantityHttpTests
         var response = await client.GetAsync($"/Receipts/{id}/Edit");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Review bin count correction", html); Assert.Contains("buffer bins included", html);
+        Assert.Contains("Save Receipt", html); Assert.DoesNotContain("Review bin count correction", html);
         Assert.Contains("Removed from selected current inventory", html); Assert.Contains("35 bins", html);
         Assert.Contains("Untreated", html); Assert.Contains("Bins to correct", html);
         Assert.Contains("ConfirmAdditionalBinsUntreated", html);
@@ -33,23 +33,22 @@ public sealed class ReceiptQuantityHttpTests
         hidden["ConfirmInventoryChange"] = "true";
         var missingToken = new Dictionary<string, string>(hidden); missingToken.Remove("__RequestVerificationToken");
         var before = await f.Snapshot();
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/Receipts/{id}/AdminInventoryOverride", new FormUrlEncodedContent(missingToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"/Receipts/{id}/Edit", new FormUrlEncodedContent(missingToken))).StatusCode);
         Assert.Equal(before, await f.Snapshot());
         if (quantity > 35)
         {
-            var unconfirmed = await client.PostAsync($"/Receipts/{id}/AdminInventoryOverride", new FormUrlEncodedContent(hidden));
-            Assert.Equal(HttpStatusCode.Redirect, unconfirmed.StatusCode);
-            Assert.Contains("Edit", unconfirmed.Headers.Location!.ToString());
+            var unconfirmed = await client.PostAsync($"/Receipts/{id}/Edit", new FormUrlEncodedContent(hidden));
+            Assert.Equal(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
             Assert.Equal(before, await f.Snapshot());
-            var rejectedPage = await client.GetStringAsync(unconfirmed.Headers.Location);
+            var rejectedPage = await unconfirmed.Content.ReadAsStringAsync();
             Assert.Contains("Confirm that the additional bins are untreated", rejectedPage);
             hidden["ConfirmAdditionalBinsUntreated"] = "true";
         }
-        response = await client.PostAsync($"/Receipts/{id}/AdminInventoryOverride", new FormUrlEncodedContent(hidden));
+        response = await client.PostAsync($"/Receipts/{id}/Edit", new FormUrlEncodedContent(hidden));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         var audit = await client.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, audit.StatusCode);
-        Assert.Contains(hidden["Reason"], await audit.Content.ReadAsStringAsync());
+        Assert.Equal(hidden["Reason"], await db.ReceiptInventoryOverrides.Select(x => x.Reason).SingleAsync());
         Assert.Equal(quantity, (await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == id)).BinCount);
         Assert.Equal(534 + quantity, await f.Physical());
     }

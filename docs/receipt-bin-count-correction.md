@@ -1,5 +1,18 @@
 # Receipt bin count correction under canonical inventory
 
+## Admin Edit workflow (ADR-008, PR #282)
+
+The existing Edit Receipt page now collects the reason for every edit and offers
+one Save. Receipts Admin is required even for metadata and historical receipts;
+the earlier Create-permission quantity exception is superseded. Inventory changes
+still use the commands described below. Quantity/identity/location/metadata cannot
+be combined across command types; the entire unsupported request is rejected.
+Inline current allocation, source room and additional-stock treatment/custody
+attestations remain necessary where the existing command requires them. Corrections
+do not infer treatment from the destination room or recall consumed bins.
+
+The investigation below is historical evidence, not a current production observation.
+
 ## Problem and production evidence (read-only)
 
 TR110044 was entered as 35 bins, including 15 buffer bins that were not fruit.

@@ -1705,6 +1705,7 @@ public sealed record CreateReceiptResult(long? ReceiptId, string? ReceiptNumber,
 
 public sealed class EditReceiptPageViewModel
 {
+    public UpdateReceiptForm? OriginalForm { get; set; }
     public string? DataWarning { get; set; }
     public UpdateReceiptForm Form { get; set; } = new();
     public IReadOnlyList<Warehouse> Warehouses { get; set; } = [];
@@ -1718,6 +1719,7 @@ public sealed class EditReceiptPageViewModel
 
 public class UpdateReceiptForm : CreateReceiptForm
 {
+    public virtual string Reason { get; set; } = "";
     public long ReceiptVersion { get; set; }
     public long Id { get; set; }
 }
@@ -1734,7 +1736,7 @@ public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
     public long ExpectedConcurrencyVersion { get; set; }
     public string ExpectedInventoryStateToken { get; set; } = "";
     public string ExpectedPositiveTrueUpStateToken { get; set; } = "";
-    public string Reason { get; set; } = "";
+    public override string Reason { get; set; } = "";
     public bool ConfirmInventoryChange { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool ConfirmAdditionalBinsUntreated { get; set; }

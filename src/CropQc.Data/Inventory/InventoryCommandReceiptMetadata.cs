@@ -13,7 +13,8 @@ public sealed partial class InventoryCommandExecutor
         var r = await db.Receipts.SingleOrDefaultAsync(x => x.Id == m.ReceiptId && !x.IsDeleted && !x.IsTransferReceipt, ct);
         Require(r != null, "An active ordinary receipt is required.");
         Require(r!.ConcurrencyVersion == m.ExpectedVersion, "Receipt changed; reload before editing.", InventoryCommandStatus.Stale);
-        Require(!m.SameDayOnly || r.ReceivedAt.UtcDateTime.Date == now.UtcDateTime.Date, "Only same-day receipt fields can be updated through this API.");
+        // SameDayOnly is a retained wire field for existing journal/replay identity.
+        // ADR-008 removes its age limit; the API's QC review behavior remains below.
         Require(r.CropYear == expected.CropYear && r.WarehouseId == expected.WarehouseId && r.RoomId == expected.RoomId
             && r.GrowerLotId == (expected.GrowerLotId == 0 ? null : expected.GrowerLotId) && r.FruitProfileId == expected.FruitProfileId && r.BinCount == expected.Quantity
             && r.ReceiptType == expected.ReceiptType, "Quantity, identity and location changes require an administrator inventory correction.");
@@ -21,6 +22,8 @@ public sealed partial class InventoryCommandExecutor
         Require(!await db.Receipts.AnyAsync(x => x.Id != r.Id && !x.IsDeleted && x.CompuTechReceiptId == m.ReceiptNumber, ct), "Receipt number already exists.");
         Require(!await ReceiptInventoryDateGuard.WouldChangeEligibilityAsync(db, r.Id, r.ReceivedAt, m.ReceivedAt, ct),
             "This date would change opening inventory accounting. Request a controlled accounting review.");
+        Require(!await ReceiptInventoryDateGuard.WouldCrossTreatmentAsync(db, r.Id, r.RoomId, r.ReceivedAt, m.ReceivedAt, ct),
+            "This date crosses a recorded treatment application. A metadata edit cannot establish different point-in-time treatment membership; review the arrival/application evidence.");
         var before = ReceiptValues(r);
         if (m.SameDayOnly && r.GrowerName != m.GrowerName.Trim())
             foreach (var sample in await db.QcSamples.Where(x => x.ReceiptId == r.Id).ToListAsync(ct))
@@ -35,6 +38,13 @@ public sealed partial class InventoryCommandExecutor
 
 public static class ReceiptInventoryDateGuard
 {
+    public static Task<bool> WouldCrossTreatmentAsync(CropQcDbContext db, long receiptId, int roomId, DateTimeOffset before, DateTimeOffset after, CancellationToken ct)
+    {
+        if (before == after) return Task.FromResult(false);
+        return db.RoomTreatmentApplications.AnyAsync(x => (x.RoomId == roomId || x.ReceiptId == receiptId || x.Sources.Any(s => s.ReceiptId == receiptId))
+            && ((before <= x.AppliedAt && after > x.AppliedAt) || (after <= x.AppliedAt && before > x.AppliedAt)), ct);
+    }
+
     public static async Task<bool> WouldChangeEligibilityAsync(CropQcDbContext db, long receiptId, DateTimeOffset before, DateTimeOffset after, CancellationToken ct)
     {
         if (before == after) return false;

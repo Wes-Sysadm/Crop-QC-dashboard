@@ -56,10 +56,27 @@ public static class OperatorSession
     // Receipts has no legacy permission alias. Match Web's live role/page policy,
     // rather than trusting potentially stale role claims in a shared session.
     public static async Task<bool> CanReceiveAsync(CropQcDbContext db, ClaimsPrincipal principal, CancellationToken ct)
+        => await HasReceiptAccessAsync(db, principal, false, ct);
+
+    public static Task<bool> CanEditReceiptAsync(CropQcDbContext db, ClaimsPrincipal principal, CancellationToken ct)
+        => HasReceiptAccessAsync(db, principal, true, ct);
+
+    private static async Task<bool> HasReceiptAccessAsync(CropQcDbContext db, ClaimsPrincipal principal, bool admin, CancellationToken ct)
     {
         if (principal.Identity?.IsAuthenticated != true) return false;
         var email = principal.FindFirstValue(ClaimTypes.Email)?.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || !await db.Users.AnyAsync(x => x.Email == email && x.IsActive, ct)) return false;
+        if (string.IsNullOrWhiteSpace(email)) return false;
+        var actorId = await db.Users.Where(x => x.Email == email && x.IsActive).Select(x => (int?)x.Id).SingleOrDefaultAsync(ct);
+        return actorId != null && await HasReceiptAccessAsync(db, actorId.Value, admin, ct);
+    }
+
+    public static Task<bool> CanEditReceiptAsync(CropQcDbContext db, int actorId, CancellationToken ct)
+        => HasReceiptAccessAsync(db, actorId, true, ct);
+
+    private static async Task<bool> HasReceiptAccessAsync(CropQcDbContext db, int actorId, bool admin, CancellationToken ct)
+    {
+        var email = await db.Users.Where(x => x.Id == actorId && x.IsActive).Select(x => x.Email).SingleOrDefaultAsync(ct);
+        if (email == null) return false;
         if (email == "wes@fruitandland.com") return true;
         var roles = await db.UserRoles.AsNoTracking().Include(x => x.Role).ThenInclude(x => x.PageAccesses)
             .Where(x => x.User.Email == email && x.User.IsActive).ToListAsync(ct);
@@ -67,6 +84,6 @@ public static class OperatorSession
         var role = roles[0].Role;
         if (string.Equals(role.Name, Entities.BuiltInRoleNames.Admin, StringComparison.OrdinalIgnoreCase)) return true;
         var level = role.PageAccesses.SingleOrDefault(x => x.AreaKey == "receipts")?.AccessLevel;
-        return new[] { "Create", "Edit", "Admin" }.Contains(level, StringComparer.OrdinalIgnoreCase);
+        return (admin ? new[] { "Admin" } : new[] { "Create", "Edit", "Admin" }).Contains(level, StringComparer.OrdinalIgnoreCase);
     }
 }

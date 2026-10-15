@@ -53,6 +53,10 @@ public sealed partial class InventoryCommandExecutor(IDbContextFactory<CropQcDbC
             try
             {
                 if (command.Kind == InventoryCommandKind.CorrectOrasDefinition) await LockOrasDefinitionAsync(db, cancellationToken);
+                if (command.Kind is InventoryCommandKind.UpdateReceiptMetadata or InventoryCommandKind.ActivateReceiptInventory or InventoryCommandKind.VoidReceipt
+                    or InventoryCommandKind.CorrectReceiptQuantity or InventoryCommandKind.CorrectReceiptIdentity or InventoryCommandKind.CorrectReceiptLocation)
+                    Require(await Authentication.OperatorSession.CanEditReceiptAsync(db, command.ActorId, cancellationToken),
+                        "Receipts Admin permission is required to edit an existing receipt.");
                 var prior = await db.InventoryCommands.AsNoTracking().SingleOrDefaultAsync(x => x.OperationKey == key, cancellationToken);
                 if (prior != null)
                 {

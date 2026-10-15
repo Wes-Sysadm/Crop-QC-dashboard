@@ -34,7 +34,7 @@ public sealed class ReceiptLocationHttpTests
         using var client = host.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = true });
         using var unauthorized = host.CreateClient(new() { AllowAutoRedirect = false });
         unauthorized.DefaultRequestHeaders.Add("X-Receipt-Test-User", "no-receipts-admin@example.invalid");
-        Assert.Equal(HttpStatusCode.Forbidden, (await unauthorized.PostAsync("/Receipts/100000/AdminInventoryOverride", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await unauthorized.PostAsync("/Receipts/100000/Edit", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode);
         var page = await client.GetAsync("/Receipts/100000/Edit");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         var html = await page.Content.ReadAsStringAsync();
@@ -45,14 +45,15 @@ public sealed class ReceiptLocationHttpTests
         hidden["Reason"] = "HTTP receipt location correction"; hidden["ConfirmInventoryChange"] = "true";
         var rejected = new Dictionary<string, string>(hidden); rejected.Remove("__RequestVerificationToken");
         var before = await f.Snapshot();
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/Receipts/100000/AdminInventoryOverride", new FormUrlEncodedContent(rejected))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/Receipts/100000/Edit", new FormUrlEncodedContent(rejected))).StatusCode);
         Assert.Equal(before, await f.Snapshot());
-        var response = await client.PostAsync("/Receipts/100000/AdminInventoryOverride", new FormUrlEncodedContent(hidden));
+        var response = await client.PostAsync("/Receipts/100000/Edit", new FormUrlEncodedContent(hidden));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.True(response.Headers.Location!.ToString().Contains("Override"), await (await client.GetAsync(response.Headers.Location)).Content.ReadAsStringAsync());
+        Assert.Equal("/Receipts/100000", response.Headers.Location!.ToString());
         var audit = await client.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, audit.StatusCode);
-        Assert.Contains("HTTP receipt location correction", await audit.Content.ReadAsStringAsync());
+        await using var check = f.CreateDbContext();
+        Assert.Equal("HTTP receipt location correction", await check.ReceiptInventoryOverrides.Select(x => x.Reason).SingleAsync());
         Assert.Equal(0, await f.Physical()); Assert.Equal(100, await f.Physical(9008));
         var detail = await client.GetAsync("/Receipts/100000");
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);

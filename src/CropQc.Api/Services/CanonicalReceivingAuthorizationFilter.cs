@@ -22,3 +22,18 @@ public sealed class CanonicalReceivingAuthorizationFilter(CropQcDbContext db, IA
         { context.Result = new BadRequestObjectResult(new { error = "Reload the receiving session and submit its antiforgery token." }); }
     }
 }
+
+/// <summary>Existing receipt edits require live Receipts Admin permission in every mode.</summary>
+public sealed class ReceiptEditingAuthorizationFilter(CropQcDbContext db, IAntiforgery antiforgery) : IAsyncAuthorizationFilter
+{
+    public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
+    {
+        if (context.HttpContext.User.Identity?.IsAuthenticated != true)
+        { context.Result = new UnauthorizedResult(); return; }
+        if (!await OperatorSession.CanEditReceiptAsync(db, context.HttpContext.User, context.HttpContext.RequestAborted))
+        { context.Result = new ForbidResult(); return; }
+        try { await antiforgery.ValidateRequestAsync(context.HttpContext); }
+        catch (AntiforgeryValidationException)
+        { context.Result = new BadRequestObjectResult(new { error = "Reload the receipt session and submit its antiforgery token." }); }
+    }
+}

@@ -2011,6 +2011,9 @@ public sealed partial class DashboardDataService(
 
     public async Task<string?> UpdateReceiptAsync(UpdateReceiptForm form, CancellationToken cancellationToken)
     {
+        if (!await HasAccessAsync(ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken))
+            return "Receipts Admin permission is required to edit an existing receipt.";
+        if (string.IsNullOrWhiteSpace(form.Reason)) return "Enter a reason for this receipt edit.";
         var receipt = await dbContext.Receipts.Include(x => x.Warehouse).Include(x => x.Room).SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
         if (receipt is null)
         {
@@ -2037,6 +2040,13 @@ public sealed partial class DashboardDataService(
             if (receipt.ConcurrencyVersion != form.ReceiptVersion) return "The receipt changed. Reload before editing.";
             if (receiptType != "Truck receipt" || form.BinCount != receipt.BinCount || form.FruitProfileId != receipt.FruitProfileId)
                 return "Use Match Transfer to edit the receiving varieties and quantities.";
+            if (form.CropYear != receipt.CropYear || form.WarehouseId != receipt.WarehouseId || form.RoomId != receipt.RoomId
+                || form.GrowerLotId != receipt.GrowerLotId || form.GrowerNumber?.Trim() != (receipt.GrowerNumber ?? receipt.LotCode).Trim()
+                || form.GrowerName?.Trim() != receipt.GrowerName.Trim())
+                return "Transfer receipt identity and custody require their dedicated reconciliation/compensation operation. No fields were saved.";
+            if (form.ReceivedAt != receipt.ReceivedAt && (await dbContext.ReceiptCustodyAcknowledgments.AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken)
+                || await dbContext.InterCrewTransfers.AnyAsync(x => x.ReceivingReceiptId == receipt.Id, cancellationToken)))
+                return "A linked transfer receipt date requires review of the recorded acknowledgement history. No fields were saved.";
             var beforeMetadata = JsonSerializer.Serialize(new { receipt.CompuTechReceiptId, receipt.WarehouseId, receipt.RoomId, receipt.CropYear, receipt.ReceivedAt });
             receipt.CompuTechReceiptId = form.CompuTechReceiptId.Trim();
             receipt.WarehouseId = form.WarehouseId; receipt.RoomId = form.RoomId;
@@ -2044,7 +2054,7 @@ public sealed partial class DashboardDataService(
             receipt.UpdatedAt = BusinessTime.UtcNow; receipt.ConcurrencyVersion++;
             var actor = await GetCurrentUserAsync(cancellationToken);
             await AddAuditAsync("EditTransferReceiptMetadata", nameof(Receipt), receipt.Id.ToString(), actor?.Email ?? "unknown", beforeMetadata,
-                JsonSerializer.Serialize(new { receipt.CompuTechReceiptId, receipt.WarehouseId, receipt.RoomId, receipt.CropYear, receipt.ReceivedAt }), cancellationToken);
+                JsonSerializer.Serialize(new { receipt.CompuTechReceiptId, receipt.WarehouseId, receipt.RoomId, receipt.CropYear, receipt.ReceivedAt, Reason = form.Reason.Trim() }), cancellationToken);
             try { await dbContext.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateConcurrencyException) { return "The receipt changed. Reload before editing."; }
             return null;
@@ -2053,6 +2063,7 @@ public sealed partial class DashboardDataService(
         if (dbContext.CanonicalInventoryEnabled && (IsInventoryReceiptType(receipt.ReceiptType) || IsInventoryReceiptType(receiptType)))
             return await UpdateCanonicalReceiptMetadataAsync(form, receipt, growerLot, receiptType, cancellationToken);
 
+        if (receipt.ConcurrencyVersion != form.ReceiptVersion) return "The receipt changed. Reload before editing.";
         var oldReceiptBinCount = receipt.BinCount;
         var before = JsonSerializer.Serialize(new
         {
@@ -2071,9 +2082,7 @@ public sealed partial class DashboardDataService(
         });
         var wasInventory = IsInventoryReceiptType(receipt.ReceiptType);
         var lotNumber = growerLot?.LotNumber ?? form.GrowerNumber.Trim();
-        var suppliedGrowerName = growerLot?.Grower ?? form.GrowerName.Trim();
-        var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
-        var growerName = growerResolver.DisplayName(suppliedGrowerName, lotNumber);
+        var growerName = form.GrowerName.Trim();
         var hasInventoryHistory = wasInventory && await dbContext.RoomInventoryAdjustments.AsNoTracking()
             .AnyAsync(x => x.ReceiptId == receipt.Id, cancellationToken);
         var quantityChanged = form.BinCount != receipt.BinCount;
@@ -2169,9 +2178,11 @@ public sealed partial class DashboardDataService(
             receipt.GrowerNumber,
             receipt.GrowerName,
             receipt.LotCode,
-            receipt.BinCount
+            receipt.BinCount,
+            Reason = form.Reason.Trim()
         }), cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try { await dbContext.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return "The receipt changed. Reload before editing."; }
         if (addInventoryAdjustment)
         {
             await InventoryInvariant.ValidateBeforeCommitAsync(cancellationToken);

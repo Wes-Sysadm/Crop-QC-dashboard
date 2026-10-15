@@ -34,7 +34,9 @@ internal static class ReceiptCorrectionRenderedForm
             values.TryAdd(name, value); // MVC uses first value (checked checkbox before false hidden input).
         }
         Assert.False(values.ContainsKey("LotCode"));
-        Assert.False(values.ContainsKey("CorrectionSourceRoomId"));
+        if (values.GetValueOrDefault("CorrectionSourceRoomId") == "") values.Remove("CorrectionSourceRoomId");
+        foreach (Match field in Regex.Matches(form, "<textarea\\b[^>]*>[\\s\\S]*?</textarea>"))
+            values[Attribute(field.Value, "name")] = WebUtility.HtmlDecode(Regex.Match(field.Value, ">([\\s\\S]*?)</textarea>").Groups[1].Value);
         return values;
     }
 

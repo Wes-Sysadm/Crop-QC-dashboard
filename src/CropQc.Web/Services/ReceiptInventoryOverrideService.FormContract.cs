@@ -17,12 +17,14 @@ public sealed partial class ReceiptInventoryOverrideService
         && form.ReceiptType?.Trim() == saved.ReceiptType.Trim();
 
     private bool MatchesCorrectionTime(DateTimeOffset submitted, DateTimeOffset saved)
+        => MatchesCorrectionTime(businessTime ?? new PacificBusinessTimeService(new SystemClock()), submitted, saved);
+
+    internal static bool MatchesCorrectionTime(IBusinessTimeService time, DateTimeOffset submitted, DateTimeOffset saved)
     {
         if (submitted == saved) return true;
         // Edit.cshtml renders datetime-local at minute precision. Accept only that
         // exact binder round-trip as unchanged; the command retains the saved instant,
         // including seconds and the original side of an ambiguous Pacific DST hour.
-        var time = businessTime ?? new PacificBusinessTimeService(new SystemClock());
         var displayed = DateTime.ParseExact(time.FormatPacificInput(saved), "yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
         return submitted == time.PacificLocalToUtc(displayed);
     }

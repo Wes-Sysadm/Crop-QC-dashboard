@@ -1,5 +1,7 @@
 # Receipt correction form contract — 2026-10-14
 
+This is the original #282 validation record. The subsequent owner-requested Admin-only, single-Save revision and current release limitations are documented in [the Admin workflow assessment](pr282-admin-receipt-edit-workflow-2026-10-14.md). Earlier receiver permission and button behavior below are historical, not the revised policy.
+
 ## Scope and authority
 
 New focused branch `codex/receipt-correction-form-contract`, based on fetched main

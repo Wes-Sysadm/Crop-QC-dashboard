@@ -52,7 +52,7 @@ jobs:
           dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj
           --configuration Release --no-build
           --settings tests/CropQc.Api.Tests/canonical-postgres.runsettings
-          --filter 'FullyQualifiedName~ReceiptCorrectionFormHttpTests|FullyQualifiedName~ReceiptQuantityHttpTests|FullyQualifiedName~ReceiptLocationHttpTests'
+          --filter 'FullyQualifiedName~ReceiptCorrectionFormHttpTests|FullyQualifiedName~ReceiptQuantityHttpTests|FullyQualifiedName~ReceiptLocationHttpTests|FullyQualifiedName~AdminReceiptEditHttpTests'
           --results-directory artifacts/governance/receipt-form
           --logger 'trx;LogFileName=receipt-form.trx'
       - uses: actions/upload-artifact@v4

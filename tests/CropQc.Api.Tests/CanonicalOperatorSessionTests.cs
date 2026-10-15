@@ -25,10 +25,11 @@ namespace CropQc.Api.Tests;
 
 public sealed class CanonicalOperatorSessionTests
 {
-    internal static async Task GrantReceivingAsync(CropQcDbContext db)
+    internal static async Task GrantReceivingAsync(CropQcDbContext db, string level = "Create")
     {
+        db.UserRoles.RemoveRange(await db.UserRoles.Where(x => x.UserId == 8000).ToListAsync());
         var role = new Role { Name = "Local receiver", NormalizedName = "LOCAL RECEIVER" };
-        role.PageAccesses.Add(new() { AreaKey = "receipts", AccessLevel = "Create" });
+        role.PageAccesses.Add(new() { AreaKey = "receipts", AccessLevel = level });
         db.UserRoles.Add(new() { UserId = 8000, Role = role });
         await db.SaveChangesAsync();
     }
@@ -36,7 +37,7 @@ public sealed class CanonicalOperatorSessionTests
     [InventoryPostgresFact]
     public async Task Web_session_authenticates_API_receiving_with_CSRF_and_live_permissions_and_audited_actor()
     {
-        await using var f = await Fixture.Create();
+        await using var f = await Fixture.Create(receiptAdmin: false);
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
         await using var db = factory.CreateDbContext();
         await GrantReceivingAsync(db);
@@ -66,6 +67,12 @@ public sealed class CanonicalOperatorSessionTests
         Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/receipts", request)).StatusCode);
         Assert.Equal(saved, await f.Snapshot());
 
+        var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.CompuTechReceiptId == "LOCAL-HTTP-AUTH");
+        var edit = new CropQc.Api.Dtos.UpdateReceiptRequest(receipt.CropYear, receipt.ReceivedAt, receipt.WarehouseId, receipt.RoomId,
+            receipt.FruitProfileId, "Changed", receipt.LotCode, receipt.BinCount, "Receiver cannot edit", Guid.NewGuid().ToString("N"), receipt.ConcurrencyVersion);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/receipts/{receipt.Id}/same-day-fields", edit)).StatusCode);
+        Assert.Equal(saved, await f.Snapshot());
+
         var role = await db.Roles.SingleAsync(x => x.NormalizedName == "LOCAL RECEIVER");
         role.IsActive = false; await db.SaveChangesAsync();
         saved = await f.Snapshot();
@@ -78,7 +85,7 @@ public sealed class CanonicalOperatorSessionTests
     [InventoryPostgresFact]
     public async Task Foreign_key_expired_session_and_forged_role_cannot_authorize_receiving()
     {
-        await using var f = await Fixture.Create();
+        await using var f = await Fixture.Create(receiptAdmin: false);
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
         var keys = new EphemeralDataProtectionProvider();
         using var web = SessionIssuer(keys);
@@ -124,7 +131,7 @@ public sealed class CanonicalOperatorSessionTests
             services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options => OperatorSession.ConfigureCookie(options, new ConfigurationBuilder().Build(), true, api: true));
             services.AddAuthorization(); services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
-            services.AddHttpContextAccessor(); services.AddScoped<CanonicalReceivingAuthorizationFilter>();
+            services.AddHttpContextAccessor(); services.AddScoped<CanonicalReceivingAuthorizationFilter>(); services.AddScoped<ReceiptEditingAuthorizationFilter>();
             services.AddScoped<IInventoryCommandExecutor, InventoryCommandExecutor>(); services.AddScoped<CanonicalReceivingService>();
             services.AddScoped<IAuditService, AuditService>(); services.AddScoped<IReceiptService, ReceiptService>();
             services.AddControllers().AddApplicationPart(typeof(CropQc.Api.Controllers.ReceiptsController).Assembly);

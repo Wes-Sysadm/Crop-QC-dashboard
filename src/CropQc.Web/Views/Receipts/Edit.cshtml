@@ -4,6 +4,10 @@
 @{
     ViewData["Title"] = "Edit Receipt";
     var form = Model.Form;
+    var original = Model.OriginalForm ?? form;
+    var submitted = form as AdminReceiptInventoryOverrideForm;
+    string FieldValue(string name, object? value) => ViewData.ModelState.TryGetValue(name, out var entry) && entry.AttemptedValue != null
+        ? entry.AttemptedValue : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
     var roomOptionsJson = JsonSerializer.Serialize(Model.Rooms.Select(x => new { id = x.Id, warehouseId = x.WarehouseId, code = x.CropQcRoomName ?? x.DisplayName ?? x.Code, name = x.DisplayName ?? x.Name, subLocation = x.SubLocation ?? "", compuTech = x.CompuTechRoomCode ?? "", isSealed = x.IsSealed }));
     var growerLotsJson = JsonSerializer.Serialize(Model.GrowerLots.Select(x => new { id = x.Id, grower = x.Grower, lot = x.LotNumber, label = $"{x.Grower} - {x.LotNumber}" }));
 }
@@ -23,13 +27,13 @@
         @Html.AntiForgeryToken()
         <input type="hidden" name="Id" value="@form.Id" />
         <input type="hidden" name="ReceiptVersion" value="@form.ReceiptVersion" />
-        @if (!Model.CanAdminOverride || Model.AdminOverridePreview is null)
-        {
-            <input type="hidden" name="OperationKey" value="@form.OperationKey" />
-        }
-        <div class="field"><label>Crop Year</label><input name="CropYear" value="@form.CropYear" required /></div>
-        <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@BusinessTime.FormatPacificInput(form.ReceivedAt)" required /></div>
-        <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" value="@form.CompuTechReceiptId" required /></div>
+        <input type="hidden" name="OperationKey" value="@form.OperationKey" />
+        <input type="hidden" name="ConfirmInventoryChange" value="true" />
+        @Html.ValidationSummary(false, "", new { @class = "notice warning wide" })
+        <div class="field wide"><label for="editReason">Reason</label><textarea id="editReason" name="Reason" required maxlength="1000">@form.Reason</textarea></div>
+        <div class="field"><label>Crop Year</label><input name="CropYear" value="@FieldValue("CropYear", form.CropYear)" required /></div>
+        <div class="field"><label>Received At (Pacific)</label><input name="ReceivedAt" type="datetime-local" value="@FieldValue("ReceivedAt", BusinessTime.FormatPacificInput(form.ReceivedAt))" required /></div>
+        <div class="field"><label>Receipt ID</label><input name="CompuTechReceiptId" value="@FieldValue("CompuTechReceiptId", form.CompuTechReceiptId)" required /></div>
         <div class="field">
             <label>Receipt Type</label>
             <select name="ReceiptType">
@@ -75,20 +79,16 @@
                 }
             </select>
         </div>
-        <div class="field"><label>Grower</label><input name="GrowerName" value="@form.GrowerName" required /></div>
-        <div class="field"><label>Lot #</label><input id="editGrowerNumber" name="GrowerNumber" value="@form.GrowerNumber" maxlength="50" list="editGrowerLotOptions" required /></div>
+        <div class="field"><label>Grower</label><input name="GrowerName" value="@FieldValue("GrowerName", form.GrowerName)" required /></div>
+        <div class="field"><label>Lot #</label><input id="editGrowerNumber" name="GrowerNumber" value="@FieldValue("GrowerNumber", form.GrowerNumber)" maxlength="50" list="editGrowerLotOptions" required /></div>
         <datalist id="editGrowerLotOptions">
             @foreach (var lot in Model.GrowerLots)
             {
                 <option value="@lot.LotNumber" label="@lot.LotNumber - @lot.Grower"></option>
             }
         </datalist>
-        <div class="field"><label>Bin Count</label><input id="editBinCount" name="BinCount" type="number" min="0" inputmode="numeric" value="@form.BinCount" data-saved-bin-count="@form.BinCount" required /></div>
+        <div class="field"><label>Bin Count</label><input id="editBinCount" name="BinCount" type="number" min="0" inputmode="numeric" value="@FieldValue("BinCount", form.BinCount)" data-saved-bin-count="@form.BinCount" required /></div>
         <label class="checkbox-field"><input type="checkbox" name="ConfirmCropYear" value="true" checked /> Confirm Crop Year</label><input type="hidden" name="ConfirmCropYear" value="false" />
-        @if (!Model.CanAdminOverride)
-        {
-            <p id="binCountOverridePermissionWarning" class="notice warning wide" hidden>You do not have permission to override the bin count on a saved Receipt. Restore the current bin count to save other Receipt changes.</p>
-        }
         @if (Model.CanAdminOverride && Model.AdminOverridePreview is not null)
         {
             var preview = Model.AdminOverridePreview;
@@ -96,19 +96,14 @@
             {
                 <p class="notice warning">@preview.CanonicalBlocker</p>
             }
-            <p class="notice wide">Receivers may correct a mistaken bin count. Record the reason and review the inventory affected. Identity and location corrections require administrator access.</p>
-            <button id="reviewBinCountOverride" type="button" class="wide" hidden>Review bin count correction</button>
-            @if (CanonicalMode.Enabled && Model.CanCorrectInventoryIdentity)
-            {
-                <button id="reviewLocationCorrection" type="button" class="wide">Correct current inventory location</button>
-            }
-            <section id="adminInventoryOverride" class="panel danger-zone wide receipt-bin-override-review" hidden
-                     data-original-bins="@form.BinCount" data-original-warehouse="@form.WarehouseId"
-                     data-original-room="@form.RoomId" data-original-crop-year="@form.CropYear"
-                     data-original-grower-lot="@form.GrowerLotId" data-original-grower-number="@form.GrowerNumber"
-                     data-original-fruit-profile="@form.FruitProfileId">
-                <h2 id="overrideReviewTitle">Receipt Correction Review</h2>
-                <p id="savedReceiptBinCountWarning" class="notice warning" hidden>Changing the bin count of a saved Receipt requires an override.</p>
+            <p class="notice wide">Save records your reason and the audited correction. Historical consumption, transfers and treatments remain unchanged. Different correction types must be saved separately.</p>
+            <section id="adminInventoryOverride" class="panel wide receipt-bin-override-review"
+                     data-original-bins="@original.BinCount" data-original-warehouse="@original.WarehouseId"
+                     data-original-room="@original.RoomId" data-original-crop-year="@original.CropYear"
+                     data-original-grower-lot="@original.GrowerLotId" data-original-grower-number="@original.GrowerNumber"
+                     data-original-fruit-profile="@original.FruitProfileId">
+                <h2 id="overrideReviewTitle">Current receipt evidence</h2>
+                <p id="savedReceiptBinCountWarning" class="notice warning" hidden>The quantity change will be recorded as an audited correction.</p>
                 <p id="savedReceiptIdentityWarning" class="notice warning" hidden>Changing the Grower/Lot identity of a saved Receipt requires an audited identity correction. Historical inventory operations will be retained, and the correction will proceed only when current inventory is safe.</p>
                 @if (preview.HistoricalIdentityCorrectionIsZeroCurrent)
                 {
@@ -117,7 +112,7 @@
                 @if (CanonicalMode.Enabled)
                 {
                     var locations = preview.Balances.Where(x => x.RoomId > 0).GroupBy(x => new { x.WarehouseId, x.Warehouse, x.RoomId, x.Room }).ToArray();
-                    <section id="receiptLocationReview" hidden>
+                    <section id="receiptLocationReview">
                         <h3>Correct current inventory location</h3>
                         <p>Only the remaining bins at the selected source will move. Consumed bins, other rooms and external custody stay unchanged. Original receipt and movement evidence remains in the correction history.</p>
                         @if (locations.Length == 0)
@@ -127,14 +122,11 @@
                         else
                         {
                             <label for="correctionSourceRoom">Current receipt inventory to relocate</label>
-                            <select id="correctionSourceRoom" name="CorrectionSourceRoomId" disabled>
-                                @if (locations.Length > 1)
-                                {
-                                    <option value="">Select the current inventory location to correct</option>
-                                }
+                            <select id="correctionSourceRoom" name="CorrectionSourceRoomId">
+                                <option value="">Use the only proven current room, or select a source</option>
                                 @foreach (var location in locations)
                                 {
-                                    <option value="@location.Key.RoomId" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room — @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
+                                    <option value="@location.Key.RoomId" selected="@(submitted?.CorrectionSourceRoomId == location.Key.RoomId ? "selected" : null)" data-bins="@location.Sum(x => x.CurrentBins)">@location.Key.Warehouse / @location.Key.Room — @location.Sum(x => x.CurrentBins) bins (@string.Join(", ", location.Select(x => x.InventoryStatus).Distinct()))</option>
                                 }
                             </select>
                         }
@@ -183,7 +175,7 @@
                     <p>Allocate the quantity change to current inventory below. The original receiving room and historical movements will not be rewritten.</p>
                     <div id="additionalBinsTreatment" hidden>
                         <p>Added bins are recorded as untreated at the correction time. Selecting a treated allocation chooses its current location; its past treatments are not applied to the added bins.</p>
-                        <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalBinsUntreated" value="true" /> I have verified that the additional bins are untreated. Their prior treatment history is not uncertain.</label>
+                        <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalBinsUntreated" value="true" checked="@(submitted?.ConfirmAdditionalBinsUntreated == true ? "checked" : null)" /> I have verified that the additional bins are untreated. Their prior treatment history is not uncertain.</label>
                         <input type="hidden" name="ConfirmAdditionalBinsUntreated" value="false" />
                         <p class="muted">If these bins need an earlier treatment attribution, request evidence review before applying this correction.</p>
                     </div>
@@ -198,10 +190,10 @@
                             <label>Where are the additional bins now?
                                 <select name="AdditionalStockTarget"><option value="">Select the actual current room</option>
                                     @foreach (var target in preview.AdditionalStockTargets)
-                                    { <option value="@target.Key">@target.RoomName</option> }
+                                    { <option value="@target.Key" selected="@(submitted?.AdditionalStockTarget == target.Key ? "selected" : null)">@target.RoomName</option> }
                                 </select>
                             </label>
-                            <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalStockPresent" value="true" /> These additional bins belong to this receipt and are physically present in the selected room. They are not bins already recorded as consumed or in another custody location.</label>
+                            <label class="checkbox-field"><input type="checkbox" name="ConfirmAdditionalStockPresent" value="true" checked="@(submitted?.ConfirmAdditionalStockPresent == true ? "checked" : null)" /> These additional bins belong to this receipt and are physically present in the selected room. They are not bins already recorded as consumed or in another custody location.</label>
                             <input type="hidden" name="ConfirmAdditionalStockPresent" value="false" />
                             </div>
                         }
@@ -237,7 +229,7 @@
                                         {
                                             var bindingIndex = allocationIndex++;
                                             <input type="hidden" name="TrueUpAllocations[@bindingIndex].TargetKey" value="@position.TargetKey" />
-                                            <input class="true-up-allocation" name="TrueUpAllocations[@bindingIndex].Bins" type="number" min="0" inputmode="numeric" value="0" aria-label="Bins to correct at @position.Facility @position.Location @position.Treatment" />
+                                            <input class="true-up-allocation" name="TrueUpAllocations[@bindingIndex].Bins" type="number" min="0" inputmode="numeric" value="@(submitted?.TrueUpAllocations.FirstOrDefault(x => x.TargetKey == position.TargetKey)?.Bins ?? 0)" aria-label="Bins to correct at @position.Facility @position.Location @position.Treatment" />
                                         }
                                         else
                                         {
@@ -250,16 +242,10 @@
                         </table>
                     }
                 </section>
-                <input type="hidden" name="ExpectedConcurrencyVersion" value="@preview.ConcurrencyVersion" />
-                <input type="hidden" name="ExpectedInventoryStateToken" value="@preview.InventoryStateToken" />
-                <input type="hidden" name="ExpectedPositiveTrueUpStateToken" value="@preview.PositiveTrueUpStateToken" />
-                <input type="hidden" name="OperationKey" value="@preview.OperationKey" />
-                <div class="field wide"><label for="adminOverrideReason">Required override reason</label><textarea id="adminOverrideReason" name="Reason" maxlength="1000" placeholder="Incorrect original bin count / buffer bins included"></textarea><p class="muted">Buffer bins included in error are a receipt quantity correction, not fruit loss, a dump or a transfer. The original entered count remains in the audit history.</p></div>
-                <label class="checkbox-field wide"><input type="checkbox" name="ConfirmInventoryChange" value="true" /> I confirm this audited Receipt correction and its durable Receipt Admin Override record.</label>
-                <input type="hidden" name="ConfirmInventoryChange" value="false" />
+                <input type="hidden" name="ExpectedConcurrencyVersion" value="@(submitted?.ExpectedConcurrencyVersion ?? preview.ConcurrencyVersion)" />
+                <input type="hidden" name="ExpectedInventoryStateToken" value="@(submitted?.ExpectedInventoryStateToken ?? preview.InventoryStateToken)" />
+                <input type="hidden" name="ExpectedPositiveTrueUpStateToken" value="@(submitted?.ExpectedPositiveTrueUpStateToken ?? preview.PositiveTrueUpStateToken)" />
                 <p id="negativeInventoryAcknowledgment" class="notice warning wide" hidden>This reduction exceeds current receipt custody and cannot be saved. Review transferred or consumed bins before correcting the count.</p>
-                <input type="hidden" name="AcknowledgeNegativeInventory" value="false" />
-                <button id="applyBinCountOverride" type="submit" formaction="/Receipts/@form.Id/AdminInventoryOverride">Apply Receipt Correction</button>
             </section>
         }
         <div class="button-row">
@@ -329,115 +315,35 @@
             }
         });
 
-        const editForm = document.querySelector("form[action$='/Edit']");
-        const binCountInput = document.getElementById("editBinCount");
-        const saveReceiptButton = document.getElementById("saveReceiptButton");
-        const permissionWarning = document.getElementById("binCountOverridePermissionWarning");
-        const originalBins = Number(binCountInput?.dataset.savedBinCount);
-        const quantityChanged = () => Number(binCountInput?.value) !== originalBins;
-        const overrideSection = document.getElementById("adminInventoryOverride");
-        const reviewOverrideButton = document.getElementById("reviewBinCountOverride");
-        let overrideReviewRequested = false;
-        let locationReviewRequested = false;
-        if (overrideSection) {
-            const watched = ["CorrectionSourceRoomId", "BinCount", "WarehouseId", "RoomId", "CropYear", "GrowerLotId", "GrowerNumber", "FruitProfileId"];
-            const currentValue = name => document.querySelector(`[name='${name}']`)?.value ?? "";
-            const normalize = value => (value || "").trim().toLowerCase();
-            function updateOverrideVisibility() {
-                const proposed = Number(currentValue("BinCount"));
-                const original = Number(overrideSection.dataset.originalBins);
-                const binCountChanged = proposed !== original;
-                const locationChanged = locationReviewRequested || Number(currentValue("WarehouseId")) !== Number(overrideSection.dataset.originalWarehouse)
-                    || Number(currentValue("RoomId")) !== Number(overrideSection.dataset.originalRoom);
-                const identityChanged = Number(currentValue("CropYear")) !== Number(overrideSection.dataset.originalCropYear)
-                    || normalize(currentValue("GrowerLotId")) !== normalize(overrideSection.dataset.originalGrowerLot)
-                    || normalize(currentValue("GrowerNumber")) !== normalize(overrideSection.dataset.originalGrowerNumber)
-                    || Number(currentValue("FruitProfileId")) !== Number(overrideSection.dataset.originalFruitProfile);
-                reviewOverrideButton.hidden = !binCountChanged;
-                saveReceiptButton.hidden = binCountChanged || identityChanged || locationChanged;
-                overrideSection.hidden = binCountChanged ? !overrideReviewRequested : !(identityChanged || locationChanged);
-                document.getElementById("overrideReviewTitle").textContent = binCountChanged
-                    ? "Bin Count Override Review"
-                    : locationChanged ? "Receipt Location Correction Review" : identityChanged ? "Receipt Identity Correction Review" : "Receipt Correction Review";
-                document.getElementById("savedReceiptBinCountWarning").hidden = !binCountChanged;
-                document.getElementById("savedReceiptIdentityWarning").hidden = !identityChanged;
-                const locationReview = document.getElementById("receiptLocationReview");
-                const source = document.getElementById("correctionSourceRoom");
-                if (locationReview) {
-                    locationReview.hidden = !locationChanged;
-                    if (source) {
-                        source.disabled = !locationChanged;
-                        source.required = locationChanged;
-                    }
-                    document.getElementById("locationRelocatedBins").textContent = source?.selectedOptions[0]?.dataset.bins
-                        ? `${source.selectedOptions[0].dataset.bins} bins` : "Select a source";
-                    document.getElementById("applyBinCountOverride").disabled = (locationChanged && !source?.value) || @JsonSerializer.Serialize(Model.AdminOverridePreview?.CanonicalBlocker is not null);
-                }
-                document.getElementById("overrideProposedBins").textContent = Number.isFinite(proposed) ? proposed : "n/a";
-                const delta = Number.isFinite(proposed) ? proposed - original : null;
-                document.getElementById("overrideBinDelta").textContent = delta === null ? "n/a" : `${delta > 0 ? "+" : ""}${delta}`;
-                document.getElementById("overrideRemovedBins").textContent = delta === null ? "n/a" : Math.max(0, -delta);
-                const positiveTrueUp = document.getElementById("positiveTrueUpAllocation");
-                const allocateReduction = @JsonSerializer.Serialize(CanonicalMode.Enabled);
-                if (positiveTrueUp) positiveTrueUp.hidden = !(delta > 0 || allocateReduction && delta < 0);
-                const additionalTreatment = document.getElementById("additionalBinsTreatment");
-                if (additionalTreatment) {
-                    additionalTreatment.hidden = !(delta > 0);
-                    additionalTreatment.querySelector('input[type="checkbox"]').disabled = !(delta > 0);
-                }
-                const additionalDestination = document.getElementById("additionalStockDestination");
-                if (additionalDestination) {
-                    additionalDestination.hidden = !(delta > 0);
-                    for (const field of additionalDestination.querySelectorAll("select, input")) field.disabled = !(delta > 0);
-                }
-                for (const allocation of document.querySelectorAll(".true-up-allocation")) {
-                    allocation.disabled = !(delta > 0 || allocateReduction && delta < 0);
-                }
-                document.getElementById("overrideReceipt").textContent = currentValue("CompuTechReceiptId") || "-";
-                const growerNumber = currentValue("GrowerNumber").trim();
-                const growerName = currentValue("GrowerName").trim();
-                document.getElementById("overrideGrower").textContent = [growerNumber, growerName].filter(Boolean).join(" - ") || "-";
-                document.getElementById("overrideRoom").textContent = roomSelect?.selectedOptions[0]?.textContent?.trim() || "-";
-                const negativeAcknowledgment = document.getElementById("negativeInventoryAcknowledgment");
-                negativeAcknowledgment.hidden = allocateReduction || @(Model.AdminOverridePreview?.CurrentInventory ?? 0) + (delta ?? 0) >= 0;
-            }
-            for (const name of watched) {
-                const field = document.querySelector(`[name='${name}']`);
-                const changed = () => {
-                    overrideReviewRequested = false;
-                    updateOverrideVisibility();
-                };
-                field?.addEventListener("change", changed);
-                field?.addEventListener("input", changed);
-            }
-            reviewOverrideButton?.addEventListener("click", () => {
-                if (!binCountInput?.reportValidity()) return;
-                overrideReviewRequested = true;
-                updateOverrideVisibility();
-                overrideSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            });
-            document.getElementById("reviewLocationCorrection")?.addEventListener("click", () => {
-                locationReviewRequested = true;
-                updateOverrideVisibility();
-                overrideSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            });
-            updateOverrideVisibility();
-        } else if (binCountInput) {
-            const updatePermissionState = () => {
-                const changed = quantityChanged();
-                if (permissionWarning) permissionWarning.hidden = !changed;
-                saveReceiptButton.disabled = changed;
-            };
-            binCountInput.addEventListener("input", updatePermissionState);
-            binCountInput.addEventListener("change", updatePermissionState);
-            updatePermissionState();
+        const original = @Html.Raw(JsonSerializer.Serialize(new { bins = original.BinCount, room = original.RoomId, warehouse = original.WarehouseId }));
+        const value = name => document.querySelector(`[name='${name}']`)?.value ?? "";
+        function showEvidence() {
+            const delta = Number(value("BinCount")) - original.bins;
+            const location = Number(value("RoomId")) !== original.room || Number(value("WarehouseId")) !== original.warehouse;
+            const section = document.getElementById("positiveTrueUpAllocation");
+            if (section) section.hidden = delta === 0;
+            const treatment = document.getElementById("additionalBinsTreatment");
+            if (treatment) treatment.hidden = delta <= 0;
+            const destination = document.getElementById("additionalStockDestination");
+            if (destination) destination.hidden = delta <= 0;
+            const source = document.getElementById("correctionSourceRoom");
+            const locations = document.getElementById("receiptLocationReview");
+            const needsSource = @JsonSerializer.Serialize(Model.AdminOverridePreview?.Balances.Any(x => x.RoomId > 0 && x.RoomId != original.RoomId) == true);
+            if (locations) locations.hidden = !location && !needsSource && !source?.value;
+            // Keep explicit evidence on validation failure. Empty source is safe: the
+            // canonical command auto-selects only a unique proven room allocation.
+            if (source) source.disabled = !location && !needsSource && !source.value;
+            const proposed = document.getElementById("overrideProposedBins");
+            if (proposed) proposed.textContent = value("BinCount");
+            const change = document.getElementById("overrideBinDelta");
+            if (change) change.textContent = `${delta > 0 ? "+" : ""}${delta}`;
+            const removed = document.getElementById("overrideRemovedBins");
+            if (removed) removed.textContent = Math.max(0, -delta);
+            const warning = document.getElementById("negativeInventoryAcknowledgment");
+            if (warning) warning.hidden = delta >= 0 || -delta <= @(Model.AdminOverridePreview?.CurrentInventory ?? 0);
         }
-
-        editForm?.addEventListener("submit", event => {
-            if (!quantityChanged()) return;
-            if (event.submitter?.id === "applyBinCountOverride" && !overrideSection?.hidden) return;
-            event.preventDefault();
-            reviewOverrideButton?.click();
-        });
+        document.querySelector("form[action$='/Edit']")?.addEventListener("input", showEvidence);
+        document.querySelector("form[action$='/Edit']")?.addEventListener("change", showEvidence);
+        showEvidence();
     })();
 </script>
