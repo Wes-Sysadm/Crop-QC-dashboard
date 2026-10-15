@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk@sha256:2f5eb32870b4c0074a3d5b5191a03553bcab7b74463a76a7c0a5f3ef65c90fe5 AS build
 WORKDIR /src
 
 COPY CropQc.sln ./
@@ -17,7 +17,7 @@ RUN dotnet publish src/CropQc.Web/CropQc.Web.csproj -c Release -o /app/publish -
 
 # pg_dump refuses to back up a newer server with an older client. Production is
 # PostgreSQL 18, so install the matching client from PostgreSQL's signed PGDG repo.
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble AS final
+FROM mcr.microsoft.com/dotnet/aspnet@sha256:7da398155e0d6439cf0058bc1afa937817a03e320714b876a5f58a7d64f79d50 AS final
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
