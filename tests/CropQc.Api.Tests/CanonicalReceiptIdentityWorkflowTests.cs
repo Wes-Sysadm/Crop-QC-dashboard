@@ -270,7 +270,8 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
             SourceKey = source.SourceKey,
             BinCount = 26,
             ExpectedAvailableBins = 26,
-            TransferredAt = DateTime.Now,
+            // This form accepts Pacific business time, not the runner's local zone.
+            TransferredAt = new PacificBusinessTimeService(new SystemClock()).NowPacific.DateTime,
             ConfirmedReview = true,
             TruckLoadBolNumber = "LOCAL-IDENTITY-RETURN"
         }, default);

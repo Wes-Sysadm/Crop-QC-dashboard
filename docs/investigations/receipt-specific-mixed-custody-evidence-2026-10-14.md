@@ -138,18 +138,25 @@ Do not deploy an arbitrary old pre-compensation binary as rollback.
 Provider: disposable PostgreSQL 18.6 on localhost; no production copy.
 
 - Untouched main: identity suite **3 passed, 4 failed, 0 skipped**.
-- Final affected workflows: **195 passed, 0 failed, 0 skipped**, including all seven
+- Affected runtime workflows: **195 passed, 0 failed, 0 skipped**, including all seven
   identity cases, seven new custody cases, PR #271 custody and PR #281 destination/
   treatment cases. The intermediate run caught an overbroad check on unrelated
   treatment uncertainty; narrowing it to selected evidence restored that existing
   contract. No failing test was excluded.
-- Solution restore and Release build pass (final incremental build: five warnings,
+- Solution restore and Release build pass (final rebuild: 69 warnings,
   zero errors). EF reports no model changes. Changed-file format verification and
   `git diff --check` pass. Governance validator: 29 tests and 20-rule metadata pass.
 - Mandatory contracts: **149 passed, 0 failed, 0 skipped**, including the required
   architecture suites. Final GitHub CI is recorded in the PR closeout.
   The first contract run exposed a missing empty test entry database; local
   fixture setup was corrected without changing the application or excluding tests.
+- Linux CI then exposed a separate pre-existing fixture issue in the newly required
+  outside-custody case: `DateTime.Now` supplied UTC runner time to a Pacific-local
+  form, creating a future effective transfer. The existing future-command guard
+  correctly rejected it. The fixture now uses `PacificBusinessTimeService` just
+  like the form; no runtime guard changed. Final local identity/custody rerun:
+  **14 passed, 0 failed, 0 skipped**. Linux CI checks the same portable input. The 195-case/149-case local runs above
+  validate the unchanged runtime implementation before this test-only correction.
 
 Evidence: `artifacts/receipt-evidence-baseline/baseline.trx`,
 `artifacts/receipt-evidence-confirmed/affected.trx`; contract TRX uses the standard
