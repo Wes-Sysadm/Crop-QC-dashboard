@@ -28,7 +28,7 @@ internal sealed class CanonicalIdentityMap(IReadOnlyList<InventoryIdentityCorrec
             await db.FruitProfiles.AsNoTracking().Where(x => profileIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct));
     }
 
-    internal CanonicalIdentityResolution Resolve(InventoryIdentity source, long? receiptId)
+    internal CanonicalIdentityResolution Resolve(InventoryIdentity source, long? receiptId, DateTimeOffset? recordedThrough = null)
     {
         var current = source;
         var visited = new HashSet<(int?, int?, int?)>();
@@ -38,7 +38,8 @@ internal sealed class CanonicalIdentityMap(IReadOnlyList<InventoryIdentityCorrec
             if (!visited.Add((current.CropYear, current.GrowerLotId, current.FruitProfileId)))
                 throw new InvalidOperationException("Identity correction history contains a cycle; review the recorded mappings.");
             var candidates = corrections.Where(x => x.SourceCropYear == current.CropYear && x.SourceGrowerLotId == current.GrowerLotId
-                && x.SourceFruitProfileId == current.FruitProfileId && (x.CorrectedReceiptId == null || x.CorrectedReceiptId == receiptId)).ToArray();
+                && x.SourceFruitProfileId == current.FruitProfileId && (x.CorrectedReceiptId == null || x.CorrectedReceiptId == receiptId)
+                && (recordedThrough == null || x.CreatedAt <= recordedThrough)).ToArray();
             if (candidates.Any(x => x.CorrectedReceiptId == receiptId && receiptId != null))
                 candidates = candidates.Where(x => x.CorrectedReceiptId == receiptId).ToArray();
             if (candidates.Length == 0) return new(source, current, chain.ToImmutable());
