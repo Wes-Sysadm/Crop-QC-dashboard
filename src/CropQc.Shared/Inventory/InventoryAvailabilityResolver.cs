@@ -183,11 +183,19 @@ public sealed class InventoryAvailabilityResolver(IInventoryEvidenceLoader loade
             }
         }
 
-        if (requirements.RequireExactReceipt && (receiptConfidence != InventoryConfidence.Proven
+        // A scoped selection may be proven even while the shared pool retains
+        // Unknown ancestry. Do not promote that pool or allocate its remainder.
+        var selectedReceiptProven = requirements.ReceiptId is long selected
+            && (ProveCurrentReceipt(e, selected) || InventoryCohortEvidence.ProvesReceipt(e, selected)
+                || InventoryCohortEvidence.ProvesCustodyReceipt(e, selected));
+        if (requirements.RequireExactReceipt && !selectedReceiptProven && (receiptConfidence != InventoryConfidence.Proven
             || requirements.ReceiptId is long requested && !receiptIds.Contains(requested)))
             Block(InventoryBlockerCode.MissingReceiptProvenance, "This operation requires exact surviving receipt attribution; a treatment pool alone is insufficient.");
         var eligibleSlices = slices.Where(x => requirements.TreatmentSignature is null || x.Signature == requirements.TreatmentSignature)
-            .Where(x => !requirements.RequireExactReceipt || requirements.ReceiptId is null || x.ReceiptEvidenceIds.Contains(requirements.ReceiptId.Value)).ToArray();
+            .Where(x => !requirements.RequireExactReceipt || requirements.ReceiptId is null
+                || x.ReceiptEvidenceIds.Length == 1 && x.ReceiptEvidenceIds[0] == requirements.ReceiptId.Value).ToArray();
+        if (requirements.RequireExactReceipt && requirements.ReceiptId != null && e.AuthoritativeQuantity > 0 && eligibleSlices.Length == 0)
+            Block(InventoryBlockerCode.MissingReceiptProvenance, "No disjoint current slice proves the selected receipt's surviving quantity.");
         if (requirements.TreatmentSignature is not null && eligibleSlices.Length == 0 && e.AuthoritativeQuantity > 0)
             Block(InventoryBlockerCode.SelectedTreatmentUnavailable, "The selected treatment is not a proven current slice.");
         var available = blockers.Count == 0

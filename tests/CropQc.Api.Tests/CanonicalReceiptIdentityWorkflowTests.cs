@@ -182,6 +182,8 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         }
         Assert.Equal(19, await f.Physical());
         var history = await db.TreatmentLineageMovements.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync();
+        var retainedHistory = await CaptureHistory(db);
+        var retainedBefore = await retainedHistory();
         var historicalIds = history.Select(x => x.Id).ToArray();
         var correction = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
         Assert.Null((await correction.ApplyEditAsync(await Correction(db, correction, received), principal, default)).Error);
@@ -201,9 +203,12 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var room = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
         Assert.Equal(19, room.Positions.Single(x => x.Identity.GrowerLotId == 100000).AuthoritativeQuantity);
         Assert.Equal(26, room.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
-        Assert.All(room.Positions, p => { Assert.True(p.IsOperable); Assert.Equal(p.AuthoritativeQuantity, p.RawProjectionQuantity); });
+        AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100000), 19, 0);
+        AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100001), 26, 10);
+        await AssertReceipt(db, received, 7, 0, 100001);
         Assert.Equal(JsonSerializer.Serialize(history), JsonSerializer.Serialize(await db.TreatmentLineageMovements.AsNoTracking().Where(x => historicalIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync()));
         var saved = await f.Snapshot(); Assert.Null(await reverse()); Assert.Equal(saved, await f.Snapshot());
+        Assert.Equal(retainedBefore, await retainedHistory());
     }
 
     [InventoryPostgresFact]
@@ -216,6 +221,8 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var received = await Receive(db, executor);
         var service = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
         var form = await Correction(db, service, received);
+        var retainedHistory = await CaptureHistory(db);
+        var retainedBefore = await retainedHistory();
         var oldReceipts = JsonSerializer.Serialize(await db.Receipts.AsNoTracking().Where(x => x.Id != received).OrderBy(x => x.Id).ToArrayAsync());
         var oldMovementIds = await db.TreatmentLineageMovements.Select(x => x.Id).ToArrayAsync();
         var oldMovements = JsonSerializer.Serialize(await db.TreatmentLineageMovements.AsNoTracking().Where(x => oldMovementIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync());
@@ -224,7 +231,9 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var inventory = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
         Assert.Equal(19, inventory.Positions.Single(x => x.Identity.GrowerLotId == 100000).AuthoritativeQuantity);
         Assert.Equal(26, inventory.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
-        Assert.All(inventory.Positions, x => { Assert.True(x.IsOperable); Assert.Equal(x.AuthoritativeQuantity, x.RawProjectionQuantity); });
+        AssertPosition(inventory.Positions.Single(x => x.Identity.GrowerLotId == 100000), 19, 10);
+        AssertPosition(inventory.Positions.Single(x => x.Identity.GrowerLotId == 100001), 26, 10);
+        await AssertReceipt(db, received, 7, 0, 100001);
         Assert.Equal(oldReceipts, JsonSerializer.Serialize(await db.Receipts.AsNoTracking().Where(x => x.Id != received).OrderBy(x => x.Id).ToArrayAsync()));
         Assert.Equal(oldMovements, JsonSerializer.Serialize(await db.TreatmentLineageMovements.AsNoTracking().Where(x => oldMovementIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync()));
         var saved = await f.Snapshot();
@@ -236,6 +245,7 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var correction = Assert.Single(await db.InventoryIdentityCorrections.ToListAsync());
         Assert.Equal(received, correction.CorrectedReceiptId); Assert.True(correction.IsComplete);
         Assert.Equal(2, correction.ExpectedAdjustmentCount); Assert.Equal(2, correction.ExpectedTreatmentMovementCount);
+        Assert.Equal(retainedBefore, await retainedHistory());
     }
 
     [InventoryPostgresFact]
@@ -260,11 +270,25 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
             SourceKey = source.SourceKey,
             BinCount = 26,
             ExpectedAvailableBins = 26,
-            TransferredAt = DateTime.Now,
+            // This form accepts Pacific business time, not the runner's local zone.
+            TransferredAt = new PacificBusinessTimeService(new SystemClock()).NowPacific.DateTime,
             ConfirmedReview = true,
             TruckLoadBolNumber = "LOCAL-IDENTITY-RETURN"
         }, default);
         Assert.Null(sent.Error);
+        var beforeRead = await f.Snapshot();
+        await AssertReceipt(db, received, 0, 7, 100000);
+        var selected = Assert.Single((await new InventoryReceiptAvailability(db).ReadAsync(received, default))!.Allocations).Position;
+        Assert.Equal(7, selected.AvailableQuantity);
+        Assert.Equal(InventoryConfidence.Unknown, selected.ReceiptProvenance.Confidence);
+        var shared = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+            new(9001, [], InventoryCustody.OutsideWarehouse, sent.TransferId), new(AllowedCustody: InventoryCustody.OutsideWarehouse), DateTimeOffset.UtcNow)).Positions);
+        Assert.Equal(26, shared.AuthoritativeQuantity);
+        Assert.Equal(InventoryConfidence.Unknown, shared.ReceiptProvenance.Confidence);
+        Assert.Equal(19, shared.TreatmentSlices.Where(s => s.ReceiptEvidenceIds.IsEmpty).Sum(s => s.Quantity));
+        Assert.Equal(beforeRead, await f.Snapshot());
+        var retainedHistory = await CaptureHistory(db);
+        var retainedBefore = await retainedHistory();
         var original = JsonSerializer.Serialize(await db.OutsideWarehouseTransfers.AsNoTracking().SingleAsync());
         var movements = JsonSerializer.Serialize(await db.TreatmentLineageMovements.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync());
         var service = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
@@ -284,7 +308,10 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var room = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
         Assert.Equal(19, room.Positions.Single(x => x.Identity.GrowerLotId == 100000).AuthoritativeQuantity);
         Assert.Equal(26, room.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
-        Assert.All(room.Positions, p => Assert.Equal(p.AuthoritativeQuantity, p.RawProjectionQuantity));
+        AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100000), 19, 0);
+        AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100001), 26, 10);
+        await AssertReceipt(db, received, 7, 0, 100001);
+        Assert.Equal(retainedBefore, await retainedHistory());
     }
 
     [InventoryPostgresFact]
@@ -307,6 +334,48 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
             Assert.NotNull((await service.ApplyEditAsync(form, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
             Assert.True(reached, stage); Assert.Equal(before, await f.Snapshot());
         }
+    }
+
+    private static async Task<Func<Task<string>>> CaptureHistory(CropQcDbContext db)
+    {
+        var ledger = await db.RoomInventoryAdjustments.Select(x => x.Id).ToArrayAsync();
+        var moves = await db.TreatmentLineageMovements.Select(x => x.Id).ToArrayAsync();
+        var audits = await db.AuditLogs.Select(x => x.Id).ToArrayAsync();
+        return async () => JsonSerializer.Serialize(new
+        {
+            Ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => ledger.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Moves = await db.TreatmentLineageMovements.AsNoTracking().Where(x => moves.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Audits = await db.AuditLogs.AsNoTracking().Where(x => audits.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Applications = await db.RoomTreatmentApplications.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
+            Sources = await db.RoomTreatmentApplicationSources.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync()
+        });
+    }
+
+    private static void AssertPosition(InventoryAvailabilityResult position, int quantity, int excess)
+    {
+        Assert.True(position.IsOperable, string.Join("; ", position.Blockers.Select(x => x.Detail)));
+        Assert.Equal(quantity, position.AuthoritativeQuantity);
+        Assert.Equal(quantity, position.AvailableQuantity);
+        Assert.Equal(quantity + excess, position.RawProjectionQuantity);
+        Assert.Equal(excess, position.ProjectionExcess);
+        Assert.Equal(excess, position.HistoricalProjections.Where(x => x.Reason == ProjectionExclusionReason.UnprovenProjection).Sum(x => x.ExcludedQuantity));
+        Assert.Equal(quantity, position.TreatmentSlices.Sum(x => x.Quantity));
+        Assert.All(position.TreatmentSlices, x => { Assert.Equal("u", x.Signature); Assert.Empty(x.ApplicationIds); });
+    }
+
+    private static async Task AssertReceipt(CropQcDbContext db, long receipt, int room, int custody, int grower)
+    {
+        var state = await new InventoryReceiptAvailability(db).ReadAsync(receipt, default);
+        Assert.NotNull(state);
+        Assert.Null(state.Blocker);
+        Assert.Equal(room, state.RoomQuantity);
+        Assert.Equal(custody, state.CustodyQuantity);
+        Assert.All(state.Allocations, a =>
+        {
+            Assert.Equal(grower, a.Position.Identity.GrowerLotId);
+            Assert.Equal(receipt, Assert.Single(a.Slice.ReceiptEvidenceIds));
+            Assert.Equal(InventoryConfidence.Proven, a.Slice.Confidence);
+        });
     }
 
     private sealed class Capture(IInventoryCommandExecutor next) : IInventoryCommandExecutor
