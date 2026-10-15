@@ -144,9 +144,9 @@ public sealed partial class ReceiptInventoryOverrideService(
             if (saved != null && form.CropYear == saved.CropYear
                 && form.GrowerLotId == saved.GrowerLotId && form.FruitProfileId == saved.FruitProfileId
                 && form.WarehouseId == saved.WarehouseId && form.RoomId == saved.RoomId && form.CorrectionSourceRoomId == null
-                && form.ReceivedAt == saved.ReceivedAt && form.CompuTechReceiptId.Trim() == saved.CompuTechReceiptId
-                && form.ReceiptType == saved.ReceiptType && form.GrowerName.Trim() == saved.GrowerName.Trim()
-                && form.GrowerNumber.Trim() == (saved.GrowerNumber ?? saved.LotCode) && form.LotCode.Trim() == saved.LotCode)
+                && MatchesCorrectionMetadata(form, saved)
+                && form.GrowerName?.Trim() == saved.GrowerName.Trim()
+                && MatchesCorrectionLot(form, saved))
                 authorizationError = null;
         }
         if (authorizationError is not null) return authorizationError;

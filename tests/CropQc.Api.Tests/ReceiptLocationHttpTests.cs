@@ -1,7 +1,6 @@
 using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using System.Text.RegularExpressions;
 using CropQc.Data;
 using CropQc.Data.Inventory;
 using CropQc.Web.Controllers;
@@ -41,16 +40,8 @@ public sealed class ReceiptLocationHttpTests
         var html = await page.Content.ReadAsStringAsync();
         Assert.Contains("Correct current inventory location", html); Assert.Contains("100 bins", html);
         Assert.Contains("CorrectionSourceRoomId", html); Assert.DoesNotContain("could not be translated", html);
-        var hidden = Regex.Matches(html, "<input[^>]*type=\"hidden\"[^>]*>").Select(x => x.Value)
-            .Select(x => new { Name = Regex.Match(x, "name=\"([^\"]*)\"").Groups[1].Value, Value = WebUtility.HtmlDecode(Regex.Match(x, "value=\"([^\"]*)\"").Groups[1].Value) })
-            .Where(x => x.Name.Length > 0).GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.First().Value);
-        await using var db = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection).CreateDbContext();
-        var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100000);
-        hidden["CropYear"] = "2026"; hidden["ConfirmCropYear"] = "true"; hidden["CompuTechReceiptId"] = receipt.CompuTechReceiptId;
-        hidden["ReceiptType"] = receipt.ReceiptType; hidden["WarehouseId"] = "9001"; hidden["RoomId"] = "9008";
-        hidden["FruitProfileId"] = "9004"; hidden["GrowerLotId"] = "100000"; hidden["GrowerNumber"] = receipt.GrowerNumber!;
-        hidden["GrowerName"] = receipt.GrowerName; hidden["LotCode"] = receipt.LotCode; hidden["BinCount"] = "100";
-        hidden["ReceivedAt"] = receipt.ReceivedAt.ToString("O"); hidden["CorrectionSourceRoomId"] = "9002";
+        var hidden = ReceiptCorrectionRenderedForm.Read(html);
+        hidden["RoomId"] = "9008"; hidden["CorrectionSourceRoomId"] = "9002";
         hidden["Reason"] = "HTTP receipt location correction"; hidden["ConfirmInventoryChange"] = "true";
         var rejected = new Dictionary<string, string>(hidden); rejected.Remove("__RequestVerificationToken");
         var before = await f.Snapshot();

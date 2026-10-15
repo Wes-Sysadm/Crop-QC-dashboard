@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.RegularExpressions;
 using CropQc.Web.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,14 +27,8 @@ public sealed class ReceiptQuantityHttpTests
         Assert.Contains("Untreated", html); Assert.Contains("Bins to correct", html);
         Assert.Contains("ConfirmAdditionalBinsUntreated", html);
         Assert.DoesNotContain("ownership cannot be proven", html);
-        var hidden = Regex.Matches(html, "<input[^>]*type=\"hidden\"[^>]*>").Select(x => x.Value)
-            .Select(x => new { Name = Regex.Match(x, "name=\"([^\"]*)\"").Groups[1].Value, Value = WebUtility.HtmlDecode(Regex.Match(x, "value=\"([^\"]*)\"").Groups[1].Value) })
-            .Where(x => x.Name.Length > 0).GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.First().Value);
-        hidden["CropYear"] = "2026"; hidden["ConfirmCropYear"] = "true"; hidden["CompuTechReceiptId"] = r.CompuTechReceiptId;
-        hidden["ReceiptType"] = r.ReceiptType; hidden["WarehouseId"] = "9001"; hidden["RoomId"] = "9002";
-        hidden["FruitProfileId"] = "9004"; hidden["GrowerLotId"] = "100000"; hidden["GrowerNumber"] = r.GrowerNumber!;
-        hidden["GrowerName"] = r.GrowerName; hidden["LotCode"] = r.LotCode; hidden["BinCount"] = quantity.ToString();
-        hidden["ReceivedAt"] = r.ReceivedAt.ToString("O"); hidden.Remove("CorrectionSourceRoomId");
+        var hidden = ReceiptCorrectionRenderedForm.Read(html);
+        ReceiptCorrectionRenderedForm.Review(hidden, quantity);
         hidden["Reason"] = quantity < 35 ? "Incorrect original count: 15 buffer bins included" : "Five verified untreated bins omitted from count";
         hidden["ConfirmInventoryChange"] = "true";
         var missingToken = new Dictionary<string, string>(hidden); missingToken.Remove("__RequestVerificationToken");

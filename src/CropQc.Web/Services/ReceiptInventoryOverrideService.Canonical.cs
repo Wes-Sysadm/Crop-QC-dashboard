@@ -72,7 +72,7 @@ public sealed partial class ReceiptInventoryOverrideService
         if (form.CropYear != r.CropYear || form.GrowerLotId != r.GrowerLotId || form.FruitProfileId != r.FruitProfileId)
         {
             if (!form.ConfirmCropYear || form.BinCount != r.BinCount || form.WarehouseId != r.WarehouseId || form.RoomId != r.RoomId
-                || form.ReceivedAt != r.ReceivedAt || form.CompuTechReceiptId.Trim() != r.CompuTechReceiptId || form.ReceiptType != r.ReceiptType
+                || !MatchesCorrectionMetadata(form, r)
                 || form.TrueUpAllocations.Any(x => x.Bins != 0))
                 return Failed("Submit identity, quantity, location and metadata changes as separate administrator operations.");
             var grower = await dbContext.GrowerLots.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.GrowerLotId && x.IsActive, ct);
@@ -87,10 +87,10 @@ public sealed partial class ReceiptInventoryOverrideService
         }
         if (!form.ConfirmCropYear || form.BinCount < 0 || form.CropYear != r.CropYear || form.GrowerLotId != r.GrowerLotId
             || form.FruitProfileId != r.FruitProfileId
-            || form.ReceivedAt != r.ReceivedAt || form.CompuTechReceiptId.Trim() != r.CompuTechReceiptId || form.ReceiptType != r.ReceiptType
-            || form.GrowerName.Trim() != r.GrowerName.Trim())
+            || !MatchesCorrectionMetadata(form, r)
+            || form.GrowerName?.Trim() != r.GrowerName.Trim())
             return Failed("Submit quantity correction separately from receiving identity, location or metadata changes.");
-        if (form.GrowerNumber.Trim() != (r.GrowerNumber ?? r.LotCode) || form.LotCode.Trim() != r.LotCode)
+        if (!MatchesCorrectionLot(form, r))
             return Failed("A receipt identity change requires an explicit identity correction.");
         if (form.WarehouseId != r.WarehouseId || form.RoomId != r.RoomId
             || form.CorrectionSourceRoomId is not null)

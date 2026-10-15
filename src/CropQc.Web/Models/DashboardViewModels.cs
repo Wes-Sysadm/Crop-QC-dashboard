@@ -1724,6 +1724,11 @@ public class UpdateReceiptForm : CreateReceiptForm
 
 public sealed class AdminReceiptInventoryOverrideForm : UpdateReceiptForm
 {
+    // Set only by the HTTP boundary from the actual submitted field set. Keep the
+    // existing LotCode property/serialization order for previously recorded replays.
+    [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool LotCodeOmitted { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public int? CorrectionSourceRoomId { get; set; }
     public long ExpectedConcurrencyVersion { get; set; }

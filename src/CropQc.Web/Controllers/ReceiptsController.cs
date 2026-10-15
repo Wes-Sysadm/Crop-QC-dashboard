@@ -376,6 +376,17 @@ public sealed class ReceiptsController(
         AdminReceiptInventoryOverrideForm form,
         CancellationToken cancellationToken)
     {
+        // Use binding evidence, including prefixed fields/query values. Never trust
+        // a posted omission flag or confuse an explicitly supplied blank with absence.
+        string[] lotCodeFields = [nameof(form.LotCode), $"form.{nameof(form.LotCode)}"];
+        form.LotCodeOmitted = !lotCodeFields.Any(field => ModelState.TryGetValue(field, out var value) && value.RawValue is not null);
+        if (form.LotCodeOmitted)
+            foreach (var field in lotCodeFields) ModelState.Remove(field);
+        if (!ModelState.IsValid)
+        {
+            TempData["Error"] = "The receipt correction contains missing or invalid fields. Reload the receipt and review the correction again.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
         form.Id = id;
         var result = await receiptInventoryOverrideService.ApplyEditAsync(form, User, cancellationToken);
         if (!result.Succeeded)

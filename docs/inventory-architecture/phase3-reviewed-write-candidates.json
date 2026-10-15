@@ -282,6 +282,12 @@
     "Sha256": "7A80DF1ACCF0407BEF52F8B1DAC5689779E565DB1B4E52451E3CB68A4B7363CD"
   },
   {
+    "Path": "src/CropQc.Web/Controllers/ReceiptsController.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "HTTP adapter: ModelState.Remove removes only omitted-field validation metadata. Database access is AsNoTracking reads; mutations remain delegated to the existing authorized services/canonical commands, with no physical write capability.",
+    "Sha256": "ED7B973C6A03CDCB72A3489B4CB5351E6A2DAE805C7024C3C049F35BBDCFAD33"
+  },
+  {
     "Path": "src/CropQc.Web/Controllers/QcStationController.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
@@ -351,7 +357,7 @@
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "A2ABED3DCE7AF1D22B31793470F0D221E9C2E0DCDA4E20C61A6542B02ABB2457"
+    "Sha256": "5B83A0ABD68188568F68D178328E831398347558800047D89E34F56135194AAB"
   },
   {
     "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
@@ -501,7 +507,7 @@
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "422D9271F9FB816ED75D028408DB07EBA07AFE1C1FF665F8DADE69354CA3BFCF"
+    "Sha256": "954E01E3D0E3E3DE09A45A7D9D1B3C7527BBDB40A7158DF16BE72E08D29EBAE6"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptPurgeService.cs",

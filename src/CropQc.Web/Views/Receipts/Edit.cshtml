@@ -33,6 +33,10 @@
         <div class="field">
             <label>Receipt Type</label>
             <select name="ReceiptType">
+                @if (!new[] { "Truck receipt", "Door sample", "Lot sample" }.Contains(form.ReceiptType))
+                {
+                    <option selected="selected">@form.ReceiptType</option>
+                }
                 @foreach (var type in new[] { "Truck receipt", "Door sample", "Lot sample" })
                 {
                     <option selected="@(form.ReceiptType == type ? "selected" : null)">@type</option>

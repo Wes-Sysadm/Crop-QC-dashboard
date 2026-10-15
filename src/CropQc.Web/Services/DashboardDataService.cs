@@ -1982,7 +1982,6 @@ public sealed partial class DashboardDataService(
             }
 
             var model = await BuildReceiptEditPageAsync(cancellationToken);
-            var growerResolver = await (canonicalGrowerService ?? new CanonicalGrowerService(dbContext)).LoadResolutionSetAsync(cancellationToken);
             model.Form = new UpdateReceiptForm
             {
                 ReceiptVersion = receipt.ConcurrencyVersion,
@@ -1991,13 +1990,13 @@ public sealed partial class DashboardDataService(
                 CropYear = receipt.CropYear,
                 ReceivedAt = receipt.ReceivedAt,
                 CompuTechReceiptId = receipt.CompuTechReceiptId,
-                ReceiptType = NormalizeReceiptType(receipt.ReceiptType),
+                ReceiptType = receipt.ReceiptType,
                 WarehouseId = receipt.WarehouseId,
                 RoomId = receipt.RoomId,
                 FruitProfileId = receipt.FruitProfileId,
                 GrowerLotId = receipt.GrowerLotId,
-                GrowerNumber = receipt.GrowerNumber ?? "",
-                GrowerName = growerResolver.DisplayName(receipt.GrowerName, receipt.GrowerNumber ?? receipt.LotCode),
+                GrowerNumber = receipt.GrowerNumber ?? receipt.LotCode,
+                GrowerName = receipt.GrowerName,
                 LotCode = receipt.LotCode,
                 BinCount = receipt.BinCount,
                 ConfirmCropYear = true
