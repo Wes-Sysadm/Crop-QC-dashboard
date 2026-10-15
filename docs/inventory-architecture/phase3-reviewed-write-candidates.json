@@ -56,8 +56,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalIdentityMap.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "FFE81783E04E9D308879236E29BCA018611F1E190C63BFA998ED2CA6BB6969D5"
+    "Reason": "Read-only identity overlay. Optional recorded-time cutoff is used only by historical restoration readiness; existing current-writer calls retain their behavior. No SaveChanges or physical capability.",
+    "Sha256": "3B496DD1017672EB251DB2F9D456D75FB3B8E2F7D410801C111FB1C7C701FD65"
   },
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalProjectionFactory.cs",
@@ -404,8 +404,8 @@
   {
     "Path": "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
-    "Sha256": "0E0FC2C9134C2C6BF0B888D3D5F2FD8F0BA7166B5EC8BC9A03EF233491940DCC"
+    "Reason": "Read-only validation. Canonical reversed loss/outside parents use committed split-restoration evidence; legacy checks remain unchanged. No physical writes or capability.",
+    "Sha256": "50959444A547CBC8F253A9DEF7DC81E7D0022301734477A4E2F80421683D3914"
   },
   {
     "Path": "src/CropQc.Web/Services/InventoryDiagnosticAcknowledgmentService.cs",

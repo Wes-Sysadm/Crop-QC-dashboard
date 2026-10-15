@@ -486,7 +486,8 @@
     {
       "id": "OPS-001",
       "code": [
-        "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs"
+        "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs",
+        "src/CropQc.Data/Inventory/CanonicalRestorationReadiness.cs"
       ],
       "tests": [
         {
@@ -505,6 +506,12 @@
           "type": "CropQc.Api.Tests.CanonicalInventoryArchitectureTests",
           "member": "Every_physical_write_candidate_matches_its_reviewed_source_and_allowlist",
           "kind": "structural",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalRestorationReadinessTests",
+          "member": "Split_restoration_preserves_history_and_strict_readiness_distinguishes_preexisting_excess",
+          "kind": "postgres",
           "required": true
         }
       ],
