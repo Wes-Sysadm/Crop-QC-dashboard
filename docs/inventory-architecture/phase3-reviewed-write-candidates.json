@@ -206,8 +206,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "F91EC50EDB64620E8020FE84F0F5796E42DF19744F2B4CDBA19B721439A46017"
+    "Reason": "Reviewed receipt-specific evidence selection only: reads canonical evidence and adds to local collections; no physical SaveChanges, SQL mutation, writer capability or readiness exemption.",
+    "Sha256": "CF5F53D44CF623DCF274F1865EBA3C306A190852B66D0F7AD12E98D8B9556242"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptHeldEvidence.cs",
@@ -266,8 +266,8 @@
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "966EBF0F8158CD1933BA750B6E92F3876F6C32A991AFA28A360D73F1C732FD8B"
+    "Reason": "Reviewed receipt-specific evidence selection only: reads canonical evidence and adds to local collections; no physical SaveChanges, SQL mutation, writer capability or readiness exemption.",
+    "Sha256": "3363D4ABF1EDCC2774505C5E86DFAF2139CD4518507B9FE5D09A7D1C656FB24A"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryEventReplay.cs",

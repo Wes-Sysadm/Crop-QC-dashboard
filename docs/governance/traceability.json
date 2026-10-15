@@ -132,7 +132,8 @@
       "id": "INV-006",
       "code": [
         "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
-        "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs"
+        "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
+        "src/CropQc.Shared/Inventory/InventoryCohortEvidence.cs"
       ],
       "tests": [
         {
@@ -140,9 +141,57 @@
           "member": "INV004_shared_projection_excess_cannot_invent_quantity_or_receipt_ancestry",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptIdentityWorkflowTests",
+          "member": "Normal_run_cancellation_restores_mixed_consumption_to_current_receipt_identities",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptIdentityWorkflowTests",
+          "member": "Normal_loss_reversal_restores_mixed_consumption_to_current_receipt_identities",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptIdentityWorkflowTests",
+          "member": "Exact_receipt_reclassification_merges_into_existing_identity_without_changing_other_receipts_or_history",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.CanonicalReceiptIdentityWorkflowTests",
+          "member": "Receipt_correction_splits_mixed_outside_custody_and_normal_return_restores_each_current_identity",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptSpecificCustodyEvidenceTests",
+          "member": "Exact_receipt_survives_repeated_partial_returns_without_claiming_shared_stock_or_treatment",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptSpecificCustodyEvidenceTests",
+          "member": "Missing_or_contradictory_selected_departure_proof_blocks_service_and_command_without_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptSpecificCustodyEvidenceTests",
+          "member": "Unallocated_historical_withdrawal_does_not_prove_exact_surviving_receipt_or_absence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptSpecificCustodyEvidenceTests",
+          "member": "Concurrent_receipt_identity_corrections_commit_once_and_preserve_other_stock",
+          "kind": "postgres",
+          "required": true
         }
       ],
-      "gap": "Exact ancestry stays unknown where records do not support allocation, even when a shared pool is operable."
+      "gap": "Exact selected membership is independent of unrelated shared ancestry. Unknown treatment, contradictory custody, or a shared cohort that may still contain the selected receipt remains blocked; no historical projection repair is authorized."
     },
     {
       "id": "TRT-001",
