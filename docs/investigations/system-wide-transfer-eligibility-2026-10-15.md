@@ -538,7 +538,7 @@ A complete lifecycle test exposed a second defect: the canonical received-return
 writer cleared BinsReceived/destination while retaining the receive ledger. Strict
 readiness correctly failed. Internal returns now retain the completed receive
 snapshot, matching the established internal reversal and strict ledger contract.
-Cross-company reopen/return behavior is unchanged. No readiness assertion was
+Truck Receipt-required reopen/return behavior is unchanged. No readiness assertion was
 removed and no error became a warning.
 
 ### Exact reconciliation and integrity
