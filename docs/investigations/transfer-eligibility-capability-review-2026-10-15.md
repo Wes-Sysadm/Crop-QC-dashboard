@@ -75,3 +75,14 @@ Registry updates for these three files record this reviewed read-only diff. They
 not waive runtime writer fences, authorize projection repairs, or replace executed
 PostgreSQL correctness/performance validation. Protected-data rehearsal and production
 release remain separate pending gates.
+
+### Final origin-revision dependency review
+
+The final scoped/full-reader regression exposed a selected receipt whose other
+historical identity triggers original-receipt snapshot validation. The narrowed
+loader omitted that trigger. Reviewed fix: retain the original room query solely
+for a bounded, distinct SELECT of selected receipt IDs joined to their current
+quantity/identity. The original mismatch predicate and revision interpretation
+remain unchanged. It loads no unrelated receipt entities, performs no writes,
+and introduces no capability, schema, authority or readiness exemption. Update
+only this read adapter's content lock after this review.

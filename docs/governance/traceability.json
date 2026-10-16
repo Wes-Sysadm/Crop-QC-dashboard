@@ -167,6 +167,12 @@
         },
         {
           "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scope_retains_original_receipt_revision_when_another_identity_triggers_its_validation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
           "member": "Wide_history_preserves_proof_across_scopes_without_aggregating_other_lots",
           "kind": "postgres",
           "required": true

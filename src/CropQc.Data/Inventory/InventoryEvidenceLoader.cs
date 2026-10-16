@@ -70,6 +70,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         // Include rooms with orphan projections even if the ledger has no matching position.
         var rowQuery = db.RoomInventoryAdjustments.AsNoTracking().Where(x =>
             (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId)));
+        var originRowQuery = rowQuery;
         if (historyLots != null) rowQuery = rowQuery.Where(x => historyLots.Contains(x.LotNumber.Trim().ToUpper()));
         var rows = await Bounded(rowQuery, ct);
         var segmentQuery = db.TreatmentLineageSegments.AsNoTracking().Where(x =>
@@ -105,6 +106,18 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         var correctedOriginIds = receipts.Where(r => rows.Any(l => l.AdjustmentType == "ReceiptAdd" && l.ReceiptId == r.Id
             && (l.ChangeAmount != r.BinCount || l.CropYear != r.CropYear || l.GrowerLotId != r.GrowerLotId || l.FruitProfileId != r.FruitProfileId)))
             .Select(r => r.Id).ToArray();
+        if (historyLots != null && receiptIds.Length != 0)
+        {
+            // A selected receipt's earlier identity can trigger original-snapshot
+            // validation even when that identity is outside the requested lots.
+            // Preserve the original room scope without loading unrelated origins.
+            correctedOriginIds = (await Bounded(
+                (from l in originRowQuery
+                 join r in db.Receipts.AsNoTracking() on l.ReceiptId equals r.Id
+                 where receiptIds.Contains(r.Id) && l.AdjustmentType == "ReceiptAdd"
+                     && (l.ChangeAmount != r.BinCount || l.CropYear != r.CropYear || l.GrowerLotId != r.GrowerLotId || l.FruitProfileId != r.FruitProfileId)
+                 select r.Id).Distinct(), ct)).ToArray();
+        }
         var originRevisions = correctedOriginIds.Length == 0 ? [] : await Bounded(db.ReceiptInventoryOverrides.AsNoTracking()
             .Where(x => correctedOriginIds.Contains(x.ReceiptId)), ct);
         var appIds = segments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId)

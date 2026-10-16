@@ -86,3 +86,22 @@ A fresh protected production-shaped restore IS required to revalidate actual clo
 No production configuration, seal, correction, reconstruction or authoritative quantity changes are authorized here. Live readiness, fresh independently verified release backup, schema compatibility, new exact binaries, compensation-aware activatable rollback, authenticated affected routes and independent production verification remain required after human review and explicit owner release authority. The separate RED reconstruction and historical receipt repairs remain excluded.
 
 Cleanup verified at **2026-10-16T15:45:43.4538292+00:00**: task-owned synthetic container `743f5b28fb3615a3fc7bb8193f43749ad4f6c48166a4374cf93d6f258590e0f5` and volume `1d678ce925083aac4acee3abec583819b03fed474e6a7b1fa369b0fd9a62a5e7` deleted; both absent. Unrelated existing containers and protected backup packages were preserved. No cloud resources or incremental cloud charges were created.
+
+## Final receipt-revision dependency and approved next rehearsal
+
+Final review found one additional dependency: a selected receipt's ReceiptAdd in
+another historical identity can trigger original-snapshot validation. The new
+PostgreSQL regression failed before the correction (original quantity/identity
+proof differed) and passes afterward. A bounded distinct receipt-ID query retains
+the full original room scope and mismatch predicate without unrelated aggregation.
+Seven scope cases pass; the subsequent affected/mandatory run passed 198 cases,
+zero failures/skips, including every required method. Governance tests pass 29/29.
+Earlier 347-case evidence remains applicable except for the specifically rerun
+receipt-origin dependency. No model, writer or migration changed.
+
+The owner has now approved **one isolated #204 restore** on 2026-10-16 for affected
+performance, readiness and forward/rollback/handback. This replaces the pending
+permission status above, not any release safeguard. No merge/deploy/production
+repair is authorized. Final synthetic timing confirmation and this new restore's
+results will be recorded separately; previous timings remain evidence for their
+identified executable, not automatically for the revised executable.

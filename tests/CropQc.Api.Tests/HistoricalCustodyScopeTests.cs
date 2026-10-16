@@ -15,6 +15,61 @@ namespace CropQc.Api.Tests;
 public sealed class HistoricalCustodyScopeTests
 {
     [InventoryPostgresFact]
+    public async Task Scope_retains_original_receipt_revision_when_another_identity_triggers_its_validation()
+    {
+        await using var f = await LegacyTransferEligibilityTests.Legacy();
+        await using var db = f.CreateDbContext();
+        var at = InventoryEvidenceCorpus.Start;
+        db.RoomInventoryAdjustments.Add(new()
+        {
+            Id = 600000,
+            ReceiptId = 100000,
+            WarehouseId = 9001,
+            RoomId = 9002,
+            CropYear = 2026,
+            GrowerLotId = null,
+            FruitProfileId = 9004,
+            GrowerName = "Historical identity",
+            LotNumber = "OTHER",
+            VarietyCode = "CGAL",
+            ChangeAmount = 19,
+            NewBinCount = 19,
+            AdjustmentType = "ReceiptAdd",
+            AdjustmentAt = at,
+            CreatedAt = at
+        });
+        db.ReceiptInventoryOverrides.Add(new()
+        {
+            Id = Guid.NewGuid(),
+            OperationKey = Guid.NewGuid().ToString(),
+            ReceiptId = 100000,
+            ActionType = "InventoryReclassification",
+            OldReceiptBinCount = 19,
+            NewReceiptBinCount = 19,
+            AdministratorUserId = 8000,
+            Reason = "Contradictory original identity is not proof",
+            CreatedAt = at.AddHours(1),
+            IsComplete = true,
+            BeforeReceiptSnapshotJson =
+                "{\"id\":100000,\"binCount\":19,\"cropYear\":2026,\"growerLotId\":999999,\"fruitProfileId\":9004}",
+            AfterReceiptSnapshotJson = "{}",
+            AffectedInventorySnapshotJson = "[]"
+        });
+        await db.SaveChangesAsync();
+        var loader = new InventoryEvidenceLoader(db);
+        var method = typeof(InventoryEvidenceLoader).GetMethod("LoadRoomsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var full = await (Task<InventoryEvidenceBatch>)method.Invoke(loader,
+            [new InventoryScope(null, [9002, 9003]), DateTimeOffset.UtcNow, "RepeatableRead", CancellationToken.None, false, null, null])!;
+        var target = Assert.Single(full.Positions, x => x.Location.RoomId == 9002 && x.Identity.Lot == "CORPUS-100000");
+        Assert.False(Assert.Single(target.Receipts).OriginalIdentityVerified);
+        var scoped = await (Task<InventoryEvidenceBatch>)method.Invoke(loader,
+            [new InventoryScope(null, [9002, 9003]), DateTimeOffset.UtcNow, "RepeatableRead", CancellationToken.None, false,
+                new HashSet<string> { target.Identity.Key }, new[] { target.Identity.Lot }])!;
+        Assert.Equal(JsonSerializer.Serialize(target), JsonSerializer.Serialize(Assert.Single(scoped.Positions,
+            x => x.Location.RoomId == 9002 && x.Identity.Key == target.Identity.Key)));
+    }
+
+    [InventoryPostgresFact]
     public async Task Wide_history_preserves_proof_across_scopes_without_aggregating_other_lots()
     {
         await using var f = await WideHistory();
