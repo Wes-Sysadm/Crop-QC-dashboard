@@ -1,0 +1,1576 @@
+{
+  "status": "NO-GO: broad historical closure still adds multi-second JIT work; stopped before workflow mutations and rollback",
+  "source": "efe895913bc54080a52746897a9dea19e12bcf52",
+  "main": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+  "authorization": {
+    "ownerReply": "Approve one isolated #204 restore",
+    "date": "2026-10-16",
+    "scope": "One already-local verified backup #204 restore; affected performance, strict readiness, forward/rollback/handback; no network, published ports, production credentials or connection; delete database and volume afterward",
+    "productionReleaseAuthorized": false,
+    "restoreStarted": true,
+    "oneTimeAuthorizationConsumed": true
+  },
+  "restore": {
+    "backup": 204,
+    "dumpSha256": "c62e035f97b2b330921272342a9d23bae4803e56d681025df4adca0040ba997a",
+    "container": "pr284-closure-restore-pg",
+    "database": "pr284_preparation_test",
+    "network": "none",
+    "ports": [],
+    "productionConnection": false,
+    "restored": true
+  },
+  "isolation": {
+    "containerId": "15aacdd29633831151957e79967da5466876a45aaa2042ac8367f2e122c52df6",
+    "network": "none",
+    "publishedPorts": false,
+    "volumeNames": [
+      "187971d2ea83d1af862832e559946fcb587b68e45a60ad35e33b039b45c5b799"
+    ],
+    "database": "pr284_preparation_test",
+    "version": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "migrations": [
+      "20260521173857_InitialMvp1ReceivingQcModel",
+      "20260521220136_AddQcSummaryOverrideFields",
+      "20260529210944_AddDashboardConfiguration",
+      "20260529212812_AddUserAccessFields",
+      "20260529230504_AddGoogleDrivePhotoMetadata",
+      "20260530010358_AddQcStationEnrollmentFields",
+      "20260711195500_LinkVarietyColorsToFruitProfiles",
+      "20260711213000_AddCanonicalGrowers",
+      "20260717213000_AddFieldSamplesAndOrchardBlocks",
+      "20260721233604_AddOrchardReportRecipients",
+      "20260722233135_AddFieldSampleEmailHistory",
+      "20260723011519_AddFieldSampleAutosaveDefectInspection",
+      "20260723024710_AddProductionBackupHistory",
+      "20260723055241_AddBackupNotificationsAndReceiptPurgeAudit",
+      "20260723142741_AddFieldSampleDeletionAudit",
+      "20260723163704_AddRunProjections",
+      "20260723230325_AddRunProjectionPackoutAndGradeSnapshots",
+      "20260724003812_AddPreharvestRunProjectionMode",
+      "20260724020525_AddRunProjectionFacilityAndSoftDelete",
+      "20260724053022_AddCommercialPackProjectionConfiguration",
+      "20260724074306_AddOrchardManagerContactImports",
+      "20260724150253_AddRunProjectionOutcomeTrendSnapshots",
+      "20260724194806_AddRunProjectionCullSnapshot",
+      "20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels",
+      "20260804052104_AddFacilityRunReporting",
+      "20260805014812_AddReceiptInventoryOverrides",
+      "20260923202144_AddTruckReceiptReconciliation",
+      "20261001144023_CanonicalInventoryCommands",
+      "20261001203105_CanonicalIdentityRestorationSides",
+      "20261002031709_BoundedBackupSnapshotProgress",
+      "20261007212154_ReceiptHeldTransferCustody",
+      "20261007235352_ReceiptCustodyCompensations",
+      "20261007235822_ReceiptCustodyGuardrails",
+      "20261009150448_IsolatedInventoryMovementCohorts"
+    ]
+  },
+  "candidate": {
+    "source": "efe895913bc54080a52746897a9dea19e12bcf52",
+    "archiveSha256": "1a6833c0355db2b6e673b115abe9d172330248f4aec03bc7846d6de4edb53ae3",
+    "dockerfileSha256": "6e30a4ef4afc48234f715823090e8454b1f8b22ec2b5dd92a8793c1b1b18dfab",
+    "pinnedDockerfileSha256": "a1b4ec2c2328924e4e7c6c42a9635bee926d16471b362757727be07e7145f249",
+    "purpose": "Isolated preparation candidate; not owner-reviewed release approval",
+    "imageIndexDigest": "sha256:e0ff5814d3ff0fc7dcd5fd7c4b23911f697f558ebb2027719a595bba9c366e97",
+    "architecture": "amd64",
+    "os": "linux",
+    "runtime": [
+      "x86_64",
+      "Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+      "Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]"
+    ],
+    "assemblies": {
+      "CropQc.Web.dll": "59b9f1493cd923fb2dc1ff210743003899d636072ebe0b30d5515611945dd356",
+      "CropQc.Data.dll": "27165441559771f70328b68fc65c5db6b61054e87cfb33b69c28db435133278f",
+      "CropQc.Shared.dll": "e45767523a88d1b4a52d381a66afe20fcd51eb8d8ccae8e768b0be9133eeab21"
+    },
+    "archiveBytes": 150424064,
+    "releaseApproval": false,
+    "sourceArchiveSha256": "bc1d74105d68eff085aa78df9699fb3df026bfbdc16fecadda08513d1b580732"
+  },
+  "rollback": {
+    "source": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+    "imageIndexDigest": "sha256:598c26de196ebc3ecfb160fa07534de7d2400ba57c2376e74457b10aa2c028ec",
+    "baselineReadinessPassed": true,
+    "post284WritesCompatibility": "NOT RUN: performance stop"
+  },
+  "baselineReadiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1139,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1046,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 452,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": []
+      },
+      "invalidOutside": 0
+    }
+  },
+  "candidateReadiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1139,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1046,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 452,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": []
+      },
+      "invalidOutside": 0
+    }
+  },
+  "candidateConservation": {
+    "receiving": {
+      "cropYear": 2026,
+      "receiptCount": 2627,
+      "receiptTotal": 109559,
+      "ledgerTotal": 109559,
+      "netDifference": 0,
+      "mismatchReceiptIds": [],
+      "mismatchCount": 0
+    },
+    "global": {
+      "facility": "GLOBAL",
+      "categories": {
+        "Internal transfers": 0,
+        "Receiving / quantity corrections / voids": 110085,
+        "Opening inventory": 6143,
+        "Runs (net of reversals)": -36315,
+        "Identity/location corrections": 0,
+        "Depletions / losses (net)": -18,
+        "Outside warehouse custody (net room removal)": -1409,
+        "Inter-crew custody (net room movement)": -844
+      },
+      "authoritativeCurrentBins": 77642,
+      "accountedBins": 77642,
+      "difference": 0
+    },
+    "unclassifiedTypes": [],
+    "unbalancedRoomTransfers": [],
+    "unbalancedIdentityCorrections": [],
+    "treatmentIdentityDebit": 6088,
+    "treatmentIdentityCredit": 6088,
+    "invalidTreatmentIdentityMovements": 0,
+    "otherHistoricalTreatmentCorrections": {
+      "IdentityReclassificationUntreatedBackfill": 426,
+      "IdentityReclassificationRetirement": 535,
+      "InventoryIdentityCorrectionOut": 64,
+      "InventoryIdentityCorrectionIn": 64
+    },
+    "interCrewTransitBins": 844,
+    "outsideWarehouseCustodyBins": 1409,
+    "receiptHeldBins": 0,
+    "treatmentIdentityDifference": 0,
+    "isReady": true
+  },
+  "measurements": {
+    "baseline": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 9780.3837,
+        "cpuMs": 3166.221,
+        "allocatedBytes": 327742848,
+        "workingSet": 187916288,
+        "peakWorkingSet": 187916288,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 7632.461,
+        "cpuMs": 987.988,
+        "allocatedBytes": 65086376,
+        "workingSet": 206991360,
+        "peakWorkingSet": 207351808,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 85.465,
+        "cpuMs": 51.663,
+        "allocatedBytes": 8087120,
+        "workingSet": 207675392,
+        "peakWorkingSet": 207675392,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 7731.3167,
+        "cpuMs": 869.246,
+        "allocatedBytes": 64842232,
+        "workingSet": 224317440,
+        "peakWorkingSet": 224317440,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 23.6046,
+        "cpuMs": 7.03,
+        "allocatedBytes": 1304696,
+        "workingSet": 224321536,
+        "peakWorkingSet": 224321536,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 7767.5062,
+        "cpuMs": 492.443,
+        "allocatedBytes": 66036944,
+        "workingSet": 230584320,
+        "peakWorkingSet": 230584320,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 7836.1739,
+        "cpuMs": 166.241,
+        "allocatedBytes": 64737024,
+        "workingSet": 227557376,
+        "peakWorkingSet": 227856384,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 43.8827,
+        "cpuMs": 25.651,
+        "allocatedBytes": 2190320,
+        "workingSet": 227610624,
+        "peakWorkingSet": 227856384,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 7879.5183,
+        "cpuMs": 211.58,
+        "allocatedBytes": 64405088,
+        "workingSet": 241917952,
+        "peakWorkingSet": 245280768,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 23.7307,
+        "cpuMs": 10.627,
+        "allocatedBytes": 1295792,
+        "workingSet": 242036736,
+        "peakWorkingSet": 245280768,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 7843.3226,
+        "cpuMs": 204.098,
+        "allocatedBytes": 66168960,
+        "workingSet": 254914560,
+        "peakWorkingSet": 254914560,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 7893.5002,
+        "cpuMs": 155.278,
+        "allocatedBytes": 64733656,
+        "workingSet": 248979456,
+        "peakWorkingSet": 252076032,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 54.1111,
+        "cpuMs": 25.701,
+        "allocatedBytes": 2178008,
+        "workingSet": 244793344,
+        "peakWorkingSet": 252076032,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 7923.7,
+        "cpuMs": 166.199,
+        "allocatedBytes": 64569888,
+        "workingSet": 244883456,
+        "peakWorkingSet": 252076032,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 23.072,
+        "cpuMs": 10.322,
+        "allocatedBytes": 1295792,
+        "workingSet": 244899840,
+        "peakWorkingSet": 252076032,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      }
+    ],
+    "candidate": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 14013.1913,
+        "cpuMs": 4378.894,
+        "allocatedBytes": 380071368,
+        "workingSet": 202649600,
+        "peakWorkingSet": 202821632,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 11468.1209,
+        "cpuMs": 858.812,
+        "allocatedBytes": 107369544,
+        "workingSet": 221401088,
+        "peakWorkingSet": 221892608,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 130.4309,
+        "cpuMs": 57.986,
+        "allocatedBytes": 13292168,
+        "workingSet": 222027776,
+        "peakWorkingSet": 222027776,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 11575.2628,
+        "cpuMs": 582.919,
+        "allocatedBytes": 107168368,
+        "workingSet": 232431616,
+        "peakWorkingSet": 240377856,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 67.6764,
+        "cpuMs": 22.32,
+        "allocatedBytes": 5564344,
+        "workingSet": 232431616,
+        "peakWorkingSet": 240377856,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 11742.4031,
+        "cpuMs": 398.455,
+        "allocatedBytes": 108409888,
+        "workingSet": 251408384,
+        "peakWorkingSet": 253333504,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 11700.7204,
+        "cpuMs": 231.01,
+        "allocatedBytes": 107242264,
+        "workingSet": 259031040,
+        "peakWorkingSet": 265555968,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 87.4398,
+        "cpuMs": 25.929,
+        "allocatedBytes": 6484144,
+        "workingSet": 259522560,
+        "peakWorkingSet": 265555968,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 11945.0327,
+        "cpuMs": 282.93,
+        "allocatedBytes": 106858528,
+        "workingSet": 263327744,
+        "peakWorkingSet": 268861440,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 64.4413,
+        "cpuMs": 23.058,
+        "allocatedBytes": 5571688,
+        "workingSet": 263426048,
+        "peakWorkingSet": 268861440,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 11836.1925,
+        "cpuMs": 286.16,
+        "allocatedBytes": 108467000,
+        "workingSet": 263770112,
+        "peakWorkingSet": 268861440,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 11911.0422,
+        "cpuMs": 239.628,
+        "allocatedBytes": 107153096,
+        "workingSet": 263974912,
+        "peakWorkingSet": 268861440,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 84.2315,
+        "cpuMs": 31.705,
+        "allocatedBytes": 6479520,
+        "workingSet": 264032256,
+        "peakWorkingSet": 268861440,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 12039.0357,
+        "cpuMs": 235.629,
+        "allocatedBytes": 106797096,
+        "workingSet": 268189696,
+        "peakWorkingSet": 268861440,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 75.9361,
+        "cpuMs": 28.558,
+        "allocatedBytes": 5567368,
+        "workingSet": 268210176,
+        "peakWorkingSet": 268861440,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19
+      }
+    ]
+  },
+  "singleRoomPlans": [
+    {
+      "historicalScope": false,
+      "parameters": [
+        {
+          "ParameterName": "@__roomIds_0",
+          "count": 1
+        },
+        {
+          "ParameterName": "@__asOf_Value_1",
+          "count": 1
+        },
+        {
+          "ParameterName": "@__p_2",
+          "count": 1
+        }
+      ],
+      "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+      "planningMs": 9.607,
+      "executionMs": 8.151,
+      "estimatedCost": 15980.42,
+      "actualRows": 19.0,
+      "sharedHitBlocks": 11795,
+      "sharedReadBlocks": 0,
+      "tempWrittenBlocks": 0,
+      "jit": null
+    },
+    {
+      "historicalScope": true,
+      "parameters": [
+        {
+          "ParameterName": "@__roomIds_0",
+          "count": 25
+        },
+        {
+          "ParameterName": "@__asOf_Value_1",
+          "count": 1
+        },
+        {
+          "ParameterName": "@__normalizedLots_2",
+          "count": 9
+        },
+        {
+          "ParameterName": "@__p_3",
+          "count": 1
+        }
+      ],
+      "sqlSha256": "ed3a25cc5dbe4972451c77fd39d02710c113d9b53654642c9f721ca43bea6390",
+      "planningMs": 9.55,
+      "executionMs": 23.574,
+      "estimatedCost": 45850.96,
+      "actualRows": 110.0,
+      "sharedHitBlocks": 26138,
+      "sharedReadBlocks": 0,
+      "tempWrittenBlocks": 0,
+      "jit": null
+    }
+  ],
+  "broadDiagnosticPlans": [
+    {
+      "historicalScope": false,
+      "parameters": [
+        {
+          "ParameterName": "@__p_0",
+          "count": 1
+        }
+      ],
+      "sqlSha256": "a4aa47561f87d451bdaa06a1fdc145095ffe3ba5eeea05c796bcaf133ae43494",
+      "planningMs": 8.281,
+      "executionMs": 3685.586,
+      "estimatedCost": 1245267.71,
+      "actualRows": 1068.0,
+      "sharedHitBlocks": 302186,
+      "sharedReadBlocks": 0,
+      "tempWrittenBlocks": 0,
+      "jit": {
+        "Functions": 624,
+        "Options": {
+          "Inlining": true,
+          "Optimization": true,
+          "Expressions": true,
+          "Deforming": true
+        },
+        "Timing": {
+          "Generation": {
+            "Deform": 10.815,
+            "Total": 21.57
+          },
+          "Inlining": 17.211,
+          "Optimization": 1985.774,
+          "Emission": 1460.763,
+          "Total": 3485.318
+        }
+      }
+    },
+    {
+      "historicalScope": false,
+      "parameters": [
+        {
+          "ParameterName": "@__roomIds_0",
+          "count": 66
+        },
+        {
+          "ParameterName": "@__asOf_Value_1",
+          "count": 1
+        },
+        {
+          "ParameterName": "@__p_2",
+          "count": 1
+        }
+      ],
+      "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+      "planningMs": 8.504,
+      "executionMs": 3797.374,
+      "estimatedCost": 1379440.54,
+      "actualRows": 1066.0,
+      "sharedHitBlocks": 392588,
+      "sharedReadBlocks": 0,
+      "tempWrittenBlocks": 0,
+      "jit": {
+        "Functions": 626,
+        "Options": {
+          "Inlining": true,
+          "Optimization": true,
+          "Expressions": true,
+          "Deforming": true
+        },
+        "Timing": {
+          "Generation": {
+            "Deform": 11.482,
+            "Total": 23.249
+          },
+          "Inlining": 17.222,
+          "Optimization": 2069.742,
+          "Emission": 1495.449,
+          "Total": 3605.663
+        }
+      }
+    },
+    {
+      "historicalScope": true,
+      "parameters": [
+        {
+          "ParameterName": "@__roomIds_0",
+          "count": 59
+        },
+        {
+          "ParameterName": "@__asOf_Value_1",
+          "count": 1
+        },
+        {
+          "ParameterName": "@__normalizedLots_2",
+          "count": 42
+        },
+        {
+          "ParameterName": "@__p_3",
+          "count": 1
+        }
+      ],
+      "sqlSha256": "ed3a25cc5dbe4972451c77fd39d02710c113d9b53654642c9f721ca43bea6390",
+      "planningMs": 8.566,
+      "executionMs": 3715.784,
+      "estimatedCost": 583901.09,
+      "actualRows": 492.0,
+      "sharedHitBlocks": 173409,
+      "sharedReadBlocks": 0,
+      "tempWrittenBlocks": 0,
+      "jit": {
+        "Functions": 621,
+        "Options": {
+          "Inlining": true,
+          "Optimization": true,
+          "Expressions": true,
+          "Deforming": true
+        },
+        "Timing": {
+          "Generation": {
+            "Deform": 12.627,
+            "Total": 24.328
+          },
+          "Inlining": 18.089,
+          "Optimization": 2065.562,
+          "Emission": 1520.811,
+          "Total": 3628.79
+        }
+      }
+    }
+  ],
+  "plannerSettings": {
+    "jit": "on",
+    "jit_above_cost": 100000,
+    "jit_inline_above_cost": 500000,
+    "jit_optimize_above_cost": 500000,
+    "random_page_cost": 1.1,
+    "work_mem_kB": 26468,
+    "max_parallel_workers_per_gather": 1
+  },
+  "measurementQualifications": [
+    "Sequential same-database runs, PostgreSQL 18.4, .NET 9.0.21 Linux amd64, 2 CPU limit each; application 2 GiB and database 3 GiB; no production-setting change.",
+    "Round 0 is a process first pass, not a disk-cold cache claim. Warm ranges use rounds 1 and 2.",
+    "rowsRead counts reader calls including terminal reads; evidenceRows is loader accounting and excludes some indexes/aggregate rows.",
+    "roommove outputRows=-1 is an instrumentation limitation for its non-IEnumerable projection wrapper, not a negative position count.",
+    "Initial command accidentally used --explain as the scenario name and therefore measured the fallback single-room branch only. Those initial samples are retained separately and excluded here.",
+    "Synthetic whole-string fingerprint comparison initially differed only in table result ordering; per-table counts/hashes matched. Subsequent verification uses stable order."
+  ],
+  "integrity": {
+    "allOriginalRowsPreserved": true,
+    "tables": 113,
+    "originalRows": 269834,
+    "differences": [],
+    "migrationsUnchanged": true,
+    "newRowsByTable": {}
+  },
+  "cleanup": {
+    "utc": "2026-10-16T16:36:20.733685+00:00",
+    "container": "pr284-closure-restore-pg",
+    "containerId": "15aacdd29633831151957e79967da5466876a45aaa2042ac8367f2e122c52df6",
+    "containerDeleted": true,
+    "volumesDeleted": [
+      "187971d2ea83d1af862832e559946fcb587b68e45a60ad35e33b039b45c5b799"
+    ],
+    "uncompressedRestoreSqlDeleted": true,
+    "originalBackupRetained": true,
+    "productionAccessByRehearsal": false
+  },
+  "applicationHeadCi": {
+    "headRefOid": "efe895913bc54080a52746897a9dea19e12bcf52",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-16T16:02:31Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Wes-Sysadm/Crop-QC-dashboard/actions/runs/38928742559/job/117066950431",
+        "name": "governance",
+        "startedAt": "2026-10-16T16:02:19Z",
+        "status": "COMPLETED",
+        "workflowName": "Governance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-16T16:06:31Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Wes-Sysadm/Crop-QC-dashboard/actions/runs/38928742559/job/117066950461",
+        "name": "contracts",
+        "startedAt": "2026-10-16T16:02:19Z",
+        "status": "COMPLETED",
+        "workflowName": "Governance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-16T16:03:21Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Wes-Sysadm/Crop-QC-dashboard/actions/runs/38928742559/job/117066950233",
+        "name": "windows-sync (pwsh)",
+        "startedAt": "2026-10-16T16:02:20Z",
+        "status": "COMPLETED",
+        "workflowName": "Governance"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-16T16:03:19Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Wes-Sysadm/Crop-QC-dashboard/actions/runs/38928742559/job/117066950433",
+        "name": "windows-sync (powershell)",
+        "startedAt": "2026-10-16T16:02:19Z",
+        "status": "COMPLETED",
+        "workflowName": "Governance"
+      }
+    ]
+  },
+  "affectedValidation": {
+    "requiredMethods": 82,
+    "mandatoryCases": 195,
+    "allPassed": true,
+    "totalExecuted": 198,
+    "allExecutedPassed": true
+  },
+  "synthetic": {
+    "matchedEvidenceEqual": true,
+    "positions": 21,
+    "all113TablesUnchanged": true,
+    "measurements": {
+      "baseline-origin": [
+        {
+          "scenario": "intercrew",
+          "round": 0,
+          "elapsedMs": 8560.1144,
+          "cpuMs": 2663.18,
+          "allocatedBytes": 282940736,
+          "workingSet": 176148480,
+          "peakWorkingSet": 176148480,
+          "queryCount": 18,
+          "rowsRead": 6224,
+          "evidenceRows": null,
+          "outputRows": 0,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 0,
+          "elapsedMs": 6659.8642,
+          "cpuMs": 840.311,
+          "allocatedBytes": 27808752,
+          "workingSet": 185106432,
+          "peakWorkingSet": 185106432,
+          "queryCount": 14,
+          "rowsRead": 6219,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 0,
+          "elapsedMs": 89.3574,
+          "cpuMs": 58.706,
+          "allocatedBytes": 8541064,
+          "workingSet": 185880576,
+          "peakWorkingSet": 185880576,
+          "queryCount": 13,
+          "rowsRead": 269,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 0,
+          "elapsedMs": 6747.2306,
+          "cpuMs": 689.916,
+          "allocatedBytes": 27554648,
+          "workingSet": 197648384,
+          "peakWorkingSet": 197648384,
+          "queryCount": 16,
+          "rowsRead": 6722,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 0,
+          "elapsedMs": 36.7461,
+          "cpuMs": 19.827,
+          "allocatedBytes": 2413632,
+          "workingSet": 198348800,
+          "peakWorkingSet": 198348800,
+          "queryCount": 10,
+          "rowsRead": 224,
+          "evidenceRows": 171,
+          "outputRows": 21,
+          "treatmentSlices": 0
+        },
+        {
+          "scenario": "intercrew",
+          "round": 1,
+          "elapsedMs": 6888.5211,
+          "cpuMs": 380.087,
+          "allocatedBytes": 27686936,
+          "workingSet": 200650752,
+          "peakWorkingSet": 201789440,
+          "queryCount": 18,
+          "rowsRead": 6224,
+          "evidenceRows": null,
+          "outputRows": 0,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 1,
+          "elapsedMs": 6913.088,
+          "cpuMs": 87.219,
+          "allocatedBytes": 27596792,
+          "workingSet": 200781824,
+          "peakWorkingSet": 201789440,
+          "queryCount": 14,
+          "rowsRead": 6219,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 1,
+          "elapsedMs": 39.7164,
+          "cpuMs": 9.559,
+          "allocatedBytes": 2621800,
+          "workingSet": 200781824,
+          "peakWorkingSet": 201789440,
+          "queryCount": 13,
+          "rowsRead": 269,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 1,
+          "elapsedMs": 7382.934,
+          "cpuMs": 152.807,
+          "allocatedBytes": 27294752,
+          "workingSet": 211038208,
+          "peakWorkingSet": 215506944,
+          "queryCount": 16,
+          "rowsRead": 6722,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 1,
+          "elapsedMs": 35.666,
+          "cpuMs": 27.396,
+          "allocatedBytes": 2048760,
+          "workingSet": 211099648,
+          "peakWorkingSet": 215506944,
+          "queryCount": 10,
+          "rowsRead": 224,
+          "evidenceRows": 171,
+          "outputRows": 21,
+          "treatmentSlices": 0
+        },
+        {
+          "scenario": "intercrew",
+          "round": 2,
+          "elapsedMs": 6861.7726,
+          "cpuMs": 66.312,
+          "allocatedBytes": 27690112,
+          "workingSet": 211181568,
+          "peakWorkingSet": 215506944,
+          "queryCount": 18,
+          "rowsRead": 6224,
+          "evidenceRows": null,
+          "outputRows": 0,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 2,
+          "elapsedMs": 6710.8681,
+          "cpuMs": 66.471,
+          "allocatedBytes": 27603360,
+          "workingSet": 211324928,
+          "peakWorkingSet": 215506944,
+          "queryCount": 14,
+          "rowsRead": 6219,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 2,
+          "elapsedMs": 42.9387,
+          "cpuMs": 9.78,
+          "allocatedBytes": 2645800,
+          "workingSet": 219815936,
+          "peakWorkingSet": 219815936,
+          "queryCount": 13,
+          "rowsRead": 269,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 2,
+          "elapsedMs": 6837.0185,
+          "cpuMs": 79.366,
+          "allocatedBytes": 27251248,
+          "workingSet": 219947008,
+          "peakWorkingSet": 219947008,
+          "queryCount": 16,
+          "rowsRead": 6722,
+          "evidenceRows": null,
+          "outputRows": 480,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 2,
+          "elapsedMs": 24.5048,
+          "cpuMs": 9.502,
+          "allocatedBytes": 2043272,
+          "workingSet": 219967488,
+          "peakWorkingSet": 219967488,
+          "queryCount": 10,
+          "rowsRead": 224,
+          "evidenceRows": 171,
+          "outputRows": 21,
+          "treatmentSlices": 0
+        }
+      ],
+      "before-origin": [
+        {
+          "scenario": "intercrew",
+          "round": 0,
+          "elapsedMs": 11943.2372,
+          "cpuMs": 3441.6,
+          "allocatedBytes": 301420256,
+          "workingSet": 189255680,
+          "peakWorkingSet": 189255680,
+          "queryCount": 32,
+          "rowsRead": 11457,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 0,
+          "elapsedMs": 9992.9872,
+          "cpuMs": 695.396,
+          "allocatedBytes": 44764264,
+          "workingSet": 197341184,
+          "peakWorkingSet": 197341184,
+          "queryCount": 28,
+          "rowsRead": 11452,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 0,
+          "elapsedMs": 3437.8117,
+          "cpuMs": 555.421,
+          "allocatedBytes": 23850632,
+          "workingSet": 206852096,
+          "peakWorkingSet": 206852096,
+          "queryCount": 27,
+          "rowsRead": 5502,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 0,
+          "elapsedMs": 10106.61,
+          "cpuMs": 232.307,
+          "allocatedBytes": 44572256,
+          "workingSet": 208515072,
+          "peakWorkingSet": 208515072,
+          "queryCount": 30,
+          "rowsRead": 11955,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 0,
+          "elapsedMs": 3493.2494,
+          "cpuMs": 126.633,
+          "allocatedBytes": 17757848,
+          "workingSet": 205975552,
+          "peakWorkingSet": 206962688,
+          "queryCount": 24,
+          "rowsRead": 5457,
+          "evidenceRows": 4319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        },
+        {
+          "scenario": "intercrew",
+          "round": 1,
+          "elapsedMs": 10248.6784,
+          "cpuMs": 235.597,
+          "allocatedBytes": 44640160,
+          "workingSet": 215564288,
+          "peakWorkingSet": 218476544,
+          "queryCount": 32,
+          "rowsRead": 11457,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 1,
+          "elapsedMs": 10284.064,
+          "cpuMs": 118.19,
+          "allocatedBytes": 44553712,
+          "workingSet": 224792576,
+          "peakWorkingSet": 224792576,
+          "queryCount": 28,
+          "rowsRead": 11452,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 1,
+          "elapsedMs": 3516.2776,
+          "cpuMs": 58.395,
+          "allocatedBytes": 17933312,
+          "workingSet": 224829440,
+          "peakWorkingSet": 224829440,
+          "queryCount": 27,
+          "rowsRead": 5502,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 1,
+          "elapsedMs": 10315.1787,
+          "cpuMs": 125.883,
+          "allocatedBytes": 44225896,
+          "workingSet": 226459648,
+          "peakWorkingSet": 228458496,
+          "queryCount": 30,
+          "rowsRead": 11955,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 1,
+          "elapsedMs": 3506.4134,
+          "cpuMs": 58.891,
+          "allocatedBytes": 17572408,
+          "workingSet": 227614720,
+          "peakWorkingSet": 228986880,
+          "queryCount": 24,
+          "rowsRead": 5457,
+          "evidenceRows": 4319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        },
+        {
+          "scenario": "intercrew",
+          "round": 2,
+          "elapsedMs": 10325.3266,
+          "cpuMs": 127.317,
+          "allocatedBytes": 44644264,
+          "workingSet": 227766272,
+          "peakWorkingSet": 229289984,
+          "queryCount": 32,
+          "rowsRead": 11457,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 2,
+          "elapsedMs": 10311.2726,
+          "cpuMs": 129.637,
+          "allocatedBytes": 44547320,
+          "workingSet": 230137856,
+          "peakWorkingSet": 230137856,
+          "queryCount": 28,
+          "rowsRead": 11452,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 2,
+          "elapsedMs": 3614.5998,
+          "cpuMs": 84.05,
+          "allocatedBytes": 17940888,
+          "workingSet": 235294720,
+          "peakWorkingSet": 240701440,
+          "queryCount": 27,
+          "rowsRead": 5502,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 2,
+          "elapsedMs": 10657.9502,
+          "cpuMs": 105.406,
+          "allocatedBytes": 44236072,
+          "workingSet": 235290624,
+          "peakWorkingSet": 240701440,
+          "queryCount": 30,
+          "rowsRead": 11955,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 2,
+          "elapsedMs": 3582.801,
+          "cpuMs": 64.107,
+          "allocatedBytes": 17460960,
+          "workingSet": 235319296,
+          "peakWorkingSet": 240701440,
+          "queryCount": 24,
+          "rowsRead": 5457,
+          "evidenceRows": 4319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        }
+      ],
+      "after-origin": [
+        {
+          "scenario": "intercrew",
+          "round": 0,
+          "elapsedMs": 8796.5462,
+          "cpuMs": 2876.583,
+          "allocatedBytes": 296437808,
+          "workingSet": 178552832,
+          "peakWorkingSet": 178552832,
+          "queryCount": 36,
+          "rowsRead": 6461,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 0,
+          "elapsedMs": 6508.343,
+          "cpuMs": 1183.958,
+          "allocatedBytes": 31868728,
+          "workingSet": 195969024,
+          "peakWorkingSet": 195969024,
+          "queryCount": 32,
+          "rowsRead": 6456,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 0,
+          "elapsedMs": 116.8996,
+          "cpuMs": 74.314,
+          "allocatedBytes": 10880480,
+          "workingSet": 196005888,
+          "peakWorkingSet": 196005888,
+          "queryCount": 31,
+          "rowsRead": 506,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 0,
+          "elapsedMs": 6658.5987,
+          "cpuMs": 570.486,
+          "allocatedBytes": 31520464,
+          "workingSet": 206061568,
+          "peakWorkingSet": 206061568,
+          "queryCount": 34,
+          "rowsRead": 6959,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 0,
+          "elapsedMs": 58.891,
+          "cpuMs": 24.509,
+          "allocatedBytes": 4670944,
+          "workingSet": 209895424,
+          "peakWorkingSet": 209895424,
+          "queryCount": 28,
+          "rowsRead": 461,
+          "evidenceRows": 319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        },
+        {
+          "scenario": "intercrew",
+          "round": 1,
+          "elapsedMs": 6656.0769,
+          "cpuMs": 384.986,
+          "allocatedBytes": 31682320,
+          "workingSet": 213626880,
+          "peakWorkingSet": 213626880,
+          "queryCount": 36,
+          "rowsRead": 6461,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 1,
+          "elapsedMs": 6669.0398,
+          "cpuMs": 127.644,
+          "allocatedBytes": 31499624,
+          "workingSet": 220184576,
+          "peakWorkingSet": 224407552,
+          "queryCount": 32,
+          "rowsRead": 6456,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 1,
+          "elapsedMs": 77.468,
+          "cpuMs": 20.009,
+          "allocatedBytes": 4884680,
+          "workingSet": 220184576,
+          "peakWorkingSet": 224407552,
+          "queryCount": 31,
+          "rowsRead": 506,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 1,
+          "elapsedMs": 6704.007,
+          "cpuMs": 102.358,
+          "allocatedBytes": 31179920,
+          "workingSet": 220921856,
+          "peakWorkingSet": 224407552,
+          "queryCount": 34,
+          "rowsRead": 6959,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 1,
+          "elapsedMs": 50.3207,
+          "cpuMs": 23.884,
+          "allocatedBytes": 4413360,
+          "workingSet": 221188096,
+          "peakWorkingSet": 224407552,
+          "queryCount": 28,
+          "rowsRead": 461,
+          "evidenceRows": 319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        },
+        {
+          "scenario": "intercrew",
+          "round": 2,
+          "elapsedMs": 6773.2326,
+          "cpuMs": 84.505,
+          "allocatedBytes": 31587960,
+          "workingSet": 221323264,
+          "peakWorkingSet": 224407552,
+          "queryCount": 36,
+          "rowsRead": 6461,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "outside",
+          "round": 2,
+          "elapsedMs": 6712.6091,
+          "cpuMs": 95.783,
+          "allocatedBytes": 31516616,
+          "workingSet": 222642176,
+          "peakWorkingSet": 224407552,
+          "queryCount": 32,
+          "rowsRead": 6456,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "roommove",
+          "round": 2,
+          "elapsedMs": 66.0566,
+          "cpuMs": 16.689,
+          "allocatedBytes": 4891352,
+          "workingSet": 230780928,
+          "peakWorkingSet": 230780928,
+          "queryCount": 31,
+          "rowsRead": 506,
+          "evidenceRows": null,
+          "outputRows": 21,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "processor",
+          "round": 2,
+          "elapsedMs": 6914.1226,
+          "cpuMs": 81.684,
+          "allocatedBytes": 31179672,
+          "workingSet": 230932480,
+          "peakWorkingSet": 230932480,
+          "queryCount": 34,
+          "rowsRead": 6959,
+          "evidenceRows": null,
+          "outputRows": 501,
+          "treatmentSlices": null
+        },
+        {
+          "scenario": "single-room",
+          "round": 2,
+          "elapsedMs": 50.6972,
+          "cpuMs": 19.596,
+          "allocatedBytes": 4213944,
+          "workingSet": 231108608,
+          "peakWorkingSet": 231108608,
+          "queryCount": 28,
+          "rowsRead": 461,
+          "evidenceRows": 319,
+          "outputRows": 21,
+          "treatmentSlices": 2
+        }
+      ]
+    },
+    "plans": {
+      "before-origin": {
+        "Planning Time": 8.767,
+        "Execution Time": 3570.777,
+        "JIT": {
+          "Functions": 580,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 15.91,
+              "Total": 32.001
+            },
+            "Inlining": 21.753,
+            "Optimization": 2070.964,
+            "Emission": 1406.229,
+            "Total": 3530.946
+          }
+        },
+        "cost": 835179.97,
+        "sharedHits": 50598
+      },
+      "after-origin": {
+        "Planning Time": 9.052,
+        "Execution Time": 5.187,
+        "JIT": null,
+        "cost": 8752.9,
+        "sharedHits": 1842
+      }
+    },
+    "verificationCorrection": "Initial whole-string fingerprint assertion differed only by unordered table-result order; per-table counts and hashes all equal. Verification now sorts table lines."
+  },
+  "syntheticCleanup": {
+    "utc": "2026-10-16T16:36:36.666067+00:00",
+    "containerId": "964038dca1afdcac5b8ba13bdbbaaeed8d24ddfde5f7230b26108ce3acf0aae4",
+    "containerDeleted": true,
+    "volumesDeleted": [
+      "7ac7045c3ba59e146f3a0ffd5e5ddcabbafda1253106592533ef5b9861b4e6e1"
+    ],
+    "network": "none",
+    "data": "synthetic only"
+  },
+  "forwardRollbackHandback": "NOT RUN; no synthetic workflow mutations on the protected restore",
+  "authenticatedRoutes": "NOT RUN; performance gate stopped preparation",
+  "model": "No model/migration changes; prior pending-model check retained; actual 34-migration schema and 1007-object readiness pass",
+  "productionAccess": false,
+  "merged": false,
+  "deployed": false,
+  "cloudCharges": 0
+}

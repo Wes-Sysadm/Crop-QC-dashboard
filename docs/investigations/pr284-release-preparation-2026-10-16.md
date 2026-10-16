@@ -1,5 +1,7 @@
 # PR #284 production release preparation — performance safeguard stop
 
+Latest status: **NO-GO** after the newly approved #204 restore. Single-room latency is corrected, but broad historical closure still adds about four seconds. Read the [current restore report](pr284-approved-restore-performance-2026-10-16.md). All 269,834 original rows were preserved; the database/volume were deleted; workflow and rollback rehearsal stopped before mutations. Earlier evidence and conditional conclusions below apply only to their stated checkpoints.
+
 Update: the owner-authorized [historical closure correction and synthetic measurements](pr284-historical-closure-performance-2026-10-16.md) supersede the code defect assessment below. Production release remains NO-GO pending human review and newly authorized production-shaped/rollback rehearsal. The earlier restore and measurements below remain historical evidence.
 
 Status at the original safeguard stop: **NO-GO: a repeatable reader-performance regression was demonstrated on the approved isolated #204 restore.** Both exact applications pass restored-schema readiness and conservation, but the candidate adds approximately 3.7 seconds to previously millisecond-scale room selections. Preparation stopped before any workflow mutation, authenticated-route or forward/rollback/handback rehearsal. The disposable database and volume were deleted after all original rows were independently verified unchanged. Nothing was merged, deployed, migrated, corrected or reconstructed; no new production backup was started.
