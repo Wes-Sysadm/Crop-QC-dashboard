@@ -202,7 +202,7 @@ public sealed class InventoryAvailabilityDatabaseTests(ITestOutputHelper output)
                 var bytes = GC.GetTotalAllocatedBytes(false) - allocatedBefore;
                 Assert.Equal(count, result.Positions.Length);
                 Assert.All(result.Positions, x => Assert.Equal(19, x.AvailableQuantity));
-                Assert.Equal(10, queries);
+                Assert.Equal(11, queries); // one batched receipt-origin lookup, independent of position count
                 Assert.Empty(db.ChangeTracker.Entries());
                 Assert.Equal(0, guard.SaveAttempts);
                 var ledger = new LegacyLedger(db);

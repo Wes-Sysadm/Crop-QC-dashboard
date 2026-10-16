@@ -195,7 +195,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "14325A423F2E1B587A35C57689C470E3D84D335143D3D59E17E263D56F28FED8"
+    "Sha256": "9C205A0F0E4C483A1224097A42C0914766A0BE586128661143879F3201D52953"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",

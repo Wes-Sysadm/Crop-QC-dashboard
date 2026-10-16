@@ -83,7 +83,7 @@ public sealed class CanonicalReceiptLocationWorkflowTests
             OutsideWarehouseId = 9005,
             SourceKey = source.SourceKey,
             BinCount = 19,
-            TransferredAt = DateTime.Now,
+            TransferredAt = new CropQc.Shared.Time.PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()).NowPacific.DateTime,
             ExpectedAvailableBins = 19,
             ConfirmedReview = true,
             TruckLoadBolNumber = "LOCAL-RECEIVING-CORRECTION"

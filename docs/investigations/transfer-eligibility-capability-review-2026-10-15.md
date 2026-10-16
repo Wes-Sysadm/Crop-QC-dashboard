@@ -3,6 +3,32 @@
 Implementation review against `df977d041dae2d449cf6fe5f8581e1f5cae41947`.
 This is an implementation repair under specification 1.2.0, not a policy amendment.
 
+## Cross-facility receipt-origin dependency review (2026-10-16)
+
+Reviewed the focused diff from `176eaddee066ff9b9939e4c7807887260ae5bb8d`:
+only `InventoryEvidenceLoader.cs` changes application behavior. Both ordinary and
+historical reads now use one bounded, no-tracking receipt-ID lookup
+of compact original ReceiptAdd fields, compared to already-loaded receipts. It is constrained
+by already-selected receipt IDs, not the current facility/room/lot. Existing
+ReceiptId indexes support it. It neither imports those rows into room quantity
+accounting nor loads unrelated receipt entities. The mismatch predicate, earliest
+revision ordering and snapshot interpretation are unchanged. Watermarks additionally
+bind sorted original rows and the selected revision's interpretation inputs, so a
+changed contradictory original stales proof even if its interpreted boolean stays
+false. Future recorded dependencies retain HistoricalSnapshotUnavailable. Transaction
+ownership, aggregate reuse, origin guard and every writer are unchanged. The SQL
+tag identifies this dependency lookup for measured query-plan evidence. The first
+SQL-join implementation was rejected after a measured 1.8-second nested-loop
+regression; the final query performs no receipt join and no per-receipt query.
+
+This supersedes the earlier review's acceptance of an original-room restriction;
+the cross-scope failure is documented in
+[the production-shaped report](pr284-production-shaped-reverification-2026-10-16.md).
+The content-lock update records this inspected read-only capability, not a waiver
+of an architecture contract. No policy, schema, migration, production data or
+readiness change. Synthetic verification and remaining protected-data gates are
+reported separately; this review alone is not release approval.
+
 The writer registry is a reviewed-content lock. The following entries were inspected
 before updating their hashes; no classification is an exemption from the runtime guard.
 

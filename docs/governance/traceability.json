@@ -156,9 +156,34 @@
     {
       "id": "INV-005",
       "code": [
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Cross_facility_corrected_origins_match_every_source_scope_without_authorizing_unproven_stock",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Relevant_original_proof_changes_invalidate_selection_but_unrelated_receipts_do_not",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Earliest_revision_missing_and_contradictory_origins_preserve_unknown_or_false_proof",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Consistent_snapshot_and_historical_cutoff_survive_cross_facility_dependency_loading",
+          "kind": "postgres",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
           "member": "Broad_history_reuses_aggregate_without_losing_complete_position_proof",
