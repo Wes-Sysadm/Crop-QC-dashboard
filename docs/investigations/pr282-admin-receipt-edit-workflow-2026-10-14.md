@@ -1,5 +1,12 @@
 # PR #282 — existing Admin receipt editing
 
+**Historical assessment, superseded for current status:** PR #283 was merged as
+`ea307b168e563d432dd4f513da6c06f4e5e54d5e` and resolves the four identity failures
+described below. PR #282 now integrates that main; the combined identity/HTTP
+selection passes. See [integration evidence](pr282-integration-2026-10-15.md)
+for current validation, readiness and remaining release prerequisites. The dated
+failure evidence below is preserved, not asserted as a current blocker.
+
 Owner review: CHANGES REQUESTED. Development only; no merge, deployment,
 production query/correction, migration or reconstruction was performed.
 

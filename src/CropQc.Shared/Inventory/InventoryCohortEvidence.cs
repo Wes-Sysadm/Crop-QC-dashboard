@@ -13,14 +13,40 @@ public static class InventoryCohortEvidence
         var replay = InventoryEventReplay.Replay(evidence);
         var owned = replay.Cohorts.Where(x => x.ReceiptId == receiptId).ToArray();
         if (!replay.QuantityConserved || owned.Length == 0 || owned.Any(x => x.State == "Unknown")) return false;
-        // This fallback cannot prove that a shared remainder excludes this
-        // receipt. Keep exact receipt operations conservative; ordinary movement
-        // of separately established treatment cohorts does not need this proof.
-        if (replay.Cohorts.Any(x => x.ReceiptId == null)) return false;
+        // An unrelated shared remainder does not erase exact ownership. But a
+        // shared cohort that absorbed this receipt still prevents exact selection.
+        if (replay.Cohorts.Any(x => x.ReceiptId == null && MayContain(x, evidence, receiptId))) return false;
         var projections = evidence.Projections.Where(x => x.Disposition == "Current" && x.Quantity > 0 && x.ReceiptId == receiptId).ToArray();
         return projections.Length > 0 && projections.All(p => p.ExactIdentity)
             && projections.Sum(x => x.Quantity) == owned.Sum(x => x.Quantity)
             && owned.GroupBy(x => x.Signature).All(g => projections.Where(x => x.Signature == g.Key).Sum(x => x.Quantity) == g.Sum(x => x.Quantity));
+    }
+
+    public static bool ProvesNoCurrentReceipt(InventoryPositionEvidence evidence, long receiptId)
+    {
+        if (!evidence.ApplicationAllocationsLoaded || evidence.HistoricalSnapshotUnavailable
+            || evidence.Projections.Any(p => p.Disposition == "Current" && p.Quantity > 0 && p.ReceiptId == receiptId)) return false;
+        var replay = InventoryEventReplay.Replay(evidence);
+        return replay.QuantityConserved && replay.UnresolvedEvents.IsEmpty
+            && !replay.Cohorts.Any(c => c.ReceiptId == receiptId || c.ReceiptId == null && MayContain(c, evidence, receiptId));
+    }
+
+    private static bool MayContain(InventoryRecordedCohort cohort, InventoryPositionEvidence evidence, long receiptId) =>
+        cohort.Evidence.IsDefaultOrEmpty || cohort.Evidence.Any(r =>
+            r.Entity == "RoomInventoryAdjustment" && evidence.Ledger.Any(l => l.Id.ToString() == r.Id && l.ReceiptId == receiptId)
+            || r.Entity == "TreatmentLineageMovement" && evidence.Movements.Any(m => m.Id.ToString() == r.Id && m.ReceiptId == receiptId));
+
+    public static bool ProvesCustodyReceipt(InventoryPositionEvidence evidence, long receiptId)
+    {
+        if (evidence.Location.Custody == InventoryCustody.Room || !evidence.CustodyVerified || !evidence.IdentityVerified
+            || evidence.Projections.Sum(p => p.Quantity) != evidence.AuthoritativeQuantity
+            || !evidence.Receipts.Any(r => r.Id == receiptId && r.ExactIdentity && !r.IsDeleted && !r.IsTransferReceipt)) return false;
+        // Custody loaders synthesize these residual slices from dispatch minus
+        // acknowledgements/returns, not from the source room's current balance.
+        // The embedded immutable departure proves each selected membership,
+        // including receipt-held custody whose movement is carried in the proof.
+        var owned = evidence.Projections.Where(p => p.ReceiptId == receiptId && p.Quantity > 0).ToArray();
+        return owned.Length > 0 && owned.All(p => InventoryCustodyTreatment.Proves(p, evidence));
     }
 
     public static ImmutableArray<InventoryProjectionEvidence> Proven(InventoryPositionEvidence evidence)

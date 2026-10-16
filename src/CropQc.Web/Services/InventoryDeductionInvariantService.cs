@@ -322,7 +322,12 @@ public sealed class InventoryDeductionInvariantService(
                         .Select(x => x.Entity))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id)
                     .ToList();
-                ValidateRoomInventoryLoss(adjustment, loss, lossAdjustments, Add);
+                if (loss.IsReversed && lossAdjustments.Any(x => x.InventoryInvariantVersion == InventoryLedgerKinds.CanonicalCommandInvariantVersion))
+                {
+                    var failure = await CanonicalRestorationReadiness.VerifyAsync(dbContext, loss, null, lossAdjustments, cancellationToken);
+                    if (failure != null) Add("RoomInventoryLossRestorationMismatch", failure);
+                }
+                else ValidateRoomInventoryLoss(adjustment, loss, lossAdjustments, Add);
             }
             else if (processorLine is not null)
             {
@@ -351,7 +356,12 @@ public sealed class InventoryDeductionInvariantService(
                         || outsideTransfer.Id > 0 && x.OutsideWarehouseTransferId == outsideTransfer.Id)
                     .Concat(outsideMovements.Where(x => x.OutsideWarehouseTransferId == outsideTransfer.Id))
                     .DistinctBy(x => x.Id == 0 ? RuntimeHelpers.GetHashCode(x) : x.Id).ToList();
-                ValidateOutsideWarehouseTransfer(adjustment, outsideTransfer, outsideAdjustments, movements, Add);
+                if (outsideTransfer.IsReversed && outsideAdjustments.Any(x => x.InventoryInvariantVersion == InventoryLedgerKinds.CanonicalCommandInvariantVersion))
+                {
+                    var failure = await CanonicalRestorationReadiness.VerifyAsync(dbContext, null, outsideTransfer, outsideAdjustments, cancellationToken);
+                    if (failure != null) Add("OutsideWarehouseTransferRestorationMismatch", failure);
+                }
+                else ValidateOutsideWarehouseTransfer(adjustment, outsideTransfer, outsideAdjustments, movements, Add);
             }
             else if (interCrewTransfer is not null)
             {

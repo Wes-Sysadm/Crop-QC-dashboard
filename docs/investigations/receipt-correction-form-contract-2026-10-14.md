@@ -128,7 +128,12 @@ mixed treatments, stale/concurrent operations, conservation and PR #281 destinat
 admission. Backup-specific restored-data tests are outside this local form-contract
 run and are not claimed; their underlying command engines are unchanged.
 
-### Existing main failures, not waived
+### Historical main failures — resolved by merged PR #283
+
+The four failures recorded here were resolved by PR #283, merged as
+`ea307b168e563d432dd4f513da6c06f4e5e54d5e`. They are preserved as historical
+evidence only. The combined #282 state is assessed in
+[the integration report](pr282-integration-2026-10-15.md).
 
 The expanded affected run executed 156 cases: **152 passed, four failed, zero
 skipped**. A separate `git archive` of unmodified main

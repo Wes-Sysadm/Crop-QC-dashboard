@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Text.Json;
 using CropQc.Api.Dtos;
@@ -13,6 +14,96 @@ namespace CropQc.Api.Tests;
 
 public sealed class AdminReceiptEditHttpTests
 {
+    [InventoryPostgresTheory]
+    [InlineData("room")]
+    [InlineData("outside")]
+    [InlineData("loss")]
+    public async Task One_save_selects_only_seven_proven_bins_and_preserves_shared_ancestry_through_restoration(string custody)
+    {
+        await using var f = await Fixture.Create(2);
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        db.OutsideWarehouses.Add(new() { Id = 9005, Code = "ADMIN-OUT", Name = "Disposable outside" });
+        await db.SaveChangesAsync();
+        var executor = new InventoryCommandExecutor(factory);
+        var received = await Commit(new(Guid.NewGuid().ToString("N"), InventoryCommandKind.ReceiveStock, 8000,
+            DateTimeOffset.UtcNow, "Seven exactly owned later arrivals", [], Receipt: new(2026, 9001, 9002, 100000, 9004, "ADMIN-SEVEN", 7)));
+        var receiptId = received.Effects.Single().ParentId!.Value;
+        var source = (await Resolve()).Positions.Single(x => x.Identity.GrowerLotId == 100000);
+        Assert.Equal(26, source.AuthoritativeQuantity);
+        Assert.Equal(7, (await new InventoryReceiptAvailability(db).ReadAsync(receiptId, default))!.RoomQuantity);
+        InventoryCommand? departure = null;
+        long? parent = null;
+        if (custody != "room")
+        {
+            departure = new(Guid.NewGuid().ToString("N"), custody == "loss" ? InventoryCommandKind.Loss : InventoryCommandKind.OutsideWarehouseTransfer,
+                8000, DateTimeOffset.UtcNow, "Recorded mixed departure", [Line(source, 26)], CounterpartyId: custody == "outside" ? 9005 : null);
+            parent = (await Commit(departure)).Effects.Single().ParentId;
+            if (custody == "outside")
+            {
+                var shared = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+                    new(9001, [], InventoryCustody.OutsideWarehouse, parent), new(AllowedCustody: InventoryCustody.OutsideWarehouse), DateTimeOffset.UtcNow)).Positions);
+                Assert.Equal(InventoryConfidence.Unknown, shared.ReceiptProvenance.Confidence);
+                Assert.Equal(19, shared.TreatmentSlices.Where(x => x.ReceiptEvidenceIds.IsEmpty).Sum(x => x.Quantity));
+            }
+        }
+        var ledgerIds = await db.RoomInventoryAdjustments.Select(x => x.Id).ToArrayAsync();
+        var movementIds = await db.TreatmentLineageMovements.Select(x => x.Id).ToArrayAsync();
+        var auditIds = await db.AuditLogs.Select(x => x.Id).ToArrayAsync();
+        var history = await History();
+        await using var host = new ReceiptLocationHttpTests.ReceiptHost(f.Connection);
+        using var client = host.CreateClient(new() { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add("X-Receipt-Test-User", "canonical-test@example.invalid");
+        var path = $"/Receipts/{receiptId}/Edit";
+        var form = ReceiptCorrectionRenderedForm.Read(await client.GetStringAsync(path));
+        var target = await db.GrowerLots.SingleAsync(x => x.Id == 100001);
+        form["GrowerLotId"] = target.Id.ToString(); form["GrowerNumber"] = target.LotNumber;
+        form["GrowerName"] = target.Grower; form["Reason"] = "Correct only the independently owned receipt allocation";
+        var response = await client.PostAsync(path, new FormUrlEncodedContent(form));
+        Assert.True(response.StatusCode == HttpStatusCode.Redirect, await response.Content.ReadAsStringAsync());
+        Assert.Equal(history, await History());
+        Assert.Equal(custody == "room" ? 45 : 19, await f.Physical());
+        var saved = await f.Snapshot();
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(path, new FormUrlEncodedContent(form))).StatusCode);
+        Assert.Equal(saved, await f.Snapshot());
+        var changed = new Dictionary<string, string>(form) { ["Reason"] = "Changed retry intent" };
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(path, new FormUrlEncodedContent(changed))).StatusCode);
+        Assert.Equal(saved, await f.Snapshot());
+        if (departure != null)
+        {
+            var outside = custody == "outside" ? await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+                new(9001, [], InventoryCustody.OutsideWarehouse, parent), new(AllowedCustody: InventoryCustody.OutsideWarehouse), DateTimeOffset.UtcNow) : null;
+            await Commit(new(Guid.NewGuid().ToString("N"), custody == "loss" ? InventoryCommandKind.ReverseLoss : InventoryCommandKind.Return,
+                8000, DateTimeOffset.UtcNow, "Restore each recorded current identity", outside?.Positions.Select(x => Line(x, x.AuthoritativeQuantity)).ToImmutableArray() ?? [],
+                OriginalOperationKey: custody == "outside" ? departure.OperationKey : null, PhysicalParentId: parent));
+        }
+        Assert.Equal(45, await f.Physical());
+        var exact = (await new InventoryReceiptAvailability(db).ReadAsync(receiptId, default))!;
+        Assert.Null(exact.Blocker); Assert.Equal(7, exact.RoomQuantity); Assert.Equal(0, exact.CustodyQuantity);
+        Assert.All(exact.Allocations, x => { Assert.Equal(receiptId, Assert.Single(x.Slice.ReceiptEvidenceIds)); Assert.Equal("u", x.Slice.Signature); });
+        var positions = (await Resolve()).Positions;
+        Assert.Equal(26, positions.Single(x => x.Identity.GrowerLotId == 100001).AvailableQuantity);
+        // A treatment slice may aggregate several receipt evidence references;
+        // only the receipt-specific reader proves the selected seven above.
+        Assert.Equal(19, positions.Single(x => x.Identity.GrowerLotId == 100001).AvailableQuantity - exact.RoomQuantity);
+        Assert.Equal(10, positions.Single(x => x.Identity.GrowerLotId == 100001).ProjectionExcess);
+        Assert.Equal(history, await History());
+
+        async Task<InventoryCommandResult> Commit(InventoryCommand command)
+        { var result = await executor.ExecuteAsync(command); Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail); db.ChangeTracker.Clear(); return result; }
+        Task<InventoryAvailabilityBatch> Resolve() => new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
+        static InventoryCommandLine Line(InventoryAvailabilityResult p, int bins) => new(
+            new(p.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), bins, "u");
+        async Task<string> History() => JsonSerializer.Serialize(new
+        {
+            Ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => ledgerIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Movements = await db.TreatmentLineageMovements.AsNoTracking().Where(x => movementIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Audits = await db.AuditLogs.AsNoTracking().Where(x => auditIds.Contains(x.Id)).OrderBy(x => x.Id).ToArrayAsync(),
+            Applications = await db.RoomTreatmentApplications.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
+            Sources = await db.RoomTreatmentApplicationSources.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync()
+        });
+    }
+
     [InventoryPostgresFact]
     public async Task Historical_date_edit_preserves_treatment_membership_and_rejects_crossing_an_application()
     {

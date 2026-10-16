@@ -56,6 +56,7 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
         roomIds.Add(receipt.RoomId);
         var loader = new InventoryEvidenceLoader(db);
         var positions = ImmutableArray.CreateBuilder<InventoryAvailabilityResult>();
+        var historicalOnly = new HashSet<string>();
         var asOf = DateTimeOffset.UtcNow;
         var rooms = roomIds.Distinct().ToImmutableArray();
         foreach (var custody in new[] { InventoryCustody.Room, InventoryCustody.InTransit, InventoryCustody.OutsideWarehouse, InventoryCustody.Processor, InventoryCustody.ReceiptHeld })
@@ -63,18 +64,27 @@ public sealed class InventoryReceiptAvailability(CropQcDbContext db)
             var batch = await loader.LoadAsync(new(null, rooms, custody), asOf, ct);
             // Same-lot inventory elsewhere does not belong to this receipt merely
             // because identity matches. Include every position retaining its evidence.
-            positions.AddRange(batch.Positions.Where(x => x.Receipts.Any(r => r.Id == receiptId)
-                || x.Projections.Any(p => p.ReceiptId == receiptId) || x.Movements.Any(m => m.ReceiptId == receiptId))
-                .Select(x => InventoryAvailabilityResolver.Resolve(x, new(AllowedCustody: custody, ReceiptId: receiptId)
-                { AllowIndependentCohorts = true })));
+            foreach (var evidence in batch.Positions.Where(x => x.Receipts.Any(r => r.Id == receiptId)
+                || x.Projections.Any(p => p.ReceiptId == receiptId || p.CustodyTreatment?.SourceReceiptId == receiptId) || x.Movements.Any(m => m.ReceiptId == receiptId)))
+            {
+                var absent = InventoryCohortEvidence.ProvesNoCurrentReceipt(evidence, receiptId);
+                var position = InventoryAvailabilityResolver.Resolve(evidence,
+                    new(AllowedCustody: custody, ReceiptId: receiptId, RequireExactReceipt: !absent && evidence.AuthoritativeQuantity != 0)
+                    { AllowIndependentCohorts = true });
+                positions.Add(position);
+                // Retain history and its fingerprint for concurrency, but do not
+                // reinterpret a fully withdrawn receipt as current shared stock.
+                if (absent) historicalOnly.Add(position.PositionKey);
+            }
         }
         var allocation = ImmutableArray.CreateBuilder<InventoryReceiptAllocation>();
         string? blocker = receipt.IsDeleted || receipt.IsTransferReceipt ? "An active ordinary receipt is required." : null;
         foreach (var p in positions)
         {
             if (p.AuthoritativeQuantity < 0) blocker ??= "Negative authoritative inventory requires a separately reviewed correction.";
+            if (historicalOnly.Contains(p.PositionKey)) continue;
             if (p.AuthoritativeQuantity == 0 && p.IsOperable) continue;
-            if (!p.IsOperable || p.ReceiptProvenance.Confidence != InventoryConfidence.Proven)
+            if (!p.IsOperable)
             { blocker ??= "Exact current receipt inventory and treatment ownership cannot be proven. Review the receipt allocations and unassigned movements; same-lot stock alone is not receipt attribution."; continue; }
             foreach (var group in p.TreatmentSlices.Where(x => x.ReceiptEvidenceIds.Length == 1 && x.ReceiptEvidenceIds[0] == receiptId).GroupBy(x => new { x.Signature, x.State }))
             {

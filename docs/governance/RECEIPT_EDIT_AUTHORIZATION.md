@@ -52,4 +52,12 @@ gates remain. A rejected save retains submitted values and reviewed tokens.
 
 Validation ownership: REC-001 traceability names the PostgreSQL HTTP and permission
 contracts. The #282 investigation report records actual outcomes and remaining
-identity limitations. Passing tests do not approve merge, deployment or a repair.
+integration results. PR #283 resolved the formerly documented identity limitations;
+its exact ownership and restoration assertions remain mandatory on the combined
+branch. Passing tests do not approve merge, deployment or a repair.
+
+Continuation: owner Wes, “PR #282 — Integrate PR #283 and Finish Admin Receipt
+Editing”, 2026-10-15, same conversation, explicitly authorizes integration of main
+`ea307b168e563d432dd4f513da6c06f4e5e54d5e`, scoped validation, commit/push to #282
+and preparation for final human review. It does not authorize merge, deployment,
+production correction or adoption of 1.2.0 on main.
