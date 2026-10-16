@@ -1,6 +1,8 @@
 # System-wide transfer eligibility investigation
 
-Status: draft implementation and evidence review; **not release authorization**.
+Status: **NO-GO following focused review: McDougall → WP_DH route mismatch**.
+The 2026-10-16 addendum below supersedes the earlier human-review recommendation.
+This remains a draft; **not release authorization**.
 Base: `df977d041dae2d449cf6fe5f8581e1f5cae41947`.
 Branch: `codex/system-wide-transfer-eligibility`.
 
@@ -170,11 +172,11 @@ Baseline impact: **20 hidden positions / 5,974 ledger bins** (EBS 10/2,868,
 DH 2/656, McDougall 8/2,450, WP 0). Hidden does not mean all are safely movable.
 
 The candidate retains disabled positive-authority diagnostics, exposes position
-total separately from transferable quantity, and preserves disabled controls.
+total separately from treatment-selection quantity, and preserves disabled controls.
 It also shows an unresolved remainder alongside independently proven slices.
 All 452 positive positions are represented after the change. Processor submission
 rejects disabled selections server-side. Source seals still display zero
-transferable bins. No error is converted wholesale to a warning.
+treatment-selection bins. No error is converted wholesale to a warning.
 
 ### Frenchman 1110 is one regression, not a special case
 
@@ -358,3 +360,139 @@ Recommendation: **GO for focused human review subject to successful final-head
 CI; NO-GO for declaring all systemic blockers resolved or for production release.**
 The separate origin/identity work and specific missing events remain explicit.
 No production repair, reconstruction, merge, migration or deployment occurred.
+
+## Focused human-review revisions — 2026-10-16
+
+Reviewed starting head: `a1e596f041c97c63bf41e640b39855bd562e68bc`.
+Main/base remains `df977d041dae2d449cf6fe5f8581e1f5cae41947`; no integration
+update was required. Specification 1.2.0 and governance commit
+`c17bd4deb477b57aa5ac1584175512d49318263b` remain effective. The applicable
+INV-001–006, TRT-001/002, MOV-001, ROOM-001, REC-001/002, AUD-001, OPS-001
+and GOV-001 invariants and ADR-001–008 are unchanged. This revision adds only
+qualified presentation, focused tests and traceability/documentation. No historical
+replay, origin guard, command, route rule, writer capability or schema changes.
+
+### Confirmed blocker in the actual inter-crew path
+
+`HistoricalInterCrewDispatchTests` constructs a disposable synthetic analogue of
+Frenchman 1110 / MCD-15: five historical transfer parents and an audited location
+correction produce `+32 +64 +64 +60 -64 +66 +64 = 286`. The fixture uses generic
+local fruit/profile IDs; it is not a reproduction of production treatment data.
+It has no modern lineage movements or projection rows. To test treatment proof,
+it explicitly records a subsequent room application with two exact allocations:
+220 bins of shared ancestry and 66 independently receipt-owned bins. The test
+asserts both quantities, no unresolved replay events, and the exact application ID.
+This does not assert that production Frenchman fruit received this treatment.
+
+The authenticated Inter-Crew page renders the 286-bin source with an enabled
+selection. Its source key matches the canonical resolver fingerprint. A valid
+operator (local user 8000), 40-bin partial quantity, route `WP_DH`, and exact source
+key reach the real `InterCrewTransferService.DispatchAsync` and
+`InventoryCommandKind.InterCompanyDispatch` executor. The unchanged source proof
+passes, but the canonical route contract rejects the command:
+
+> Inter-company dispatch requires a configured cross-company route.
+
+The precise disagreement is:
+
+- `InterCrewTransferService.AllowedDestinationGroups` offers both `WP_DH` and
+  `EBS` for `MCD` / `MCDOUGALL`.
+- `TruckReceiptRoutes.Group` puts `MCD` / `MCDOUGALL` in `WP_DH`.
+- `InventoryCommandCustody.DispatchAsync` requires
+  `TruckReceiptRoutes.RequiresReceiptForGroup(sourceCode, destinationGroup)`;
+  `WP_DH` to `WP_DH` fails that cross-company requirement.
+
+This is an existing selector/command route-contract mismatch, not missing source
+quantity, missing treatment evidence or an invented receipt allocation. The regression
+asserts the exact rejection, unchanged all-table snapshot, 286 bins still in MCD-15,
+zero inter-crew transfers, zero lineage movements/projections, five unchanged receipt
+origins, and unchanged original receipts, transfer parents, correction, application
+sources and audit. The rejected transaction does not leave transit inventory.
+
+**STOP / NO-GO:** the requested successful MCD → WP_DH dispatch, source-to-transit
+40-bin debit/credit, Truck Receipt reconciliation, and real concurrent successful
+inter-crew dispatch/retry have not been proven. They are not replaced by a successful
+different route or by the earlier room-movement tests. No guard was relaxed and no
+warehouse code was changed to manufacture a cross-company route. Resolve the intended
+McDougall/WP_DH custody route against the approved policy in a separately scoped
+follow-up before resuming this dependent rehearsal. The narrow review request explicitly
+requires stopping at this command failure; it does not authorize changing that rule.
+
+The first synthetic fixture also failed a room-name uniqueness constraint, then a
+single undifferentiated treatment allocation correctly failed occupancy reconciliation.
+The fixture now uses unique names and separately records the proven 66-bin receipt
+allocation and 220 shared bins. Those fixture failures are not application fixes or
+passing evidence. Once fixed, the actual route rejection above remained.
+
+### Accurate selector semantics and unchanged source-origin enforcement
+
+The two DTO properties are now named `TreatmentSelectionBins`. Outside warehouse,
+Inter-Crew and Processor views label the column **Position total / Treatment
+selection** and explain that proven treatment evidence is not final transfer approval;
+origin, custody, permissions and current inventory are validated at submission.
+Seals and existing disabled controls remain enforced; positive authoritative stock
+remains visible. `AvailableBins`, source keys, selection and command semantics are
+unchanged. No application error became a warning.
+
+The existing read-only `InventoryOriginGuard.ValidateAsync` validates a recursively
+expanded origin/custody closure and returns only the first failure for a batch. It
+has no per-position result map suitable for these selectors. Repeating it for each
+of the 452 positions repeats closure queries; using one batch result would incorrectly
+attribute a failure to unrelated positions. A bounded batch classification API would
+be additional origin-guard work. This revision therefore uses the requested qualified
+wording instead of changing that guard or hiding positive positions.
+
+The recorded **49,844** is treatment-selection availability. **44,737** is the prior
+source-origin pass upper bound, before route, actor, concurrency and other command
+checks; it is not fully transferable inventory. The **5,107** difference remains
+visible and explicitly uncertified. The **56 origin-failing positions / 10,437 ledger
+bins**, including sealed overlaps, and all three follow-up classifications retain
+their original CSV/JSON/SQL evidence without a repeated system-wide audit.
+
+A separate regression adds a duplicate ordinary origin in another room, outside the
+selected source's historical occupancy. The 286-bin treatment selection remains
+proven and rendered with qualified wording, but the actual canonical dispatch rejects
+`duplicate inventory origins`; the complete database snapshot remains unchanged.
+This establishes the selector/command distinction without fabricating proof or
+weakening source-origin enforcement.
+
+### Additional validation and limits
+
+- **8 focused Linux/PostgreSQL tests passed, zero failed/skipped:** two new blocker/
+  origin regressions and six existing legacy-selector tests. The existing sealed-room,
+  disabled-control, treatment-carry, repeated-move, stale-selection and real competing
+  room-move tests remain intact. A room-move race is not claimed as inter-crew race proof.
+- Previously reviewed **290 passing cases** remain evidence for the unchanged bridge;
+  the broad audit and consolidated suite were not repeated.
+- Additional mandatory contracts, final build/model/format and final-head CI are
+  recorded in the completion evidence below and on the PR. Two new regression
+  methods are required by the existing governance contract runner; no required test
+  or safeguard was removed.
+- This revision used only synthetic data in the isolated `pr284-review-pg` container,
+  network `none`, no published ports, no production credentials or connection.
+  No production access, correction, reconstruction, migration, merge or deployment.
+
+Recommendation: **NO-GO for accepting the requested focused review as complete**.
+The qualified UI revision is ready to inspect; the route mismatch must be resolved
+before the successful inter-crew and Truck Receipt proof can be completed. This report
+makes no production-release readiness claim.
+
+Focused-revision completion evidence:
+
+- Required contracts: **168 passed, zero skipped/failed**, Linux/PostgreSQL. The
+  runner's required-method and structural-suite coverage was independently checked
+  against the TRX. This is additional mandatory verification, not a repeat of the
+  full 290-case investigation run.
+- Governance: **47 tests passed**, metadata **20 rules PASS**. Solution restore,
+  Release build (zero errors), actual Linux build, pending-model check (no changes),
+  changed-file whitespace verification and `git diff --check` passed. Existing
+  package/nullability/analyzer warnings remain; no migration or MSI applies.
+- Main was fetched again and remained `df977d041dae2d449cf6fe5f8581e1f5cae41947`.
+  The exact revised commit and final-head GitHub check results are recorded on
+  PR #284 and in the completion response; local PASS is not a CI or release claim.
+- Owned synthetic container
+  `f7e1be86a3189e983c6b2744aaf642f2d40b7d840fecb321b4fdd8e558b69a0d`
+  and anonymous volume
+  `db2eabf6c18c37694db2994952497283f2e25e946a525fb1e78524ec5793fe8a`
+  were deleted and absence verified at **2026-10-16 07:38:58 UTC**. Unrelated
+  containers, backup #204 and pre-existing untracked reports were preserved.

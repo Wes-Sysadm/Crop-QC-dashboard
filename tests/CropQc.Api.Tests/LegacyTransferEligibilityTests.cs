@@ -36,6 +36,9 @@ public sealed class LegacyTransferEligibilityTests
             var html = await client.GetStringAsync(path);
             Assert.Contains("Needs Review", html);
             Assert.Contains("19 / 0", html);
+            Assert.Contains("Position total / Treatment selection", html);
+            Assert.Contains("not final transfer approval", html);
+            Assert.DoesNotContain("Transferable", html);
             var controls = Regex.Matches(html, "<input\\b[^>]*>").Select(x => x.Value)
                 .Where(x => x.Contains("name=\"SourceKey\"") || x.Contains(".BinsSent\"")).ToArray();
             Assert.NotEmpty(controls);
@@ -53,7 +56,7 @@ public sealed class LegacyTransferEligibilityTests
         var before = JsonSerializer.Serialize(application);
         var option = Assert.Single(await Outside(db).GetInventoryAsync(default));
         Assert.Equal($"u|a:{application.Id}", option.TreatmentSignature);
-        Assert.Equal(19, option.TransferableBins);
+        Assert.Equal(19, option.TreatmentSelectionBins);
         var command = await Move(f, 9003, 9002, 7);
         command = command with { Lines = [command.Lines[0] with { TreatmentSignature = option.TreatmentSignature }] };
         var result = await new InventoryCommandExecutor(new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection)).ExecuteAsync(command);
@@ -168,7 +171,7 @@ public sealed class LegacyTransferEligibilityTests
         var option = Assert.Single(await Outside(db).GetInventoryAsync(default));
         Assert.False(option.IsAvailable);
         Assert.Equal(19, option.AuthoritativeBins);
-        Assert.Equal(0, option.TransferableBins);
+        Assert.Equal(0, option.TreatmentSelectionBins);
         Assert.NotEmpty(option.UnavailableReason!);
         var result = await new InventoryCommandExecutor(new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection)).ExecuteAsync(await Move(f, 9003, 9002, 1));
         Assert.Equal(InventoryCommandStatus.Blocked, result.Status);
@@ -217,7 +220,7 @@ public sealed class LegacyTransferEligibilityTests
         var option = Assert.Single(await Outside(db).GetInventoryAsync(default));
         Assert.True(option.IsRoomSealed);
         Assert.Equal(19, option.AuthoritativeBins);
-        Assert.Equal(0, option.TransferableBins);
+        Assert.Equal(0, option.TreatmentSelectionBins);
         var before = await f.Snapshot();
         var result = await new InventoryCommandExecutor(new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection)).ExecuteAsync(await Move(f, 9003, 9002, 1));
         Assert.Equal(InventoryCommandStatus.Blocked, result.Status);

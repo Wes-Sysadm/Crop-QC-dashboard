@@ -51,7 +51,8 @@ public sealed record OutsideWarehouseInventoryOptionViewModel(
     string? UnavailableReason = null,
     int? AuthoritativeBins = null)
 {
-    public int TransferableBins => IsAvailable && !IsRoomSealed ? AvailableBins : 0;
+    // Treatment/slice selection only. The canonical command still validates origin, route and custody.
+    public int TreatmentSelectionBins => IsAvailable && !IsRoomSealed ? AvailableBins : 0;
 }
 
 public sealed record OutsideWarehouseTransferHistoryViewModel(

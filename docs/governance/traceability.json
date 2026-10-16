@@ -10,6 +10,12 @@
       ],
       "tests": [
         {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Qualified_selection_does_not_certify_origin_and_origin_rejection_has_no_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
           "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
           "member": "Ordinary_receipt_conversion_and_unposted_receiving_use_one_audited_stock_creation",
           "kind": "postgres",
@@ -44,6 +50,12 @@
         "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Historical_286_bin_source_is_selectable_but_WpDh_dispatch_is_rejected_by_current_route_contract",
+          "kind": "postgres",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
           "member": "Normal_completion_reopen_match_and_recompletion_preserve_one_destination_population",

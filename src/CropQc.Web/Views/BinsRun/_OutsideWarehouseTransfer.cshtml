@@ -27,10 +27,10 @@
             <input type="hidden" name="ConfirmedReview" value="false" data-outside-confirmed />
             <fieldset class="field wide">
                 <legend>Current inventory selection</legend>
-                <p class="muted">Position totals repeat across treatment rows. Transferable bins apply to each row; sealed rooms cannot dispatch.</p>
+                <p class="muted">Position totals repeat across treatment rows. Treatment selection shows bins with proven treatment evidence; it is not final transfer approval. Origin, custody, permissions and current inventory are validated when submitted. Sealed rooms cannot dispatch.</p>
                 <div class="table-wrap">
                     <table class="compact-table outside-inventory-table">
-                        <thead><tr><th scope="col">Select</th><th scope="col">Facility / Room</th><th scope="col">Grower / Lot</th><th scope="col">Variety</th><th scope="col">Production</th><th scope="col">Treatment</th><th scope="col" class="numeric">Position total / Transferable</th></tr></thead>
+                        <thead><tr><th scope="col">Select</th><th scope="col">Facility / Room</th><th scope="col">Grower / Lot</th><th scope="col">Variety</th><th scope="col">Production</th><th scope="col">Treatment</th><th scope="col" class="numeric">Position total / Treatment selection</th></tr></thead>
                         <tbody>
                         @foreach (var item in Model.Inventory)
                         {
@@ -46,7 +46,7 @@
                                 <td>@item.VarietyCode - @item.VarietyName</td>
                                 <td>@item.ProductionType</td>
                                 <td>@item.TreatmentSummary@if (!item.IsAvailable) { <br /><strong class="status-warning">@item.UnavailableReason</strong> }</td>
-                                <td class="numeric">@(item.AuthoritativeBins ?? item.AvailableBins) / @item.TransferableBins</td>
+                                <td class="numeric">@(item.AuthoritativeBins ?? item.AvailableBins) / @item.TreatmentSelectionBins</td>
                             </tr>
                         }
                         </tbody>
