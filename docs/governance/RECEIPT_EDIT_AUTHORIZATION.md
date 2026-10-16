@@ -61,3 +61,11 @@ Editing”, 2026-10-15, same conversation, explicitly authorizes integration of 
 `ea307b168e563d432dd4f513da6c06f4e5e54d5e`, scoped validation, commit/push to #282
 and preparation for final human review. It does not authorize merge, deployment,
 production correction or adoption of 1.2.0 on main.
+
+Isolated rehearsal: on 2026-10-15 the owner explicitly replied "Approve isolated
+local restore" for already-local backup #203 in a disposable Docker PostgreSQL
+database, with no network access, published ports, production credentials or
+production connection, followed by deletion. This clarified local test-data
+authorization after automatic approval review rejected the attachment evidence;
+it did not add production or release authority. The integration report and its
+rehearsal evidence record forward/rollback validation and verified cleanup.

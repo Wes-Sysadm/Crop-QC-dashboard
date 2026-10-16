@@ -96,15 +96,20 @@ executable source; later report-only commits do not alter its runtime content.
 Counts are per run and overlap; they are not a sum of unique tests. The initial
 affected selection skipped one PostgreSQL date theory because its distinct
 `CROPQC_TEST_RECEIPT_DATE_POSTGRES` setting was absent. Its configured rerun executed
-all 22 rows successfully. Two restore-only race cases remain unexecuted without
-`CANONICAL_INVENTORY_RESTORE_POSTGRES`; synthetic PostgreSQL concurrency tests and
-all mandatory contracts did execute. Neither skipped case is counted as proof.
+all 22 rows successfully. After the owner's explicit local-restore approval,
+both restore-only race cases executed against isolated clones of backup #203:
+**2 PASS, zero failed/skipped**. Synthetic PostgreSQL concurrency tests and all
+mandatory contracts also executed. No skipped body is counted as proof.
 No unrelated full application suite or MSI test was run.
 
 Local TRX: `artifacts/pr282-integration/{integration,mixed-http,affected,postgres-date}.trx`
 and `artifacts/governance/28c5459709e146d6b93afc32d58f4a40/contracts.trx`.
-Final required CI must be read from the current PR head; the draft is mergeable
-against main. No architecture exemptions or assertion deletions were used.
+Linux CI on `cc7f1d8508a77e41d8137f5a243c1819cf74d8a3`, run
+`38831535762`, passed all four checks: governance, both Windows synchronization
+jobs, and contracts (161 mandatory plus 15 rendered HTTP tests, zero failed/skipped).
+Later evidence-only commits retain the same executable source; their final required
+CI remains visible on PR #282. No architecture exemptions or assertion deletions
+were used.
 
 Frozen candidate image `cropqc-pr282:integration-b049f89`, immutable local OCI
 identity `sha256:44c5d842ec7d47866b6808d0d5f73b591dc185908b05723db66cd7bc7752a9b0`;
@@ -119,35 +124,80 @@ Rollback candidate: current production #283 source/main
 `80df2bffc5ca1a91973702b1c2313aff34721a62`; retained exact image
 `sha256:f65d1b54b331c4bc11d902c62cef81de80a4a17c051e7af8d3b36547d4131318` and
 archive SHA-256 `671127a939c44f5bca0f99dbfb95d81274b401f138ab0884aac806044effbbb7`.
-It is compensation-aware and compatible with the existing 34-migration schema,
-but **post-#282 workflow compatibility is not yet claimed**. The prior edit UI and
+It is compensation-aware; **post-#282 workflow read/write compatibility passed**
+on the existing 34-migration schema in the rehearsal below. The prior edit UI and
 less restrictive receiver permission behavior return on rollback; new policy
 and affected operators must account for that limitation.
 
-## Remaining preparation safeguard
+## Completed isolated restore and rollback rehearsal
 
-A fresh disposable restore of retained verified backup #203 is justified before
-final human review: test the changed Admin dispatcher against production-shaped
-history, then execute rollback reads/writes after committed new edits while
-preserving all original evidence and strict readiness. The prepared harness uses
-only synthetic added fixtures and the existing unchanged command engine. It was
-compiled against frozen candidate DLLs; compilation is not rehearsal success.
+A fresh disposable restore of retained verified backup #203 tested the changed
+Admin dispatcher against production-shaped history, then rollback reads/writes
+after committed new edits. Only new synthetic fixture records were mutated.
+The frozen candidate and rollback ran on Linux amd64 with .NET/ASP.NET 9.0.21;
+both retained archive checksums and all 55 DLL identities per image were checked.
+The disposable PostgreSQL version was 18.4, matching the retained container digest;
+the earlier development tests used PostgreSQL 18.6. No migration was executed.
 
 Automatic approval review rejected the restore command twice before execution.
 The first reason was insufficient authorization for copying production data into
 a local test database. The second rejected the explicit Step 9 quotation because
 it did not accept attachment text as trusted authorization. The request actually
 states “A previous production backup is permissible as isolated rehearsal input.”
-No workaround was attempted after the rejection. An explicit text confirmation is
-pending for already-local backup #203, a disposable local Docker database with
-`--network none`, no published ports, no production credentials/connection, and
-cleanup after rehearsal. No restore container was created by those denied calls.
+No workaround was attempted after the rejection. On 2026-10-15 the owner explicitly
+replied **"Approve isolated local restore"** to the scoped confirmation for backup
+#203, no network or published ports, no production credentials/connection and
+cleanup afterward. The subsequent restore was approved. No restore container was
+created by the earlier denied calls.
 
-**NO-GO for final human review until the required production-shaped rollback
-rehearsal and final-head CI are complete.** This is an unproven safeguard, not a
-known failing inventory or Admin-edit behavior. No production resource was
-accessed or modified. No merge, deployment, correction, migration or historical
-reconstruction occurred. Keep #282 draft. A later release separately requires
+The first harness attempt used descriptive Admin operation keys and correctly
+failed the existing GUID guard. Original-row verification still passed. Only the
+harness keys were corrected; the disposable database was deleted and restored
+afresh before the successful run. No application guard or frozen binary changed.
+
+Successful sequence on the same database, with no intervening database restore:
+
+1. Candidate and rollback baseline strict readiness: PASS, exit 0, no writes.
+2. Candidate Admin identity saves select only seven independently proven bins
+   from shared 26-bin outside/loss custody. The unknown nineteen remain unassigned.
+   Loss reversal restores current identity without rewriting original loss history.
+3. Nineteen bins receive a point-in-time treatment, then seven later arrivals remain
+   untreated. Mixed dispatch, exact partial returns, acknowledgement/reversal,
+   stale requests, same-intent replay and changed-intent rejection preserve custody.
+4. Rollback reads the new state, replays the candidate's Admin correction and
+   commits the outside return and remaining partial return. A direct unsafe writer
+   is rejected by the compensation-aware database fence. Strict readiness passes.
+5. Candidate handback reads the rollback's committed state without changes and
+   passes strict readiness. No database restore undid any workflow activity.
+
+Final synthetic reconciliation: **117 recorded origin bins = 97 room + 20 transit**.
+Three selected receipts each retain exactly seven bins. Independent SQL confirms
+the room ledger and original origins, and exactly nineteen treated bins belonging
+to the earlier receipt. Final strict readiness reports 454 current identities,
+zero inventory/treatment blockers, zero invalid inter-crew/outside custody and all
+1,007 required schema objects ready. Both application phases preserve immutable
+movement, application/source and audit history. Independent all-table row-hash
+multisets confirm **268,444 original rows across 113 tables unchanged**, including
+all 34 migration-history rows.
+
+The ten-bin historical projection excess remains covered by the integrated
+rendered HTTP/identity regression; the restored fixture does not claim that case.
+Rendered HTTP tests and frozen-runtime dispatcher rehearsal are separate evidence;
+no browser JavaScript or live Render activation is claimed.
+
+Both local disposable containers and their database volumes were deleted and
+absence verified. The final container was
+`1923a3052746c5536ba0ef3628cdd62654f0ccb123fe9a1e17c76756516db5e5`;
+full resource identities, checksums, results and cleanup are in the
+[machine-readable rehearsal evidence](pr282-restored-rehearsal-2026-10-15.json).
+No cloud resource was created; incremental cloud cost was $0. Frozen application
+archives and a checksummed source/result rehearsal bundle remain available locally.
+
+The rehearsal blocker is resolved. **GO FOR FINAL HUMAN REVIEW once the final
+evidence-only head's required CI is green**; no known implementation or rehearsal
+blocker remains. Final CI and PR readiness are recorded on the existing PR.
+No production resource was accessed or modified. No merge, deployment, production
+correction, migration or historical reconstruction occurred. A later release requires
 owner authorization, a fresh independently verified backup, exact merged runtime,
 schema/readiness checks, compatible deployable rollback and independent live
 verification. Backup #203 cannot substitute for that fresh release backup.
