@@ -232,7 +232,7 @@ public sealed class InventoryCommandTests
     {
         public string Connection { get; } = connection;
         public CropQcDbContext CreateDbContext() => new(new DbContextOptionsBuilder<CropQcDbContext>().UseNpgsql(Connection).AddInterceptors(interceptors).Options);
-        public static async Task<Fixture> Create(int positions = 1)
+        public static async Task<Fixture> Create(int positions = 1, bool receiptAdmin = true)
         {
             var original = Environment.GetEnvironmentVariable("CANONICAL_INVENTORY_TEST_POSTGRES")!;
             ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(original);
@@ -244,6 +244,12 @@ public sealed class InventoryCommandTests
             await db.SaveChangesAsync();
             (await db.Warehouses.SingleAsync(x => x.Id == 9001)).Code = "WP";
             db.Users.Add(new() { Id = 8000, Email = "canonical-test@example.invalid", DisplayName = "Test operator" });
+            if (receiptAdmin)
+            {
+                var role = new Role { Name = "Local receipt administrator", NormalizedName = "LOCAL RECEIPT ADMINISTRATOR" };
+                role.PageAccesses.Add(new() { AreaKey = "receipts", AccessLevel = "Admin" });
+                db.UserRoles.Add(new() { UserId = 8000, Role = role });
+            }
             db.Rooms.Add(new() { Id = 9003, WarehouseId = 9001, Code = "DEST", Name = "Destination" });
             await db.SaveChangesAsync();
             return f;

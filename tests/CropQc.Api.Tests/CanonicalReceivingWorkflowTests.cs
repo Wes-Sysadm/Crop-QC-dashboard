@@ -51,6 +51,7 @@ public sealed class CanonicalReceivingWorkflowTests
             var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == id);
             var form = new UpdateReceiptForm
             {
+                Reason = "Activate verified receipt inventory",
                 Id = id,
                 ReceiptVersion = receipt.ConcurrencyVersion,
                 CropYear = 2026,

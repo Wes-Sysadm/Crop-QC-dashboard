@@ -1,0 +1,349 @@
+{
+  "purpose": "Read-only PR #282 release preparation, not release authorization or deployment",
+  "observedUtc": "2026-10-16T02:55:18Z to 2026-10-16T03:04:20Z",
+  "workspaceId": "tea-d7uc4ippo60c73ebn4mg",
+  "reviewedHead": "8aa4231a675d746f055a3200b7a284fa3957d5c0",
+  "mainLiveSha": "ea307b168e563d432dd4f513da6c06f4e5e54d5e",
+  "liveDeployment": "dep-db8krumi0phs73bst740",
+  "workerSha": "95518dec131d44b01e2dc8fcfcbb82f508a8f399",
+  "workerDeployment": "dep-db3ath142hec73955je0",
+  "autoDeploy": {
+    "web": "off",
+    "backupWorker": "off"
+  },
+  "runtime": {
+    "osArch": "Linux x86_64",
+    "dotnet": "9.0.21",
+    "aspnet": "9.0.21",
+    "dllCount": 55,
+    "dllManifestSha256": "dc00b35710a57a1511047ce16afa170d13d2a0d447e5a3b91a0120bda98f0d49",
+    "matchesRehearsedRollback": true,
+    "cropQcDlls": {
+      "CropQc.Data.dll": "af1a3760a7c4c0bcaa12af29f6d330b1eb92d98e0a72613b34db0f938528c288",
+      "CropQc.Shared.dll": "627cd2ced0250c4d2a9cd513f04b03afe8752f81f0fef881fde8f63a9edb98e4",
+      "CropQc.Web.dll": "ca7028ba9aafb661f39e2f914ec1981a39d09699292e084e0374496f363f7fe6"
+    }
+  },
+  "safeConfiguration": {
+    "ASPNETCORE_ENVIRONMENT": "Production",
+    "CanonicalInventoryCommandsEnabled": "true",
+    "TransferCustody__Enabled": "true",
+    "Database__EnsureCreatedOnStartup": "false",
+    "Database__SeedMasterDataOnStartup": "False"
+  },
+  "strictReadiness": {
+    "exitCode": 0,
+    "startedUtc": "2026-10-16T02:57:07Z",
+    "finishedUtc": "2026-10-16T02:57:15Z",
+    "rawOutputSha256": "e80b19e39cd67be30ebb0b8b036275005cc552e528d4e718d15cc28a6454ca98",
+    "result": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1139,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1046,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 452,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": []
+        },
+        "invalidOutside": 0
+      }
+    }
+  },
+  "conservation": {
+    "exitCode": 0,
+    "startedUtc": "2026-10-16T02:58:45Z",
+    "finishedUtc": "2026-10-16T02:58:50Z",
+    "fullOutputSha256": "0f4d9cbd71b4c361aa8f416dced7fdb8551a878077f3dba309ee7fc02ee3dea0",
+    "summarySha256": "9836f94ffb90d8cccc49cbb9ffdbd546cad5d0d509e5a300c6de8130009fb086",
+    "result": {
+      "receiving": {
+        "cropYear": 2026,
+        "receiptsOmittedFromSummary": true,
+        "receiptCount": 2627,
+        "receiptTotal": 109559,
+        "ledgerTotal": 109559,
+        "netDifference": 0,
+        "mismatchReceiptIds": [],
+        "mismatchCount": 0
+      },
+      "facilities": [
+        {
+          "facility": "EBS",
+          "categories": {
+            "Internal transfers": 0,
+            "Receiving / quantity corrections / voids": 51985,
+            "Opening inventory": 6143,
+            "Runs (net of reversals)": -22773,
+            "Identity/location corrections": 0,
+            "Depletions / losses (net)": -18,
+            "Outside warehouse custody (net room removal)": -1409,
+            "Inter-crew custody (net room movement)": -630
+          },
+          "authoritativeCurrentBins": 33298,
+          "accountedBins": 33298,
+          "difference": 0
+        },
+        {
+          "facility": "DH",
+          "categories": {
+            "Receiving / quantity corrections / voids": 17670,
+            "Identity/location corrections": -60,
+            "Internal transfers": -680
+          },
+          "authoritativeCurrentBins": 16930,
+          "accountedBins": 16930,
+          "difference": 0
+        },
+        {
+          "facility": "McDougall",
+          "categories": {
+            "Receiving / quantity corrections / voids": 24410,
+            "Internal transfers": -128,
+            "Identity/location corrections": 0,
+            "Inter-crew custody (net room movement)": -2426,
+            "Runs (net of reversals)": -478
+          },
+          "authoritativeCurrentBins": 21378,
+          "accountedBins": 21378,
+          "difference": 0
+        },
+        {
+          "facility": "WP",
+          "categories": {
+            "Receiving / quantity corrections / voids": 16020,
+            "Runs (net of reversals)": -13064,
+            "Identity/location corrections": 60,
+            "Internal transfers": 808,
+            "Inter-crew custody (net room movement)": 2212
+          },
+          "authoritativeCurrentBins": 6036,
+          "accountedBins": 6036,
+          "difference": 0
+        }
+      ],
+      "global": {
+        "facility": "GLOBAL",
+        "categories": {
+          "Internal transfers": 0,
+          "Receiving / quantity corrections / voids": 110085,
+          "Opening inventory": 6143,
+          "Runs (net of reversals)": -36315,
+          "Identity/location corrections": 0,
+          "Depletions / losses (net)": -18,
+          "Outside warehouse custody (net room removal)": -1409,
+          "Inter-crew custody (net room movement)": -844
+        },
+        "authoritativeCurrentBins": 77642,
+        "accountedBins": 77642,
+        "difference": 0
+      },
+      "unclassifiedTypes": [],
+      "unbalancedRoomTransfers": [],
+      "unbalancedIdentityCorrections": [],
+      "treatmentIdentityDebit": 6088,
+      "treatmentIdentityCredit": 6088,
+      "invalidTreatmentIdentityMovements": 0,
+      "otherHistoricalTreatmentCorrections": {
+        "IdentityReclassificationUntreatedBackfill": 426,
+        "IdentityReclassificationRetirement": 535,
+        "InventoryIdentityCorrectionOut": 64,
+        "InventoryIdentityCorrectionIn": 64
+      },
+      "interCrewTransitBins": 844,
+      "outsideWarehouseCustodyBins": 1409,
+      "receiptHeldBins": 0,
+      "treatmentIdentityDifference": 0,
+      "isReady": true
+    }
+  },
+  "protectedBaseline": [
+    {
+      "captured_at": "2026-10-16T02:56:15.623472Z",
+      "fingerprints": [
+        {
+          "max_id": 198,
+          "md5": "fc1be8a9287012d5beab83d65e6a38d3",
+          "row_count": 181,
+          "table_name": "ActualRunRevisions"
+        },
+        {
+          "max_id": 173,
+          "md5": "a114c10326e010a49558030c37f32568",
+          "row_count": 173,
+          "table_name": "ActualRuns"
+        },
+        {
+          "max_id": 188845,
+          "md5": "6f02af735886c4148b35bd4b01ac0373",
+          "row_count": 188840,
+          "table_name": "AuditLogs"
+        },
+        {
+          "max_id": 513,
+          "md5": "27a586fd0c57c64763efe8f442eba14f",
+          "row_count": 484,
+          "table_name": "BinsRunEntries"
+        },
+        {
+          "max_id": 42,
+          "md5": "dfdc8777c8b1d081ff058ae70f4edc3e",
+          "row_count": 42,
+          "table_name": "InterCrewTransfers"
+        },
+        {
+          "max_id": null,
+          "md5": "4c6085b097df6c85577d66ba6d70d131",
+          "row_count": 330,
+          "table_name": "InventoryCommands"
+        },
+        {
+          "max_id": null,
+          "md5": "58232b406ff7640bbc0d548095592eb6",
+          "row_count": 71,
+          "table_name": "InventoryIdentityCorrections"
+        },
+        {
+          "max_id": 47,
+          "md5": "708a0342237ca684df49c6aec6905f7d",
+          "row_count": 47,
+          "table_name": "OutsideWarehouseTransfers"
+        },
+        {
+          "max_id": null,
+          "md5": "d41d8cd98f00b204e9800998ecf8427e",
+          "row_count": 0,
+          "table_name": "ReceiptCustodyAcknowledgments"
+        },
+        {
+          "max_id": null,
+          "md5": "d41d8cd98f00b204e9800998ecf8427e",
+          "row_count": 0,
+          "table_name": "ReceiptCustodyPlacements"
+        },
+        {
+          "max_id": null,
+          "md5": "d41d8cd98f00b204e9800998ecf8427e",
+          "row_count": 0,
+          "table_name": "ReceiptCustodyReversals"
+        },
+        {
+          "max_id": null,
+          "md5": "a28cc74579e787064df31a2253ae7537",
+          "row_count": 124,
+          "table_name": "ReceiptInventoryOverrides"
+        },
+        {
+          "max_id": 2738,
+          "md5": "7f2797af56f5daf8956599e138e246da",
+          "row_count": 2733,
+          "table_name": "Receipts"
+        },
+        {
+          "max_id": null,
+          "md5": "d41d8cd98f00b204e9800998ecf8427e",
+          "row_count": 0,
+          "table_name": "ReceiptVarietyLines"
+        },
+        {
+          "max_id": 4478,
+          "md5": "4e8467c1263133baf21bfd9a522a8794",
+          "row_count": 4427,
+          "table_name": "RoomInventoryAdjustments"
+        },
+        {
+          "max_id": 8,
+          "md5": "4507511b996d5327ba47d77348c9164e",
+          "row_count": 8,
+          "table_name": "RoomInventoryLosses"
+        },
+        {
+          "max_id": 29,
+          "md5": "eee54cf08f356b2d42c1d655fe88c1f0",
+          "row_count": 26,
+          "table_name": "RoomTreatmentApplications"
+        },
+        {
+          "max_id": 40,
+          "md5": "b126db842cb9bf5b465fb4dccf20e0b4",
+          "row_count": 37,
+          "table_name": "RoomTreatmentApplicationSources"
+        },
+        {
+          "max_id": 1182,
+          "md5": "e4bb805c01ca7adad23f8a0162c635c8",
+          "row_count": 1164,
+          "table_name": "TreatmentLineageMovements"
+        },
+        {
+          "max_id": null,
+          "md5": "883900afbbce09dd00f8c8454e527e20",
+          "row_count": 57,
+          "table_name": "TreatmentLineageSegmentApplications"
+        },
+        {
+          "max_id": 1071,
+          "md5": "2d6126ede15c8539b1be75f55b6ba775",
+          "row_count": 1045,
+          "table_name": "TreatmentLineageSegments"
+        }
+      ],
+      "read_only": "on"
+    }
+  ],
+  "http": {
+    "atUtc": "2026-10-16T03:04:19.944087+00:00",
+    "unauthenticated": [
+      {
+        "path": "/health",
+        "status": 200,
+        "redirect": ""
+      },
+      {
+        "path": "/health/db",
+        "status": 200,
+        "redirect": ""
+      },
+      {
+        "path": "/Receipts/2475/Edit",
+        "status": 302,
+        "redirect": "https://crop-qc-dashboard.onrender.com/Login"
+      }
+    ],
+    "authenticatedBrowserGet": {
+      "path": "/Receipts/2475/Edit",
+      "result": "Edit Receipt page visible with Admin Production session; no fields changed or forms submitted"
+    }
+  },
+  "branchProtection": {
+    "classic": "404 Branch not protected",
+    "effectiveBranchRules": [],
+    "settingsChanged": false
+  },
+  "limitations": [
+    "Baseline captured during normal live activity; refresh immediately before release and reconcile legitimate changes separately.",
+    "Current live artifact is retained; rollback to itself is not shown in Dashboard. Recheck this exact deployment is rollbackable after future deployment.",
+    "Live permission/reason/one-Save behavior remains old version; candidate evidence is from completed tests/rehearsal.",
+    "Fresh verified predeployment backup remains mandatory; none started in this task."
+  ]
+}

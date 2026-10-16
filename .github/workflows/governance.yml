@@ -47,6 +47,14 @@ jobs:
         with:
           dotnet-version: '9.0.x'
       - run: pwsh -File scripts/governance/test-contracts.ps1
+      - name: Rendered receipt correction HTTP contracts
+        run: >-
+          dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj
+          --configuration Release --no-build
+          --settings tests/CropQc.Api.Tests/canonical-postgres.runsettings
+          --filter 'FullyQualifiedName~ReceiptCorrectionFormHttpTests|FullyQualifiedName~ReceiptQuantityHttpTests|FullyQualifiedName~ReceiptLocationHttpTests|FullyQualifiedName~AdminReceiptEditHttpTests'
+          --results-directory artifacts/governance/receipt-form
+          --logger 'trx;LogFileName=receipt-form.trx'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

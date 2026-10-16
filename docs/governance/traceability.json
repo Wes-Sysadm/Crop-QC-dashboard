@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "specificationVersion": "1.1.0",
+  "specificationVersion": "1.2.0",
   "rules": [
     {
       "id": "INV-001",
@@ -300,7 +300,10 @@
     {
       "id": "REC-001",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
+        "src/CropQc.Web/Services/ReceiptEditService.cs",
+        "src/CropQc.Data/Authentication/OperatorSession.cs",
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptMetadata.cs"
       ],
       "tests": [
         {
@@ -314,9 +317,39 @@
           "member": "Correction_failure_rolls_back_receipt_projection_ledger_override_and_audits",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.AdminReceiptEditHttpTests",
+          "member": "Historical_metadata_one_save_requires_reason_preserves_input_and_inventory_and_rejects_stale_replay",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.AdminReceiptEditHttpTests",
+          "member": "Nonadmins_cannot_edit_through_web_API_service_or_canonical_command_but_keep_receiving_permission",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.AdminReceiptEditHttpTests",
+          "member": "One_save_identity_uses_audited_command_and_combined_changes_leave_everything_unchanged",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.AdminReceiptEditHttpTests",
+          "member": "Historical_date_edit_preserves_treatment_membership_and_rejects_crossing_an_application",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.AdminReceiptEditHttpTests",
+          "member": "One_save_selects_only_seven_proven_bins_and_preserves_shared_ancestry_through_restoration",
+          "kind": "postgres",
+          "required": true
         }
       ],
-      "gap": "#271 custody compensations and later-arrival treatment correction need combined-candidate validation before release."
+      "gap": "PR #283 resolved the four prior identity failures; #282 retains its authority/ownership/restoration assertions and adds the integrated Admin HTTP boundary. Mixed-kind corrections still require a separately reviewed composite command. Exact-candidate production-shaped release/rollback rehearsal remains mandatory."
     },
     {
       "id": "REC-002",

@@ -16,6 +16,7 @@ public sealed class ReceiptsController(
     IDashboardDataService dataService,
     IReceiptPurgeService receiptPurgeService,
     IReceiptInventoryOverrideService receiptInventoryOverrideService,
+    ReceiptEditService receiptEditService,
     IReceiptQcWorkflowService receiptQcWorkflowService,
     IReceivingTreatmentService receivingTreatmentService,
     ITreatmentReportAttachmentService treatmentReportAttachmentService,
@@ -343,11 +344,7 @@ public sealed class ReceiptsController(
         var model = await dataService.GetReceiptEditAsync(id, cancellationToken);
         model.CanCorrectInventoryIdentity = await userAccessService.HasAccessAsync(
             User, ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken);
-        model.CanAdminOverride = await userAccessService.HasAccessAsync(
-            User,
-            ApplicationAreas.Receipts,
-            PageAccessLevel.Create,
-            cancellationToken);
+        model.CanAdminOverride = model.CanCorrectInventoryIdentity;
         if (model.CanAdminOverride)
         {
             model.AdminOverridePreview = await receiptInventoryOverrideService.GetPreviewAsync(id, cancellationToken);
@@ -357,40 +354,37 @@ public sealed class ReceiptsController(
 
     [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/Edit")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(long id, UpdateReceiptForm form, CancellationToken cancellationToken)
-    {
-        form.Id = id;
-        var error = await dataService.UpdateReceiptAsync(form, cancellationToken);
-        TempData[error is null ? "Success" : "Error"] = error ?? "Receipt updated.";
-        return error is null
-            ? RedirectToAction(nameof(Details), new { id })
-            : RedirectToAction(nameof(Edit), new { id });
-    }
-
-    [Authorize(Policy = AccessPolicyNames.ReceiptEditEdit)]
     [HttpPost("{id:long}/AdminInventoryOverride")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AdminInventoryOverride(
-        long id,
-        AdminReceiptInventoryOverrideForm form,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Edit(long id, AdminReceiptInventoryOverrideForm form, CancellationToken cancellationToken)
     {
+        // Use actual binding presence, never a client-supplied omission flag.
+        string[] lotFields = [nameof(form.LotCode), $"form.{nameof(form.LotCode)}"];
+        form.LotCodeOmitted = !lotFields.Any(field => ModelState.TryGetValue(field, out var value) && value.RawValue is not null);
+        if (form.LotCodeOmitted) foreach (var field in lotFields) ModelState.Remove(field);
+        // These inherited create-form defaults are not evidence of edit intent.
+        // In particular an omitted date/key must not become "now"/a fresh retry key.
+        foreach (var required in new[] { nameof(form.ReceivedAt), nameof(form.CropYear), nameof(form.BinCount), nameof(form.OperationKey), nameof(form.ReceiptVersion) })
+            if (!new[] { required, $"form.{required}" }.Any(field => ModelState.TryGetValue(field, out var value) && value.RawValue is not null))
+                ModelState.AddModelError(required, $"{required} was not submitted. Reload the receipt before saving.");
         form.Id = id;
-        var result = await receiptInventoryOverrideService.ApplyEditAsync(form, User, cancellationToken);
-        if (!result.Succeeded)
+        var result = ModelState.IsValid
+            ? await receiptEditService.SaveAsync(form, User, cancellationToken)
+            : new ReceiptInventoryOverrideResult(null, "The receipt contains missing or invalid fields. Correct the highlighted values; nothing was saved.");
+        if (result.Succeeded)
         {
-            TempData["Error"] = result.Error;
-            return result.IsConflict
-                ? Conflict(new { error = result.Error })
-                : RedirectToAction(nameof(Edit), new { id });
+            TempData["Success"] = result.WasIdempotent ? "This receipt edit was already saved." : "Receipt updated.";
+            return RedirectToAction(nameof(Details), new { id });
         }
-        TempData["Success"] = result.WasIdempotent
-            ? $"Receipt inventory override {result.OverrideId:D} was already applied."
-            : $"Receipt inventory override {result.OverrideId:D} was applied.";
-        return await userAccessService.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, cancellationToken)
-            ? RedirectToAction(nameof(OverrideDetails), new { overrideId = result.OverrideId })
-            : RedirectToAction(nameof(Details), new { id });
+        // Keep input and reviewed tokens: an error is not permission to refresh intent.
+        var model = await dataService.GetReceiptEditAsync(id, cancellationToken);
+        model.OriginalForm = model.Form;
+        model.Form = form;
+        model.CanAdminOverride = model.CanCorrectInventoryIdentity = true;
+        model.AdminOverridePreview = await receiptInventoryOverrideService.GetPreviewAsync(id, cancellationToken);
+        model.DataWarning = result.Error;
+        Response.StatusCode = result.IsConflict ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest;
+        return View("Edit", model);
     }
 
     [Authorize(Policy = AccessPolicyNames.ReceiptDeleteAdmin)]

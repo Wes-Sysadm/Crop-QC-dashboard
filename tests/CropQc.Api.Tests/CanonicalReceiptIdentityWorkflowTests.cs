@@ -15,7 +15,7 @@ using static CropQc.Api.Tests.InventoryCommandTests;
 
 namespace CropQc.Api.Tests;
 
-public sealed class CanonicalReceiptIdentityWorkflowTests
+public sealed class CanonicalReceiptIdentityWorkflowTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     [InventoryPostgresFact]
     public async Task Identity_restoration_migration_changes_only_indexes_and_prevents_downgrade_after_commands()
@@ -127,7 +127,7 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         Assert.Equal(7, room.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
     }
 
-    private static async Task RestoreCorrectedConsumption(bool loss)
+    private async Task RestoreCorrectedConsumption(bool loss)
     {
         await using var f = await Fixture.Create(2);
         await using (var seed = f.CreateDbContext())
@@ -203,6 +203,7 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var room = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
         Assert.Equal(19, room.Positions.Single(x => x.Identity.GrowerLotId == 100000).AuthoritativeQuantity);
         Assert.Equal(26, room.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
+        await Describe(db, received, "after restoration");
         AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100000), 19, 0);
         AssertPosition(room.Positions.Single(x => x.Identity.GrowerLotId == 100001), 26, 10);
         await AssertReceipt(db, received, 7, 0, 100001);
@@ -231,6 +232,7 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var inventory = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow);
         Assert.Equal(19, inventory.Positions.Single(x => x.Identity.GrowerLotId == 100000).AuthoritativeQuantity);
         Assert.Equal(26, inventory.Positions.Single(x => x.Identity.GrowerLotId == 100001).AuthoritativeQuantity);
+        await Describe(db, received, "after reclassification");
         AssertPosition(inventory.Positions.Single(x => x.Identity.GrowerLotId == 100000), 19, 10);
         AssertPosition(inventory.Positions.Single(x => x.Identity.GrowerLotId == 100001), 26, 10);
         await AssertReceipt(db, received, 7, 0, 100001);
@@ -292,6 +294,7 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
         var original = JsonSerializer.Serialize(await db.OutsideWarehouseTransfers.AsNoTracking().SingleAsync());
         var movements = JsonSerializer.Serialize(await db.TreatmentLineageMovements.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync());
         var service = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);
+        await Describe(db, received, "before outside custody correction");
         var form = await Correction(db, service, received);
         Assert.Null((await service.ApplyEditAsync(form, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
         Assert.Equal(original, JsonSerializer.Serialize(await db.OutsideWarehouseTransfers.AsNoTracking().SingleAsync()));
@@ -334,6 +337,33 @@ public sealed class CanonicalReceiptIdentityWorkflowTests
             Assert.NotNull((await service.ApplyEditAsync(form, CanonicalReceivingWorkflowTests.Operator().HttpContext!.User, default)).Error);
             Assert.True(reached, stage); Assert.Equal(before, await f.Snapshot());
         }
+    }
+
+    private async Task Describe(CropQcDbContext db, long receipt, string stage)
+    {
+        var state = await new InventoryReceiptAvailability(db).ReadAsync(receipt, default);
+        output.WriteLine(stage + ": " + JsonSerializer.Serialize(new
+        {
+            state!.Blocker,
+            state.RoomQuantity,
+            state.CustodyQuantity,
+            Positions = state.Positions.Select(p => new
+            {
+                p.PositionKey,
+                p.AuthoritativeQuantity,
+                p.RawProjectionQuantity,
+                p.AvailableQuantity,
+                p.TreatmentConfidence,
+                p.ReceiptProvenance,
+                p.TreatmentSlices,
+                p.HistoricalProjections,
+                p.Blockers
+            }),
+            Segments = await db.TreatmentLineageSegments.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.ReceiptId, x.IdentityKey, x.CurrentBins, x.Disposition, x.RetiredQuantity, x.TreatmentSignature, x.CohortKey }).ToArrayAsync(),
+            Movements = await db.TreatmentLineageMovements.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.MovementType, x.ReceiptId, x.BinCount, x.SourceSegmentId, x.DestinationSegmentId, x.TreatmentSignatureSnapshot }).ToArrayAsync()
+        }));
     }
 
     private static async Task<Func<Task<string>>> CaptureHistory(CropQcDbContext db)

@@ -77,6 +77,7 @@ public sealed class ReceiptDateBaselineTests(ITestOutputHelper output)
         var receipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == ReceiptId);
         var form = new UpdateReceiptForm
         {
+            Reason = "Review receipt date",
             Id = ReceiptId,
             CropYear = receipt.CropYear,
             ConfirmCropYear = true,

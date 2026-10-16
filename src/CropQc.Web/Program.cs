@@ -173,7 +173,7 @@ builder.Services.AddAuthorization(options =>
     AddAccessPolicy(options, AccessPolicyNames.FieldSamplesAdmin, ApplicationAreas.FieldSamples, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsView, ApplicationAreas.Receipts, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptsEdit, ApplicationAreas.Receipts, PageAccessLevel.Edit);
-    AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.Receipts, PageAccessLevel.Create);
+    AddAccessPolicy(options, AccessPolicyNames.ReceiptEditEdit, ApplicationAreas.Receipts, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.ReceiptDeleteAdmin, ApplicationAreas.Receipts, PageAccessLevel.Admin);
     AddAccessPolicy(options, AccessPolicyNames.CurrentLotsView, ApplicationAreas.CurrentLots, PageAccessLevel.View);
     AddAccessPolicy(options, AccessPolicyNames.CurrentLotsAdmin, ApplicationAreas.CurrentLots, PageAccessLevel.Admin);
@@ -305,6 +305,7 @@ builder.Services.AddScoped<IEbsInventoryCleanupService, EbsInventoryCleanupServi
 builder.Services.AddScoped<IInventoryDeductionInvariantService, InventoryDeductionInvariantService>();
 builder.Services.AddScoped<IInventoryDiagnosticAcknowledgmentService, InventoryDiagnosticAcknowledgmentService>();
 builder.Services.AddScoped<IReceiptInventoryOverrideService, ReceiptInventoryOverrideService>();
+builder.Services.AddScoped<ReceiptEditService>();
 builder.Services.AddScoped<IBinsRunService, BinsRunService>();
 builder.Services.AddScoped<CropQc.Data.Inventory.ICanonicalRunExpectationWriter, CanonicalRunExpectationWriter>();
 builder.Services.AddScoped<IRunReportingService, RunReportingService>();

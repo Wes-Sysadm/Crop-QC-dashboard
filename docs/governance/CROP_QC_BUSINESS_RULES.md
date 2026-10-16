@@ -1,6 +1,6 @@
 # Crop QC business rules
 
-Specification version: **1.1.0**. The owner requested the single-approval workflow on 2026-10-09 and reviewed, approved and clarified its adoption on 2026-10-11. It is effective on approved main after normal adoption, not from an unmerged branch. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
+Specification version: **1.2.0**. ADR-008 records the owner-approved Admin receipt-edit policy requested on 2026-10-14; this revision becomes effective after normal adoption on main. The owner requested the single-approval workflow on 2026-10-09 and reviewed, approved and clarified its adoption on 2026-10-11. It is effective on approved main after normal adoption, not from an unmerged branch. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
 
 This is the single normative business-rule catalog. Existing inventory phase documents remain detailed technical contracts and historical evidence, not competing business-policy owners. Their dated implementation/release status is not current production status. A more specific compatible constraint still applies; contradictions require resolution, not a silent override.
 
@@ -42,11 +42,11 @@ Splits, merges, moves, custody changes, corrections and consumption preserve app
 
 ## REC-001 — Receipt correction history
 
-Corrections, voids and reversals preserve original evidence, actors and timestamps through authorized audited operations. Quantity changes use the established correction mechanism, not ordinary metadata edits; no metadata-only correction while current relevant custody remains without proof. Corrections must not attach historical treatment to new bins. Exact operator permissions remain workflow-specific; the general rule does not grant a role additional authority.
+Corrections, voids and reversals preserve original evidence, actors and timestamps through authorized audited operations. Quantity changes use the established correction mechanism, not ordinary metadata edits; no metadata-only correction while current relevant custody remains without proof. Corrections must not attach historical treatment to new bins. Existing receipt edits (metadata, quantity, identity and location) require the established Receipts Admin permission, regardless of receipt age, and an operator-entered reason. Create-only and Edit-only permission is insufficient. The existing Edit page offers one Save action dispatched to established audited commands; unsupported combinations fail before any write. Creation, QC sampling, receiving treatment and dedicated custody acknowledgements keep their existing permissions. A date correction must preserve opening-balance eligibility and point-in-time treatment evidence. This permission policy supersedes the earlier receiver quantity-correction exception; see ADR-008.
 
 ## REC-002 — Partial receipt custody
 
-Dispatched, acknowledged, held, placed and unresolved quantities stay distinct. A 50-bin load acknowledged as 49 retains one unresolved bin. No manufactured stock, discarded shortage or falsely completed reconciliation. Compensation changes the recorded custody state, not an assumed physical return. **Main does not yet implement all partial-acknowledgement transitions; draft #271 is tracked as a gap, not silently incorporated here.**
+Dispatched, acknowledged, held, placed and unresolved quantities stay distinct. A 50-bin load acknowledged as 49 retains one unresolved bin. No manufactured stock, discarded shortage or falsely completed reconciliation. Compensation changes the recorded custody state, not an assumed physical return. **Implementation status: PR #271 merged into approved main as `3002d0774f52ee5e94aaef81dbd0d62c6bed335b` on 2026-10-14 and was deployed. Main includes partial acknowledgements, held custody, placement, reversals and compensation-aware writer safeguards.**
 
 ## MOV-001 — Transfer integrity
 

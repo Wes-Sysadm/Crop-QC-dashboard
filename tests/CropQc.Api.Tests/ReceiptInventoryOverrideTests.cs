@@ -27,7 +27,7 @@ public sealed class ReceiptInventoryOverrideTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-08-04T19:00:00Z");
 
     [Fact]
-    public async Task Receiver_can_increase_a_mistaken_count_with_audit_and_replay_but_cannot_reclassify_inventory()
+    public async Task Receiver_cannot_correct_saved_quantity_or_identity_under_ADR008()
     {
         await using var fixture = await OverrideFixture.CreateAsync(includeReceiptEditor: true, initialBins: 20);
         fixture.Db.UserRoles.Add(new()
@@ -37,18 +37,19 @@ public sealed class ReceiptInventoryOverrideTests
         });
         await fixture.Db.SaveChangesAsync();
         var form = await fixture.PositiveFormAsync(25, Guid.NewGuid().ToString("D"));
-        var result = await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default);
-        Assert.True(result.Succeeded, $"{result.Error} {fixture.OverrideLogger.LastException}");
-        Assert.Equal(25, (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).BinCount);
-        var correction = await fixture.Db.ReceiptInventoryOverrides.SingleAsync();
-        Assert.Equal(20, correction.OldReceiptBinCount); Assert.Equal(25, correction.NewReceiptBinCount);
-        Assert.NotEqual(OverrideFixture.AdminId, correction.AdministratorUserId);
-        Assert.True((await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default)).WasIdempotent);
-        Assert.Single(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
-        var rejected = fixture.Form(25, Guid.NewGuid().ToString("D"));
-        rejected.RoomId = OverrideFixture.SecondRoomId;
-        Assert.False((await fixture.Service.ApplyEditAsync(rejected, fixture.EditorPrincipal!, default)).Succeeded);
-        Assert.Equal(25, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        var audits = await fixture.Db.AuditLogs.CountAsync();
+        foreach (var quantity in new[] { 25, 15 })
+        {
+            form.BinCount = quantity;
+            var result = await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default);
+            Assert.False(result.Succeeded); Assert.Contains("Receipts Admin", result.Error);
+        }
+        form.RoomId = OverrideFixture.SecondRoomId;
+        Assert.False((await fixture.Service.ApplyEditAsync(form, fixture.EditorPrincipal!, default)).Succeeded);
+        Assert.Equal(20, (await fixture.Db.Receipts.AsNoTracking().SingleAsync(x => x.Id == OverrideFixture.ReceiptId)).BinCount);
+        Assert.Equal(20, await fixture.Db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
+        Assert.Equal(audits, await fixture.Db.AuditLogs.CountAsync());
     }
 
     [Fact]
@@ -162,7 +163,7 @@ public sealed class ReceiptInventoryOverrideTests
         var error = await fixture.Dashboard(fixture.EditorPrincipal!)
             .UpdateReceiptAsync(fixture.Form(proposedBins, Guid.NewGuid().ToString("D")), CancellationToken.None);
 
-        Assert.Contains("do not have permission", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Receipts Admin permission", error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(20, (await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId))!.BinCount);
         Assert.Empty(await fixture.Db.ReceiptInventoryOverrides.ToListAsync());
         Assert.Single(await fixture.Db.RoomInventoryAdjustments.ToListAsync());
@@ -176,7 +177,7 @@ public sealed class ReceiptInventoryOverrideTests
         form.CompuTechReceiptId = "OVERRIDE-20-EDITED";
         var ledgerCount = await fixture.Db.RoomInventoryAdjustments.CountAsync();
 
-        var error = await fixture.Dashboard(fixture.EditorPrincipal!).UpdateReceiptAsync(form, CancellationToken.None);
+        var error = await fixture.Dashboard(fixture.AdminPrincipal).UpdateReceiptAsync(form, CancellationToken.None);
 
         Assert.Null(error);
         var receipt = await fixture.Db.Receipts.FindAsync(OverrideFixture.ReceiptId);
@@ -1919,12 +1920,12 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Contains("AccessPolicyNames.ReceiptDeleteAdmin", controller);
         Assert.Contains("Model.CanAdminOverride", editView);
         Assert.Contains("ConfirmInventoryChange", editView);
-        Assert.Contains("AcknowledgeNegativeInventory", editView);
-        Assert.Contains("Review bin count correction", editView);
-        Assert.Contains("Changing the bin count of a saved Receipt requires an override.", editView);
+        Assert.DoesNotContain("name=\"AcknowledgeNegativeInventory\"", editView);
+        Assert.DoesNotContain("Review bin count correction", editView);
+        Assert.Contains("required maxlength=\"1000\"", editView);
         Assert.Contains("Changing the Grower/Lot identity of a saved Receipt requires an audited identity correction.", editView);
-        Assert.Contains("Receipt Identity Correction Review", editView);
-        Assert.Contains("Apply Receipt Correction", editView);
+        Assert.Contains("Current receipt evidence", editView);
+        Assert.DoesNotContain("Apply Receipt Correction", editView);
         Assert.Contains("Where is the additional inventory now?", editView);
         Assert.Contains("TrueUpAllocations[", editView);
         Assert.Contains("positiveTrueUpAllocation", editView);
@@ -1932,17 +1933,19 @@ public sealed class ReceiptInventoryOverrideTests
         Assert.Contains("New bin count", editView);
         Assert.Contains("Inventory adjustment", editView);
         Assert.Contains("inputmode=\"numeric\"", editView);
-        Assert.Contains("saveReceiptButton.hidden = binCountChanged || identityChanged", editView);
+        Assert.DoesNotContain("saveReceiptButton.hidden", editView);
         Assert.Contains("ValidateAntiForgeryToken", controller);
         Assert.DoesNotContain("priorOverrideRequiresAuditedIncrease", editView);
         Assert.DoesNotContain("hasPriorInventoryOverride", dashboardService);
     }
 
-    [Fact]
+    [InventoryPostgresFact]
     public async Task PostgreSql_admin_override_workflow_when_configured()
     {
-        var connectionString = Environment.GetEnvironmentVariable("CROPQC_TEST_RECEIPT_OVERRIDE_POSTGRES");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        // Use the task's standard disposable PostgreSQL fixture; never silently
+        // count an unconfigured early return as integration coverage.
+        await using var isolated = await InventoryCommandTests.Fixture.Create();
+        var connectionString = isolated.Connection;
         ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(connectionString);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();

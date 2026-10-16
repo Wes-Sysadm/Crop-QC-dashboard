@@ -17,6 +17,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddScoped<CanonicalReceivingAuthorizationFilter>();
+builder.Services.AddScoped<ReceiptEditingAuthorizationFilter>();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CropQcDbContext>(options =>
     CropQcDatabase.Configure(

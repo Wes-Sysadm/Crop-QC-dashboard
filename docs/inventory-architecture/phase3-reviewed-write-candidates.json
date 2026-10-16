@@ -38,8 +38,8 @@
   {
     "Path": "src/CropQc.Api/Services/ReceiptService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
-    "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "4FBA5E859568A8A5C5400DD3D67266174667F4A9E7EFE5A3954F8FB6D1AF032D"
+    "Reason": "Reviewed ADR-008 adapter: live Receipts Admin on every existing-receipt update, entered reason/version, canonical metadata dispatcher while ON. Legacy metadata and its audit share SaveChanges. Ordinary creation and QC review permissions unchanged; no physical capability added.",
+    "Sha256": "3AAAEFD071AB0C0FC897A8A8C9FCF3A6FB5190380A85216E9523D1BA177D4321"
   },
   {
     "Path": "src/CropQc.Data/CropQcDbContext.cs",
@@ -80,8 +80,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "937B37AC059F5F3DDA25F212E047A85DE44B84C02EC4D97D53BA096049F2E132"
+    "Reason": "Executor-owned Serializable transaction. Existing-receipt commands now validate live Receipts Admin before replay/commit; ordinary receiving and movement authority unchanged. Journal, custody fence, atomic effects and proof-based projection lifecycle retained.",
+    "Sha256": "340CED8ED8D2501CA67E00C1539387A3E784E371584498C784E46DBB3BAE80FE"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -134,8 +134,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptMetadata.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "C961AC8C7C0C6BB2C064DD877D838B2FA7AC0A7E63C5E29EED8422360C39A5E4"
+    "Reason": "Canonical metadata writer retains exact expected identity/quantity/location, version, date-accounting and audit. ADR-008 removes API age limit and blocks date changes crossing recorded treatment membership. Never writes ledger, custody or treatment evidence.",
+    "Sha256": "3F81149305D76868D01A9DB36566C05F6ED68A8D8818DAF55E3F0C1D118C91DB"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptReversal.cs",
@@ -282,6 +282,12 @@
     "Sha256": "7A80DF1ACCF0407BEF52F8B1DAC5689779E565DB1B4E52451E3CB68A4B7363CD"
   },
   {
+    "Path": "src/CropQc.Web/Controllers/ReceiptsController.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "HTTP adapter delegates single Save to established commands. ModelState.Remove only drops omitted LotCode validation. Live Admin policy, antiforgery, failed-input retention; no physical write capability. Required numeric/date/version/key binding prevents inherited creation defaults becoming edit intent; ModelState only.",
+    "Sha256": "DA107E31A317B66EC57D0CA7748ABA3BF9AF2659AA7B5B8D9EEB3E1CE967DBEF"
+  },
+  {
     "Path": "src/CropQc.Web/Controllers/QcStationController.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
@@ -290,8 +296,8 @@
   {
     "Path": "src/CropQc.Web/Program.cs",
     "Classification": "Host/CLI dispatch",
-    "Reason": "Registers the global gate and explicitly named maintenance CLI entry points; no automatic inventory backfill.",
-    "Sha256": "BEC1EFBE99B8F0DCE55420ED4F101D1912DAD1955C643EB6EE0598621E5F43BA"
+    "Reason": "Host/CLI dispatch: reviewed Receipts edit policy now requires Admin and registers the non-writing ReceiptEditService dispatcher. Global canonical mode, maintenance entry points, physical fences and startup behavior unchanged.",
+    "Sha256": "BF7358E2AB9A3A14584DD6F4C48008C0C59D94F81792AA4AC5C90A7A05802A68"
   },
   {
     "Path": "src/CropQc.Web/Services/ActualRun3ReportingIdentityCorrectionService.cs",
@@ -350,8 +356,8 @@
   {
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
-    "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "A2ABED3DCE7AF1D22B31793470F0D221E9C2E0DCDA4E20C61A6542B02ABB2457"
+    "Reason": "Reviewed existing metadata adapter now requires Receipts Admin/reason/version and records entered reason. Transfer identity/custody changes reject before writes. Physical operations still dispatch on canonical gate; legacy physical writes remain fenced while ON.",
+    "Sha256": "86E5CD8466653D916D30C120A00598C66AD1487A0801CDD17FA63AAD076E2C59"
   },
   {
     "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
@@ -500,8 +506,8 @@
   {
     "Path": "src/CropQc.Web/Services/ReceiptInventoryOverrideService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
-    "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "422D9271F9FB816ED75D028408DB07EBA07AFE1C1FF665F8DADE69354CA3BFCF"
+    "Reason": "Removes receiver quantity permission exception under ADR-008. Existing Admin authorization, input validation and canonical dispatcher retained. No new physical writer or weakened origin/custody/treatment guard.",
+    "Sha256": "B6155F05F71EE6C4549188E3C35B01163D098FC311CA000F54358B8C47AEB1DC"
   },
   {
     "Path": "src/CropQc.Web/Services/ReceiptPurgeService.cs",

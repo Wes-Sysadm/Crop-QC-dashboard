@@ -229,6 +229,16 @@ They:
 
 Keep the normal QC Station Receiving queue receipt-backed unless the user explicitly requests a queue change. Receiptless Field Samples may be exposed through a separate or explicitly distinguished QC Station workflow, but must not silently alter Receiving queue semantics.
 
+## Existing receipt edits (ADR-008)
+
+Existing receipt metadata, quantity, identity and location edits require Receipts
+Admin and an operator-entered reason at every entrypoint, regardless of age.
+Keep one Save on the existing Edit page. Dispatch established audited commands;
+never chain partial commits for a multi-kind submission. Preserve operation-specific
+origin, custody, treatment, version and fingerprint evidence. Receipt creation,
+QC sampling, receiving treatment and dedicated custody acknowledgements retain their
+own permissions. See [policy record](docs/governance/RECEIPT_EDIT_AUTHORIZATION.md).
+
 ## Data and synchronization safeguards
 
 For browser, API, QC Station, and device-capture work:

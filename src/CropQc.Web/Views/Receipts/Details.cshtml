@@ -4,7 +4,7 @@
 @{
     ViewData["Title"] = "Receipt Detail";
     ViewData["AutoRefresh"] = "true";
-    var canEditReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptEdit, PageAccessLevel.Edit, Context.RequestAborted);
+    var canEditReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.Receipts, PageAccessLevel.Admin, Context.RequestAborted);
     var canDeleteReceipt = await UserAccess.HasAccessAsync(User, ApplicationAreas.ReceiptDelete, PageAccessLevel.Admin, Context.RequestAborted);
     var canViewReceiptQc = await UserAccess.HasAccessAsync(User, ApplicationAreas.DailyQc, PageAccessLevel.View, Context.RequestAborted);
 }

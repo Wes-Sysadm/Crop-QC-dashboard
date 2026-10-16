@@ -14,10 +14,10 @@ public sealed class CanonicalReceiptMetadataTests
         await using var f = await Fixture.Create();
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
         await using var db = factory.CreateDbContext();
-        await CanonicalOperatorSessionTests.GrantReceivingAsync(db);
+        await CanonicalOperatorSessionTests.GrantReceivingAsync(db, "Admin");
         var executor = new InventoryCommandExecutor(factory);
         var receiving = new CanonicalReceivingService(db, executor);
-        var creation = await receiving.ReceiveAsync(Guid.NewGuid().ToString("N"), 8000, 2026, DateTimeOffset.UtcNow,
+        var creation = await receiving.ReceiveAsync(Guid.NewGuid().ToString("N"), 8000, 2026, DateTimeOffset.Parse("2026-10-01T12:00:00Z"),
             9001, 9002, 9004, 100000, "", "LOCAL-METADATA", 7, "local receiving", default);
         var id = creation.Effects.Single().ParentId!.Value;
         var service = CanonicalReceiptCorrectionWorkflowTests.Service(db, executor);

@@ -28,7 +28,7 @@ public sealed class ReceiptsController(IReceiptService service) : ControllerBase
         Ok(await service.SearchAsync(request, cancellationToken));
 
     [HttpPut("{id:long}/same-day-fields")]
-    [ServiceFilter(typeof(CanonicalReceivingAuthorizationFilter))]
+    [ServiceFilter(typeof(ReceiptEditingAuthorizationFilter))]
     public async Task<IActionResult> UpdateSameDay(long id, UpdateReceiptRequest request, CancellationToken cancellationToken)
     {
         var (receipt, error) = await service.UpdateSameDayAsync(id, request, cancellationToken);

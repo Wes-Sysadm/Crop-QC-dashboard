@@ -1,0 +1,657 @@
+{
+  "authorization": "Owner explicitly replied Approve isolated local restore in task 01a117ce-8381-7602-b396-3c44cc35402e on 2026-10-15. Development/rehearsal only; no release authority.",
+  "candidateSource": "b049f89b641877b6165c31fc7b2e5f3c3e6e0386",
+  "rollbackMain": "ea307b168e563d432dd4f513da6c06f4e5e54d5e",
+  "backup": 203,
+  "isolation": {
+    "containerId": "1923a3052746c5536ba0ef3628cdd62654f0ccb123fe9a1e17c76756516db5e5",
+    "network": "none",
+    "publishedPorts": false,
+    "volumeNames": [
+      "b7924f749711db1897d4da169b9bbb06b0dbb2e6843efea89b49195672192316"
+    ],
+    "database": "pr282_workflow_test",
+    "version": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "migrations": [
+      "20260521173857_InitialMvp1ReceivingQcModel",
+      "20260521220136_AddQcSummaryOverrideFields",
+      "20260529210944_AddDashboardConfiguration",
+      "20260529212812_AddUserAccessFields",
+      "20260529230504_AddGoogleDrivePhotoMetadata",
+      "20260530010358_AddQcStationEnrollmentFields",
+      "20260711195500_LinkVarietyColorsToFruitProfiles",
+      "20260711213000_AddCanonicalGrowers",
+      "20260717213000_AddFieldSamplesAndOrchardBlocks",
+      "20260721233604_AddOrchardReportRecipients",
+      "20260722233135_AddFieldSampleEmailHistory",
+      "20260723011519_AddFieldSampleAutosaveDefectInspection",
+      "20260723024710_AddProductionBackupHistory",
+      "20260723055241_AddBackupNotificationsAndReceiptPurgeAudit",
+      "20260723142741_AddFieldSampleDeletionAudit",
+      "20260723163704_AddRunProjections",
+      "20260723230325_AddRunProjectionPackoutAndGradeSnapshots",
+      "20260724003812_AddPreharvestRunProjectionMode",
+      "20260724020525_AddRunProjectionFacilityAndSoftDelete",
+      "20260724053022_AddCommercialPackProjectionConfiguration",
+      "20260724074306_AddOrchardManagerContactImports",
+      "20260724150253_AddRunProjectionOutcomeTrendSnapshots",
+      "20260724194806_AddRunProjectionCullSnapshot",
+      "20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels",
+      "20260804052104_AddFacilityRunReporting",
+      "20260805014812_AddReceiptInventoryOverrides",
+      "20260923202144_AddTruckReceiptReconciliation",
+      "20261001144023_CanonicalInventoryCommands",
+      "20261001203105_CanonicalIdentityRestorationSides",
+      "20261002031709_BoundedBackupSnapshotProgress",
+      "20261007212154_ReceiptHeldTransferCustody",
+      "20261007235352_ReceiptCustodyCompensations",
+      "20261007235822_ReceiptCustodyGuardrails",
+      "20261009150448_IsolatedInventoryMovementCohorts"
+    ]
+  },
+  "restore": {
+    "backup": 203,
+    "compressedDumpSha256": "8ff88c911ff5f6192796ffb3e683498cb2ebfea65f450fb6151b729e5fb60442",
+    "sqlSha256": "568def372e54b8ac9471609c5add6ed66a1f51264c0ac09bb1b55016c55e08de",
+    "container": "pr282-integration-pg",
+    "database": "pr282_workflow_test",
+    "network": "none",
+    "productionAccess": false,
+    "restored": true,
+    "newMigrationsApplied": false
+  },
+  "frozenArtifacts": [
+    {
+      "role": "candidate",
+      "image": "sha256:44c5d842ec7d47866b6808d0d5f73b591dc185908b05723db66cd7bc7752a9b0",
+      "archiveSha256": "b94f7bb4886d6dc7f8623b8bf8b27981e1d9656c001ba068cbabc7dbbe675e2f",
+      "runtime": "Linux amd64 / .NET and ASP.NET 9.0.21",
+      "binaries": {
+        "Azure.Core.dll": "7f73a7723edebafce83e9fff428ec478c93cb0d36857b3bf9fe6d5a95857d359",
+        "Azure.Identity.dll": "0e3cf5c43e12c0f319ab58592fd6c438b0a5feda166cc540231dfa75c439d681",
+        "CropQc.Data.dll": "fa43769abe97676e618ccc02672a2d1b21500d8b9d9da74a76c1174ee2206819",
+        "CropQc.Shared.dll": "a92e7e631885f861fb51e1421700bea28c4dfb63abb0a5ed293b55148dcd84eb",
+        "CropQc.Web.dll": "dd910cccf0bb853ff1f85b13ba75fceaa46a05cdf4337f91d0979dd8262b2623",
+        "DocumentFormat.OpenXml.Framework.dll": "46015f06bc5765406e318b878ff860c5f44111ac49d8036e976c18c50bb4a83a",
+        "DocumentFormat.OpenXml.dll": "21bdf05d06927debda4e2082142417106d79a52b2caa59d64ed0e274796ffcf4",
+        "ExcelDataReader.dll": "4d4118a94499012ef69326624f98f5d6f9c6f70bc97ac1599fa17b67ad82f81c",
+        "Google.Apis.Auth.dll": "ba646cefe49dae5b215dd3ef5e7a99907633bc4e8e7cd5c73b2e422d3bd4e683",
+        "Google.Apis.Core.dll": "42cbb6e65e27a5ea087187a467bf62f6744ed6878c4055e41bfe7cb13de0221f",
+        "Google.Apis.Drive.v3.dll": "c6a2bf6260077e8641a36622fd5d9f06422f34442b4594959430465af2db953c",
+        "Google.Apis.Sheets.v4.dll": "8d6e50494289e5ee91c489c315344ff2fb13765a37ceed8befa105d8a7b0c49f",
+        "Google.Apis.dll": "698df35f1e93f9d592cfb1f6f51c119ac0ef27b8f3f980d0feb606991256467b",
+        "Microsoft.AspNetCore.Authentication.Google.dll": "8510a823e300b2321b5aeb796cc85071d1dea8325b83754e6667666959b11af7",
+        "Microsoft.Bcl.AsyncInterfaces.dll": "11c0e8fc6419910ace4f55ddd2330f1373704f996c32ae4336c3f11d589d2c34",
+        "Microsoft.Data.SqlClient.dll": "61c03f4831f69aa72e51493fab6056d4448f1abf189cecf426026170464ec74e",
+        "Microsoft.EntityFrameworkCore.Abstractions.dll": "34de0e678895cc7f98072150166c687bb9854248ec3b54b353f777fa519592bc",
+        "Microsoft.EntityFrameworkCore.Relational.dll": "e962e0df1ae6a965ac094ef0e4153b877e4eb3ee23913bcafca8aed430ef4e6a",
+        "Microsoft.EntityFrameworkCore.SqlServer.dll": "44638479ff16be3a33e0f9abbdbe052490e9d01f882f7ca62ac883b0e45b3eb8",
+        "Microsoft.EntityFrameworkCore.dll": "1888dba92a7f69ef5dc7b60d395d84ac77976d0c0d06237e82949e6ec88f8147",
+        "Microsoft.Extensions.Caching.Abstractions.dll": "1d9834aefdff783b6817023f97a57204e2b1573750f4e1e7d46790bcc073b04b",
+        "Microsoft.Extensions.Caching.Memory.dll": "fea9fbb36234a84093d422caa184cb4fea5f64c43297a74eabf8e469c2fe5df4",
+        "Microsoft.Extensions.Configuration.Abstractions.dll": "d36225749cf87a4171db39ff28a0da9216575c54912daa14b6d5935b821b7f82",
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll": "3f733fa41c8b735cf3f7a1a49b43cd41a291bced3953bee46e2b8018be67f44c",
+        "Microsoft.Extensions.DependencyInjection.dll": "407137262aee12b0dd588258f9c2bf8c91129f119896f60bd1bcd3b67f4d5916",
+        "Microsoft.Extensions.Logging.Abstractions.dll": "622cf6cafd1d5a402c12574515dfaab8ce99018a8b1d324045487ed7a5dfbb62",
+        "Microsoft.Extensions.Logging.dll": "a273665141e349776fcffcdb33bf55ff7baebf1885b0dc5c858f272f8b338524",
+        "Microsoft.Extensions.Options.dll": "022e30ae3ce6dd2d5b4526f01effae5fc34f642a1a639aa9605590986c751560",
+        "Microsoft.Extensions.Primitives.dll": "6bf0052e4045d89390960b32741a3f4f47050056c870ad5fe189d3dea70182ca",
+        "Microsoft.Identity.Client.Extensions.Msal.dll": "d318486a4c742574f014e8c3ac85d0fc6d8ed330c23f1b3516ab7a092861315b",
+        "Microsoft.Identity.Client.dll": "01133b9431bf6b4dd061020bf7866e1f1e116760450907e05d18e167ff8a5bcf",
+        "Microsoft.IdentityModel.Abstractions.dll": "f4694d23f05cc0263abbcb536d132e243bc9c175ae642387fa98652b880a4be0",
+        "Microsoft.IdentityModel.JsonWebTokens.dll": "58277455122589b39c20e94f403fca7d3abcf5488bd9d8702ac75d03770f49f8",
+        "Microsoft.IdentityModel.Logging.dll": "5de12f537fa96ec3d47e1dabcf348807da1400f0e0f5654c4b6903310d691c9a",
+        "Microsoft.IdentityModel.Protocols.OpenIdConnect.dll": "034f43fec9ca10ff7d29640b2da7dd218850585827edaabd9737fae4af582520",
+        "Microsoft.IdentityModel.Protocols.dll": "ac1f9879b7077a6fa9893dab92cd7af7b20f2f761a983941d2d184912b826908",
+        "Microsoft.IdentityModel.Tokens.dll": "929dd15f4a58930f21ec9eb95600775348ee63a059f6547a748607ede7521a4c",
+        "Microsoft.SqlServer.Server.dll": "a9dca1b42bc875f966b78b2c0880e62b838f0ed6567166d7f1f07ae4b76ec4bf",
+        "Microsoft.Win32.SystemEvents.dll": "ca495bf6c86b7f092d624928101985a941532d149dcd8acfea170f8a53be8850",
+        "Newtonsoft.Json.dll": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+        "Npgsql.EntityFrameworkCore.PostgreSQL.dll": "2d052dfe28cb5e070758ac8100f683a1be2ff239cd24d978fa409f5c58906400",
+        "Npgsql.dll": "5406d26e745aff267098f30fb0da5b1507a13080b2066ee9003b071163d887c2",
+        "SixLabors.ImageSharp.dll": "609a57965d0a7b5ccfb79d919ea7384e7ec86c03266b0390a19bd5f2104bc353",
+        "System.ClientModel.dll": "a06523028979f420abc209be62a06b3038289932a9942b1ad3cee52af2cdbc0a",
+        "System.CodeDom.dll": "4d33e2986a84d4460853e2b98d3a1ba9f8aa2950f7fa12ff6ad2e15a4bccfd18",
+        "System.Configuration.ConfigurationManager.dll": "d274bdd71f75f5005fcaec028921f71d89cb6d622022d74d2e07897a3a1d141a",
+        "System.Drawing.Common.dll": "98d07e6b1e7d3641a8608a360b3dc273fe8a0f78926b6e1e5f679a7a074d491f",
+        "System.IO.Packaging.dll": "12ddc8bff279fad856551a74894dc52b80fa437d5d2b32722e70ae6899217b7c",
+        "System.IdentityModel.Tokens.Jwt.dll": "177d4c2d2a5891ef834c46990aa76b81ed7a198f70d78229f7374c0706ba0166",
+        "System.Management.dll": "36056b240f488b7da63720585d84f93183cf7bd05da68d5340151ebdd85e4d88",
+        "System.Memory.Data.dll": "293ca5d86358fb2ce00da02c63eefcb344689fc0c636b61c97c3f1b15a80aa51",
+        "System.Runtime.Caching.dll": "77c77ce3b1fc7d098765af31f19195522e2c675f63248b699f64441d299f3ead",
+        "System.Security.Cryptography.ProtectedData.dll": "d186453eebba21e19a90e4fea16c11c3df59ed9610201c5a3c6d636b9864d840",
+        "System.Security.Permissions.dll": "62068c0f6bffb0eb4ec1c6a45a16784caee7565f6c5404d8342089f4ff4b3712",
+        "System.Windows.Extensions.dll": "810e8767d02d70af173bc33cc1048ff31a7df015fd46cf423a309cc89c50dc69"
+      }
+    },
+    {
+      "role": "rollback",
+      "image": "sha256:f65d1b54b331c4bc11d902c62cef81de80a4a17c051e7af8d3b36547d4131318",
+      "archiveSha256": "671127a939c44f5bca0f99dbfb95d81274b401f138ab0884aac806044effbbb7",
+      "runtime": "Linux amd64 / .NET and ASP.NET 9.0.21",
+      "binaries": {
+        "Azure.Core.dll": "7f73a7723edebafce83e9fff428ec478c93cb0d36857b3bf9fe6d5a95857d359",
+        "Azure.Identity.dll": "0e3cf5c43e12c0f319ab58592fd6c438b0a5feda166cc540231dfa75c439d681",
+        "CropQc.Data.dll": "af1a3760a7c4c0bcaa12af29f6d330b1eb92d98e0a72613b34db0f938528c288",
+        "CropQc.Shared.dll": "627cd2ced0250c4d2a9cd513f04b03afe8752f81f0fef881fde8f63a9edb98e4",
+        "CropQc.Web.dll": "ca7028ba9aafb661f39e2f914ec1981a39d09699292e084e0374496f363f7fe6",
+        "DocumentFormat.OpenXml.Framework.dll": "46015f06bc5765406e318b878ff860c5f44111ac49d8036e976c18c50bb4a83a",
+        "DocumentFormat.OpenXml.dll": "21bdf05d06927debda4e2082142417106d79a52b2caa59d64ed0e274796ffcf4",
+        "ExcelDataReader.dll": "4d4118a94499012ef69326624f98f5d6f9c6f70bc97ac1599fa17b67ad82f81c",
+        "Google.Apis.Auth.dll": "ba646cefe49dae5b215dd3ef5e7a99907633bc4e8e7cd5c73b2e422d3bd4e683",
+        "Google.Apis.Core.dll": "42cbb6e65e27a5ea087187a467bf62f6744ed6878c4055e41bfe7cb13de0221f",
+        "Google.Apis.Drive.v3.dll": "c6a2bf6260077e8641a36622fd5d9f06422f34442b4594959430465af2db953c",
+        "Google.Apis.Sheets.v4.dll": "8d6e50494289e5ee91c489c315344ff2fb13765a37ceed8befa105d8a7b0c49f",
+        "Google.Apis.dll": "698df35f1e93f9d592cfb1f6f51c119ac0ef27b8f3f980d0feb606991256467b",
+        "Microsoft.AspNetCore.Authentication.Google.dll": "8510a823e300b2321b5aeb796cc85071d1dea8325b83754e6667666959b11af7",
+        "Microsoft.Bcl.AsyncInterfaces.dll": "11c0e8fc6419910ace4f55ddd2330f1373704f996c32ae4336c3f11d589d2c34",
+        "Microsoft.Data.SqlClient.dll": "61c03f4831f69aa72e51493fab6056d4448f1abf189cecf426026170464ec74e",
+        "Microsoft.EntityFrameworkCore.Abstractions.dll": "34de0e678895cc7f98072150166c687bb9854248ec3b54b353f777fa519592bc",
+        "Microsoft.EntityFrameworkCore.Relational.dll": "e962e0df1ae6a965ac094ef0e4153b877e4eb3ee23913bcafca8aed430ef4e6a",
+        "Microsoft.EntityFrameworkCore.SqlServer.dll": "44638479ff16be3a33e0f9abbdbe052490e9d01f882f7ca62ac883b0e45b3eb8",
+        "Microsoft.EntityFrameworkCore.dll": "1888dba92a7f69ef5dc7b60d395d84ac77976d0c0d06237e82949e6ec88f8147",
+        "Microsoft.Extensions.Caching.Abstractions.dll": "1d9834aefdff783b6817023f97a57204e2b1573750f4e1e7d46790bcc073b04b",
+        "Microsoft.Extensions.Caching.Memory.dll": "fea9fbb36234a84093d422caa184cb4fea5f64c43297a74eabf8e469c2fe5df4",
+        "Microsoft.Extensions.Configuration.Abstractions.dll": "d36225749cf87a4171db39ff28a0da9216575c54912daa14b6d5935b821b7f82",
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll": "3f733fa41c8b735cf3f7a1a49b43cd41a291bced3953bee46e2b8018be67f44c",
+        "Microsoft.Extensions.DependencyInjection.dll": "407137262aee12b0dd588258f9c2bf8c91129f119896f60bd1bcd3b67f4d5916",
+        "Microsoft.Extensions.Logging.Abstractions.dll": "622cf6cafd1d5a402c12574515dfaab8ce99018a8b1d324045487ed7a5dfbb62",
+        "Microsoft.Extensions.Logging.dll": "a273665141e349776fcffcdb33bf55ff7baebf1885b0dc5c858f272f8b338524",
+        "Microsoft.Extensions.Options.dll": "022e30ae3ce6dd2d5b4526f01effae5fc34f642a1a639aa9605590986c751560",
+        "Microsoft.Extensions.Primitives.dll": "6bf0052e4045d89390960b32741a3f4f47050056c870ad5fe189d3dea70182ca",
+        "Microsoft.Identity.Client.Extensions.Msal.dll": "d318486a4c742574f014e8c3ac85d0fc6d8ed330c23f1b3516ab7a092861315b",
+        "Microsoft.Identity.Client.dll": "01133b9431bf6b4dd061020bf7866e1f1e116760450907e05d18e167ff8a5bcf",
+        "Microsoft.IdentityModel.Abstractions.dll": "f4694d23f05cc0263abbcb536d132e243bc9c175ae642387fa98652b880a4be0",
+        "Microsoft.IdentityModel.JsonWebTokens.dll": "58277455122589b39c20e94f403fca7d3abcf5488bd9d8702ac75d03770f49f8",
+        "Microsoft.IdentityModel.Logging.dll": "5de12f537fa96ec3d47e1dabcf348807da1400f0e0f5654c4b6903310d691c9a",
+        "Microsoft.IdentityModel.Protocols.OpenIdConnect.dll": "034f43fec9ca10ff7d29640b2da7dd218850585827edaabd9737fae4af582520",
+        "Microsoft.IdentityModel.Protocols.dll": "ac1f9879b7077a6fa9893dab92cd7af7b20f2f761a983941d2d184912b826908",
+        "Microsoft.IdentityModel.Tokens.dll": "929dd15f4a58930f21ec9eb95600775348ee63a059f6547a748607ede7521a4c",
+        "Microsoft.SqlServer.Server.dll": "a9dca1b42bc875f966b78b2c0880e62b838f0ed6567166d7f1f07ae4b76ec4bf",
+        "Microsoft.Win32.SystemEvents.dll": "ca495bf6c86b7f092d624928101985a941532d149dcd8acfea170f8a53be8850",
+        "Newtonsoft.Json.dll": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+        "Npgsql.EntityFrameworkCore.PostgreSQL.dll": "2d052dfe28cb5e070758ac8100f683a1be2ff239cd24d978fa409f5c58906400",
+        "Npgsql.dll": "5406d26e745aff267098f30fb0da5b1507a13080b2066ee9003b071163d887c2",
+        "SixLabors.ImageSharp.dll": "609a57965d0a7b5ccfb79d919ea7384e7ec86c03266b0390a19bd5f2104bc353",
+        "System.ClientModel.dll": "a06523028979f420abc209be62a06b3038289932a9942b1ad3cee52af2cdbc0a",
+        "System.CodeDom.dll": "4d33e2986a84d4460853e2b98d3a1ba9f8aa2950f7fa12ff6ad2e15a4bccfd18",
+        "System.Configuration.ConfigurationManager.dll": "d274bdd71f75f5005fcaec028921f71d89cb6d622022d74d2e07897a3a1d141a",
+        "System.Drawing.Common.dll": "98d07e6b1e7d3641a8608a360b3dc273fe8a0f78926b6e1e5f679a7a074d491f",
+        "System.IO.Packaging.dll": "12ddc8bff279fad856551a74894dc52b80fa437d5d2b32722e70ae6899217b7c",
+        "System.IdentityModel.Tokens.Jwt.dll": "177d4c2d2a5891ef834c46990aa76b81ed7a198f70d78229f7374c0706ba0166",
+        "System.Management.dll": "36056b240f488b7da63720585d84f93183cf7bd05da68d5340151ebdd85e4d88",
+        "System.Memory.Data.dll": "293ca5d86358fb2ce00da02c63eefcb344689fc0c636b61c97c3f1b15a80aa51",
+        "System.Runtime.Caching.dll": "77c77ce3b1fc7d098765af31f19195522e2c675f63248b699f64441d299f3ead",
+        "System.Security.Cryptography.ProtectedData.dll": "d186453eebba21e19a90e4fea16c11c3df59ed9610201c5a3c6d636b9864d840",
+        "System.Security.Permissions.dll": "62068c0f6bffb0eb4ec1c6a45a16784caee7565f6c5404d8342089f4ff4b3712",
+        "System.Windows.Extensions.dll": "810e8767d02d70af173bc33cc1048ff31a7df015fd46cf423a309cc89c50dc69"
+      }
+    }
+  ],
+  "strictReadiness": {
+    "baseline-candidate": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1138,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1045,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 449,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 449 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": []
+        },
+        "invalidOutside": 0
+      }
+    },
+    "baseline-rollback": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1138,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1045,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 449,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 449 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": []
+        },
+        "invalidOutside": 0
+      }
+    },
+    "forward": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1143,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1050,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 453,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 453 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": [
+            {
+              "transferId": 43,
+              "dispatched": 21,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 21
+            },
+            {
+              "transferId": 44,
+              "dispatched": 1,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 1
+            }
+          ]
+        },
+        "invalidOutside": 0
+      }
+    },
+    "rollback": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1143,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1050,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 454,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 454 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": [
+            {
+              "transferId": 43,
+              "dispatched": 19,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 19
+            },
+            {
+              "transferId": 44,
+              "dispatched": 1,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 1
+            }
+          ]
+        },
+        "invalidOutside": 0
+      }
+    },
+    "verify": {
+      "success": true,
+      "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+      "expectedSchemaObjects": 1007,
+      "schemaReady": true,
+      "inventory": {
+        "isReady": true,
+        "negativeAdjustmentCount": 1143,
+        "historicalNegativeCount": 93,
+        "newFormatNegativeCount": 1050,
+        "blockingIssues": []
+      },
+      "treatment": {
+        "success": true,
+        "currentIdentityCount": 454,
+        "blockingIssueCount": 0,
+        "blockingIssues": [],
+        "message": "Treatment-lineage readiness passed for 454 current inventory identities; no explicit lineage exceeds authoritative inventory."
+      },
+      "topology": {
+        "success": true,
+        "missingWarehouseCodes": [],
+        "custodyRulesReady": true,
+        "invalidOutsideWarehouseMasterRows": 0,
+        "duplicateOutsideWarehouseCodes": 0,
+        "invalidInterCrew": 0,
+        "interCrew": {
+          "issues": [],
+          "custody": [
+            {
+              "transferId": 43,
+              "dispatched": 19,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 19
+            },
+            {
+              "transferId": 44,
+              "dispatched": 1,
+              "acknowledged": 0,
+              "placed": 0,
+              "held": 0,
+              "transit": 1
+            }
+          ]
+        },
+        "invalidOutside": 0
+      }
+    }
+  },
+  "workflow": {
+    "forward": {
+      "role": "forward",
+      "passed": true,
+      "runtime": ".NET 9.0.21",
+      "binaries": {
+        "CropQc.Data": "FA43769ABE97676E618CCC02672A2D1B21500D8B9D9DA74A76C1174EE2206819",
+        "CropQc.Shared": "A92E7E631885F861FB51E1421700BEA28C4DFB63ABB0A5ED293B55148DCD84EB",
+        "CropQc.Web": "DD910CCCF0BB853FF1F85B13BA75FCEAA46A05CDF4337F91D0979DD8262B2623"
+      },
+      "results": [
+        {
+          "operationKey": "p283-a",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-outside",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-b",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-loss",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-reverse-loss",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-old-treated",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-treatment",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-later-seven",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-transit",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-partial-2",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-partial-3",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-fence-origin",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-fence-dispatch",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-ack",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-undo-ack",
+          "status": 0,
+          "detail": "Command committed atomically."
+        }
+      ]
+    },
+    "rollback": {
+      "role": "rollback",
+      "passed": true,
+      "runtime": ".NET 9.0.21",
+      "binaries": {
+        "CropQc.Data": "AF1A3760A7C4C0BCAA12AF29F6D330B1EB92D98E0A72613B34DB0F938528C288",
+        "CropQc.Shared": "627CD2CED0250C4D2A9CD513F04B03AFE8752F81F0FEF881FDE8F63A9EDB98E4",
+        "CropQc.Web": "CA7028BA9AAFB661F39E2F914EC1981A39D09699292E084E0374496F363F7FE6"
+      },
+      "results": [
+        {
+          "operationKey": "p283-rollback-return",
+          "status": 0,
+          "detail": "Command committed atomically."
+        },
+        {
+          "operationKey": "p283-rollback-final-two",
+          "status": 0,
+          "detail": "Command committed atomically."
+        }
+      ]
+    },
+    "verify": {
+      "role": "verify",
+      "passed": true,
+      "runtime": ".NET 9.0.21",
+      "binaries": {
+        "CropQc.Data": "FA43769ABE97676E618CCC02672A2D1B21500D8B9D9DA74A76C1174EE2206819",
+        "CropQc.Shared": "A92E7E631885F861FB51E1421700BEA28C4DFB63ABB0A5ED293B55148DCD84EB",
+        "CropQc.Web": "DD910CCCF0BB853FF1F85B13BA75FCEAA46A05CDF4337F91D0979DD8262B2623"
+      },
+      "results": [
+        {
+          "roomBins": 97,
+          "transitBins": 20,
+          "total": 117,
+          "receiptA": 7,
+          "receiptB": 7,
+          "receiptC": 7,
+          "unknownOutsideRemainderPreservedAtDispatch": 19,
+          "projectionExcessExcluded": 0,
+          "originalHistoryPreserved": true,
+          "applicationRollbackUsedDatabaseRestore": false
+        }
+      ]
+    }
+  },
+  "independentOriginalRows": {
+    "allOriginalRowsPreserved": true,
+    "tables": 113,
+    "originalRows": 268444,
+    "differences": [],
+    "migrationsUnchanged": true,
+    "newRowsByTable": {
+      "OutsideWarehouses": 1,
+      "RoomInventoryLosses": 1,
+      "RoomTreatmentApplications": 1,
+      "RoomTreatmentApplicationSources": 1,
+      "TreatmentLineageSegmentApplications": 1,
+      "InterCrewTransfers": 2,
+      "OutsideWarehouseTransfers": 1,
+      "Rooms": 4,
+      "InventoryIdentityCorrections": 2,
+      "ReceiptCustodyReversals": 1,
+      "ReceiptCustodyAcknowledgments": 1,
+      "ReceiptInventoryOverrides": 2,
+      "GrowerLots": 6,
+      "ReceiptVarietyLines": 1,
+      "TreatmentLineageSegments": 17,
+      "TreatmentLineageMovements": 19,
+      "Receipts": 10,
+      "InventoryCommands": 19,
+      "RoomInventoryAdjustments": 21,
+      "AuditLogs": 39
+    }
+  },
+  "independentSqlReconciliation": {
+    "recordedOriginBins": 117,
+    "roomLedgerNet": 97,
+    "exactReceiptQuantities": {
+      "2726": 7,
+      "2727": 7,
+      "2729": 7
+    },
+    "pointInTimeSources": [
+      {
+        "ReceiptId": 2728,
+        "BinsTreated": 19,
+        "RoomTreatmentApplicationId": 30
+      }
+    ],
+    "ledgerByType": {
+      "DroppedBins": -26,
+      "DroppedBinsReversal": 26,
+      "InterCrewTransferDispatch": -27,
+      "OutsideWarehouseTransfer": -26,
+      "OutsideWarehouseTransferReversal": 26,
+      "ReceiptAdd": 117,
+      "TransitAllocationReturn": 7
+    }
+  },
+  "restoredConcurrency": {
+    "total": "2",
+    "executed": "2",
+    "passed": "2",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "cleanup": {
+    "containerId": "1923a3052746c5536ba0ef3628cdd62654f0ccb123fe9a1e17c76756516db5e5",
+    "containerDeleted": true,
+    "volumeNames": [
+      "b7924f749711db1897d4da169b9bbb06b0dbb2e6843efea89b49195672192316"
+    ],
+    "volumesDeleted": true,
+    "allDisposableDatabasesDeleted": true,
+    "utc": "2026-10-16T01:28:12.388441+00:00",
+    "cloudResourcesCreated": false,
+    "incrementalCloudCost": 0
+  },
+  "initialHarnessFailure": {
+    "applicationGuard": "Admin operation key must be a GUID",
+    "resolution": "Harness keys corrected; fresh disposable restore; application unchanged.",
+    "originalRowsPreserved": true,
+    "cleanup": {
+      "containerId": "c20737a70613547b823f0f336bbf6ce41a233321663cc2cd2f5c90d8ba4d05af",
+      "containerDeleted": true,
+      "volumeNames": [
+        "e519b4bf1589278dffa67e93d32b18f731c0136ee5fa8c3fa1be282e9dcab991"
+      ],
+      "volumesDeleted": true,
+      "allDisposableDatabasesDeleted": true,
+      "utc": "2026-10-16T01:22:57.454535+00:00",
+      "cloudResourcesCreated": false,
+      "incrementalCloudCost": 0
+    }
+  },
+  "limitations": [
+    "Actual MVC HTML/HTTP tests ran separately; frozen-runtime rehearsal invokes the real Admin dispatcher and command engine, not browser JavaScript.",
+    "Ten-bin historical projection excess is proved by the merged HTTP/identity regression, not by this restored fixture.",
+    "Application rollback restores prior receipt-edit UI and more permissive receiver permissions.",
+    "No Render deployment or activation was attempted; future release must verify then-current exact merged artifacts and live safeguards.",
+    "Backup 203 is rehearsal input, not a fresh release backup."
+  ],
+  "localRehearsalBundle": {
+    "name": "pr282-isolated-rehearsal-evidence.zip",
+    "sha256": "e6c07722d861b7166c13b1158fad1b2deb0990e52dc17fbdb869689725e5cd16",
+    "includesDatabaseDump": false
+  }
+}

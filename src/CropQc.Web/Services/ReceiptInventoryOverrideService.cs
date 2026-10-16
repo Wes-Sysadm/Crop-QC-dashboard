@@ -138,17 +138,6 @@ public sealed partial class ReceiptInventoryOverrideService(
         CancellationToken cancellationToken)
     {
         var authorizationError = await AuthorizeAsync(principal, cancellationToken);
-        if (authorizationError != null && await userAccessService.HasAccessAsync(principal, ApplicationAreas.Receipts, PageAccessLevel.Create, cancellationToken))
-        {
-            var saved = await dbContext.Receipts.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.Id && !x.IsDeleted, cancellationToken);
-            if (saved != null && form.CropYear == saved.CropYear
-                && form.GrowerLotId == saved.GrowerLotId && form.FruitProfileId == saved.FruitProfileId
-                && form.WarehouseId == saved.WarehouseId && form.RoomId == saved.RoomId && form.CorrectionSourceRoomId == null
-                && form.ReceivedAt == saved.ReceivedAt && form.CompuTechReceiptId.Trim() == saved.CompuTechReceiptId
-                && form.ReceiptType == saved.ReceiptType && form.GrowerName.Trim() == saved.GrowerName.Trim()
-                && form.GrowerNumber.Trim() == (saved.GrowerNumber ?? saved.LotCode) && form.LotCode.Trim() == saved.LotCode)
-                authorizationError = null;
-        }
         if (authorizationError is not null) return authorizationError;
         var inputError = ValidateCommon(form.OperationKey, form.Reason, form.ConfirmInventoryChange);
         if (inputError is not null) return Failed(inputError);
