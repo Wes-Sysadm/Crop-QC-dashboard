@@ -1,6 +1,6 @@
 # Admin receipt editing — ADR-008 adoption record
 
-Status: owner-approved policy instruction implemented for review in draft PR #282;
+Status: owner-approved policy instruction implemented and human-reviewed in PR #282;
 not effective on main until normal merge. Release is not authorized.
 
 Owner: Wes. Reference: “PR #282 — Complete the Existing Admin Receipt Editing
@@ -69,3 +69,12 @@ production connection, followed by deletion. This clarified local test-data
 authorization after automatic approval review rejected the attachment evidence;
 it did not add production or release authority. The integration report and its
 rehearsal evidence record forward/rollback validation and verified cleanup.
+
+Final human review: owner Wes, "PR #282 — Final Review Approved / Production
+Release Preparation", 2026-10-15, same conversation, reviewed head
+`8aa4231a675d746f055a3200b7a284fa3957d5c0`. The owner reports no blocking
+application defect and authorizes preparation, a factual REC-002 status update,
+final-head checks and read-only live preflight. This is explicitly **not** merge,
+deployment, correction or reconstruction authorization. The
+[preparation report](../investigations/pr282-release-preparation-2026-10-15.md)
+records the evidence-only continuation and operational rollback limitations.

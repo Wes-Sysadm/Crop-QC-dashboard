@@ -46,7 +46,7 @@ Corrections, voids and reversals preserve original evidence, actors and timestam
 
 ## REC-002 — Partial receipt custody
 
-Dispatched, acknowledged, held, placed and unresolved quantities stay distinct. A 50-bin load acknowledged as 49 retains one unresolved bin. No manufactured stock, discarded shortage or falsely completed reconciliation. Compensation changes the recorded custody state, not an assumed physical return. **Main does not yet implement all partial-acknowledgement transitions; draft #271 is tracked as a gap, not silently incorporated here.**
+Dispatched, acknowledged, held, placed and unresolved quantities stay distinct. A 50-bin load acknowledged as 49 retains one unresolved bin. No manufactured stock, discarded shortage or falsely completed reconciliation. Compensation changes the recorded custody state, not an assumed physical return. **Implementation status: PR #271 merged into approved main as `3002d0774f52ee5e94aaef81dbd0d62c6bed335b` on 2026-10-14 and was deployed. Main includes partial acknowledgements, held custody, placement, reversals and compensation-aware writer safeguards.**
 
 ## MOV-001 — Transfer integrity
 
