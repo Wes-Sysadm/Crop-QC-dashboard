@@ -51,7 +51,11 @@ public sealed record ProcessorInventoryOptionViewModel(
     decimal? PoundsPerBin,
     bool IsRoomSealed = false,
     long? TreatmentSegmentId = null,
-    long? TreatmentReceiptId = null);
+    long? TreatmentReceiptId = null,
+    bool IsAvailable = true, string? UnavailableReason = null, int? AuthoritativeBins = null)
+{
+    public int TransferableBins => IsAvailable && !IsRoomSealed ? AvailableBins : 0;
+}
 
 public sealed record ProcessorShipmentHistoryViewModel(
     long Id, DateTimeOffset ShippedAt, string Processor, int TotalBins,

@@ -413,7 +413,7 @@ public sealed partial class ProcessorShipmentService(
         foreach (var snapshot in snapshots)
         {
             var selections = (canonical != null ? canonical[RoomTreatmentService.SelectionLookupKey(snapshot)] : await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
-                .Where(x => x.CurrentBins > 0)
+                .Where(x => x.CurrentBins > 0 || !x.IsAvailable && x.AuthoritativeBins > 0)
                 .ToList();
             var pounds = PoundsPerBin(snapshot.FruitType, weightConfig);
             foreach (var selection in selections)
@@ -429,7 +429,7 @@ public sealed partial class ProcessorShipmentService(
                     selection.TreatmentState, selection.TreatmentSignature, selection.Label,
                     selection.CurrentBins, snapshot.LatestAdjustmentId,
                     receiptId, pounds, sealedRoomIds.Contains(snapshot.RoomId),
-                    selection.SegmentId, selection.ReceiptId));
+                    selection.SegmentId, selection.ReceiptId, selection.IsAvailable, selection.UnavailableReason, selection.AuthoritativeBins));
             }
         }
         return result.OrderBy(x => x.Facility).ThenBy(x => x.Room).ThenBy(x => x.GrowerNumber).ThenBy(x => x.VarietyName).ThenBy(x => x.TreatmentSummary).ToList();
@@ -448,6 +448,7 @@ public sealed partial class ProcessorShipmentService(
         foreach (var line in active)
         {
             if (!lookup.TryGetValue(line.SourceKey, out var option)) { error = "A selected source is no longer available. Refresh and retry."; return []; }
+            if (!option.IsAvailable) { error = option.UnavailableReason ?? "The selected source requires evidence review."; return []; }
             if (line.ExpectedAvailableBins != option.AvailableBins) { error = "Source inventory changed after this page loaded. Refresh before retrying."; return []; }
             if (line.BinsSent > option.AvailableBins) { error = $"Only {option.AvailableBins} bins remain in the selected treatment segment."; return []; }
             result.Add((line, option));

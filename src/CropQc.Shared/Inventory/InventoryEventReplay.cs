@@ -91,6 +91,21 @@ public static class InventoryEventReplay
                         if (crossed.Length > 0) problems.Add($"Ledger {row.Id}, movement {movement.Id}: effective arrival crosses already-recorded applications {string.Join(',', crossed.Select(a => a.Id))}; occupancy allocation requires resolution.");
                     }
                 }
+                else if (!moves.Any(x => x.Incoming && InventoryCohortEvidence.Related(row, x))
+                    && position.RecordedArrivals.Count(x => x.LedgerId == row.Id) == 1
+                    && position.RecordedArrivals.First(x => x.LedgerId == row.Id) is { } arrival
+                    && arrival.Cohorts.Sum(x => x.Quantity) == row.Quantity
+                    && arrival.Cohorts.All(x => x.Quantity > 0 && x.State is "Untreated" or "Confirmed"))
+                {
+                    foreach (var cohort in arrival.Cohorts)
+                    {
+                        var crossed = applications.Any(a => (a.RoomId == null || a.RoomId == position.Location.RoomId)
+                            && a.AppliedAt >= row.At && (a.RecordedAt ?? a.AppliedAt) < (row.RecordedAt ?? row.At)
+                            && !cohort.ApplicationIds.Contains(a.Id));
+                        cohorts.Add(crossed ? cohort with { Signature = "x", State = "Unknown" } : cohort);
+                        if (crossed) problems.Add($"Ledger {row.Id}: recorded arrival crosses an earlier-recorded treatment application.");
+                    }
+                }
                 else
                 {
                     quantityConserved = false;

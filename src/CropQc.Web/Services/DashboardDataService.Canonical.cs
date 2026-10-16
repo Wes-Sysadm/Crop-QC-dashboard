@@ -44,6 +44,9 @@ public sealed partial class DashboardDataService
                 entries.Add(new(new(OperationalInventoryPosition.Key(s) + ":" + r.Watermark.Fingerprint,
                     $"{s.Grower} {s.Lot} {s.Variety} - {slice.State} ({slice.Quantity} bins)", slice.Quantity,
                     slice.Signature, slice.State, s.Grower, s.Variety, IsAvailable: slice.Confidence == InventoryConfidence.Proven), s));
+            if (r.AuthoritativeQuantity > r.AvailableQuantity)
+                entries.Add(UnavailableTransferEntry(s with { CurrentBins = r.AuthoritativeQuantity - r.AvailableQuantity },
+                    "Treatment allocation for the remaining bins is unresolved. Review the recorded arrivals, departures and treatment applications."));
         }
         var available = batch.Positions.Sum(x => x.AvailableQuantity);
         var total = batch.Positions.Sum(x => x.AuthoritativeQuantity);

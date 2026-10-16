@@ -233,11 +233,11 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
                 VarietyCode = x.Key.VarietyCode!,
                 FruitProfileId = x.Key.FruitProfileId,
                 GrowerNumberCount = x.Where(y => y.GrowerNumber != null && y.GrowerNumber != "")
-                    .Select(y => y.GrowerNumber)
+                    .Select(y => y.GrowerNumber!.Trim().ToUpper())
                     .Distinct()
                     .Count(),
                 GrowerNumber = x.Where(y => y.GrowerNumber != null && y.GrowerNumber != "")
-                    .Select(y => y.GrowerNumber)
+                    .Select(y => y.GrowerNumber!.Trim().ToUpper())
                     .FirstOrDefault(),
                 CurrentBins = x.Sum(y => y.ChangeAmount),
                 PositiveBins = x.Sum(y => y.ChangeAmount > 0 ? y.ChangeAmount : 0),

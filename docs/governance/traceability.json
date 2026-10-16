@@ -39,7 +39,9 @@
     {
       "id": "INV-002",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs"
+        "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
         {
@@ -51,6 +53,12 @@
         {
           "type": "CropQc.Api.Tests.BusinessRuleContractTests",
           "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
           "kind": "postgres",
           "required": true
         }
@@ -101,13 +109,27 @@
       "id": "INV-004",
       "code": [
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
-        "src/CropQc.Shared/Inventory/InventoryCommands.cs"
+        "src/CropQc.Shared/Inventory/InventoryCommands.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryRecordedCustodyReplayTests",
+          "member": "Projection_quantity_or_identity_cannot_override_complete_recorded_custody",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.BusinessRuleContractTests",
           "member": "INV004_shared_projection_excess_cannot_invent_quantity_or_receipt_ancestry",
           "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
           "required": true
         }
       ],
@@ -131,6 +153,7 @@
     {
       "id": "INV-006",
       "code": [
+        "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
         "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
         "src/CropQc.Shared/Inventory/InventoryCohortEvidence.cs"
@@ -197,9 +220,17 @@
       "id": "TRT-001",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
-        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryRecordedCustodyReplayTests",
+          "member": "Reversal_between_legacy_hops_is_replayed_without_intermediate_projection_links",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
           "member": "New_receipt_after_room_treatment_is_separate_untreated_stock_and_reversal_preserves_both_receipts",
@@ -251,6 +282,12 @@
         {
           "type": "CropQc.Api.Tests.DepletedReceiptCorrectionTests",
           "member": "Additional_origin_after_complete_consumption_preserves_old_treatment_and_movement",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
           "kind": "postgres",
           "required": true
         }
@@ -414,7 +451,9 @@
       "id": "MOV-001",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
-        "src/CropQc.Data/Inventory/InventoryCommandCustody.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
         {
@@ -450,6 +489,12 @@
         {
           "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
           "member": "Partial_return_then_exact_receipt_into_depleted_alias_preserves_exclusive_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
           "kind": "postgres",
           "required": true
         }

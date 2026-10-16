@@ -58,7 +58,8 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         }
     }
 
-    private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct)
+    private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct,
+        bool includeRecordedCustody = true)
     {
         var roomIds = scope.RoomIds.IsDefaultOrEmpty ? null : scope.RoomIds.ToArray();
         var snapshots = await new RoomInventoryLedgerQueryService(db).GetSnapshotsAsOfAsync(scope.WarehouseId, roomIds, asOf, ct);
@@ -177,7 +178,8 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             result.Add(new(identity, new(InventoryCustody.Room, first.WarehouseId, first.RoomId, "", $"Room {first.RoomId}"),
                 0, 0, false, true, [], projections, [], [], [], Watermark(projections, consistency, [])));
         }
-        return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
+        var batch = new InventoryEvidenceBatch(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
+        return includeRecordedCustody ? await IncludeRecordedCustodyAsync(batch, asOf, consistency, ct) : batch;
     }
 
     internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,

@@ -48,7 +48,11 @@ public sealed record OutsideWarehouseInventoryOptionViewModel(
     bool IsRoomSealed,
     long? TreatmentSegmentId,
     bool IsAvailable = true,
-    string? UnavailableReason = null);
+    string? UnavailableReason = null,
+    int? AuthoritativeBins = null)
+{
+    public int TransferableBins => IsAvailable && !IsRoomSealed ? AvailableBins : 0;
+}
 
 public sealed record OutsideWarehouseTransferHistoryViewModel(
     long Id,

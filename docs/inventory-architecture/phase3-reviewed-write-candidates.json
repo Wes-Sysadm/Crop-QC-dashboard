@@ -195,7 +195,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "5CD9670F5F79866B14F58BAA6FC64E2F8EF3C2EB4AEFBEFE9EC8F332CC03C357"
+    "Sha256": "9E7598DC8722A65995926D49486632C114270A8E10259B4FCCDAAD6EE86F12A7"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
@@ -249,7 +249,7 @@
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "7CECE62EFC2D39D0BC2EB7C5866747B116CEE290990854A3050DE97A4CFF15E6"
+    "Sha256": "E444848E701C4EA9E8C8F9A8BFDAAB2B6A67633BD70EAE5B2C61ED8B0BC02F8F"
   },
   {
     "Path": "src/CropQc.Data/Inventory/SelectiveProjectionReconstruction.cs",
@@ -267,13 +267,13 @@
     "Path": "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Reviewed receipt-specific evidence selection only: reads canonical evidence and adds to local collections; no physical SaveChanges, SQL mutation, writer capability or readiness exemption.",
-    "Sha256": "3363D4ABF1EDCC2774505C5E86DFAF2139CD4518507B9FE5D09A7D1C656FB24A"
+    "Sha256": "BFD52E7454D5AF07B43BC2E8440216E6A5A998BF4051E3B952E4788306E1B062"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryEventReplay.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
-    "Sha256": "B67858A5BEF9B40171CD65B653E42776A6B1E65DC23E95E6B45432E86BA8CAC3"
+    "Sha256": "7F1E32FF243442EF763FA818813127944C2AF67CC120390058D03AB1BF668DD6"
   },
   {
     "Path": "src/CropQc.Shared/Storage/GoogleDriveStorageService.cs",
@@ -351,7 +351,7 @@
     "Path": "src/CropQc.Web/Services/DashboardDataService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "33AE05B515068B39D9222295B34854FAE69148AC9A08070608306AE52E68324E"
+    "Sha256": "79704772F3071C9518B5848B64E7C963EA5FD14093F88B9ADEFE080F86EC9973"
   },
   {
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
@@ -471,7 +471,7 @@
     "Path": "src/CropQc.Web/Services/OutsideWarehouseTransferService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "44D993656E5535C87F7C36D9043A2D61B141059FF38B55BC7EAC967C1045B66B"
+    "Sha256": "F47B8E1D167FF47633B4DED32F8A761724D8719B492FBD3C83F1E9B3B1FF7DAF"
   },
   {
     "Path": "src/CropQc.Web/Services/PackoutReconciliationService.cs",
@@ -489,7 +489,7 @@
     "Path": "src/CropQc.Web/Services/ProcessorShipmentService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "52CC101C99075D1F3073D453F704008577B575C4F9771E4DA41BDF14142ACFD7"
+    "Sha256": "1D5C6D64AFB8576219674108BD472C2351DA6F22D0BBC03AB7022DCCBB4A438C"
   },
   {
     "Path": "src/CropQc.Web/Services/ProvenLineageReconciliation.cs",
@@ -578,8 +578,8 @@
   {
     "Path": "src/CropQc.Web/Services/RoomTreatmentService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
-    "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "922CC75D605ACAC2607FC8061F2EBFE448370E0CA374473BEDA79215EC6EBD29"
+    "Reason": "Reviewed additive AuthoritativeBins display field only; every existing method body and canonical dispatch branch is unchanged. See docs/investigations/transfer-eligibility-capability-review-2026-10-15.md. No new physical writer or capability; legacy writes remain fenced while ON.",
+    "Sha256": "48D09B1CAC91E82F1A5572945313092A2E5E3BBBEF7C40286A4179968E69544E"
   },
   {
     "Path": "src/CropQc.Web/Services/RunExpectationService.cs",
@@ -646,5 +646,17 @@
     "Classification": "Nonphysical or read-only",
     "Reason": "Only metadata/report/QC/master-data writes or local collection construction; physical entity references are read-only. Runtime field/SQL guard remains active.",
     "Sha256": "97D2032BACDDE5A1D703D938F7A00216B6EDA48AF42E2D9E9B68F1E69A4C0E0D"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Reviewed read-only parent/custody proof, per-identity fingerprint dependencies, and malformed numeric snapshot rejection. No persistence, new origins or writer capability. See docs/investigations/transfer-eligibility-capability-review-2026-10-15.md.",
+    "Sha256": "3D85CD58F0487FE9E32E6DF1A34E332F27ECCED71350677B29D39601C16C859C"
+  },
+  {
+    "Path": "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Reviewed bounded historical custody proof: validates immutable parent/debit/credit records and source replay; Add changes local evidence collections only. No SaveChanges, physical SQL, new origin, writer capability or readiness exemption.",
+    "Sha256": "31CF809DBB20B59B85E247D1ED1699EEF5A220B96FAEBC6F8E6407FECFBF1787"
   }
 ]
