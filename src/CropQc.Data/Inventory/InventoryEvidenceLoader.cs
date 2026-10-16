@@ -59,18 +59,45 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
     }
 
     private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct,
-        bool includeRecordedCustody = true)
+        bool includeRecordedCustody = true, HashSet<string>? historyKeys = null, string[]? historyLots = null)
     {
         var roomIds = scope.RoomIds.IsDefaultOrEmpty ? null : scope.RoomIds.ToArray();
-        var snapshots = await new RoomInventoryLedgerQueryService(db).GetSnapshotsAsOfAsync(scope.WarehouseId, roomIds, asOf, ct);
+        var ledger = new RoomInventoryLedgerQueryService(db);
+        var snapshots = historyKeys == null
+            ? await ledger.GetSnapshotsAsOfAsync(scope.WarehouseId, roomIds, asOf, ct)
+            : (await ledger.GetHistorySnapshotsAsync(roomIds!, historyLots!, asOf, ct))
+                .Where(x => historyKeys.Contains(Identity(x).Key)).ToArray();
         // Include rooms with orphan projections even if the ledger has no matching position.
-        var rows = await Bounded(db.RoomInventoryAdjustments.AsNoTracking().Where(x =>
-            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId))), ct);
-        var segments = await Bounded(db.TreatmentLineageSegments.AsNoTracking().Include(x => x.Applications).AsSingleQuery().Where(x =>
-            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId))), ct);
+        var rowQuery = db.RoomInventoryAdjustments.AsNoTracking().Where(x =>
+            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId)));
+        if (historyLots != null) rowQuery = rowQuery.Where(x => historyLots.Contains(x.LotNumber.Trim().ToUpper()));
+        var rows = await Bounded(rowQuery, ct);
+        var segmentQuery = db.TreatmentLineageSegments.AsNoTracking().Where(x =>
+            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId)));
+        if (historyKeys != null)
+        {
+            // Normalize in the existing canonical helper, including spaces inside
+            // historical keys and redundant status aliases. Do not drop a corrupt
+            // link merely because its persisted identity columns disagree.
+            var index = await Bounded(segmentQuery.Select(x => new { x.Id, x.RoomId, x.IdentityKey, x.CropYear, x.GrowerLotId, x.FruitProfileId }), ct);
+            var positions = snapshots.Select(x => (x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId)).ToHashSet();
+            var ids = index.Where(x => historyKeys.Contains(InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey))
+                || positions.Contains((x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId))).Select(x => x.Id).ToArray();
+            segmentQuery = segmentQuery.Where(x => ids.Contains(x.Id));
+        }
+        var segments = await Bounded(segmentQuery.Include(x => x.Applications).AsSingleQuery(), ct);
         var rooms = rows.Select(x => x.RoomId).Concat(segments.Select(x => x.RoomId)).Distinct().ToArray();
-        var movements = await Bounded(db.TreatmentLineageMovements.AsNoTracking().Where(x =>
-            rooms.Contains(x.SourceRoomId ?? -1) || rooms.Contains(x.DestinationRoomId ?? -1)), ct);
+        var movementQuery = db.TreatmentLineageMovements.AsNoTracking().Where(x =>
+            rooms.Contains(x.SourceRoomId ?? -1) || rooms.Contains(x.DestinationRoomId ?? -1));
+        if (historyKeys != null)
+        {
+            var index = await Bounded(movementQuery.Select(x => new { x.Id, x.IdentityKey, x.SourceSegmentId, x.DestinationSegmentId }), ct);
+            var segmentIds = segments.Select(x => x.Id).ToHashSet();
+            var ids = index.Where(x => historyKeys.Contains(InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey))
+                || segmentIds.Contains(x.SourceSegmentId ?? -1) || segmentIds.Contains(x.DestinationSegmentId ?? -1)).Select(x => x.Id).ToArray();
+            movementQuery = movementQuery.Where(x => ids.Contains(x.Id));
+        }
+        var movements = await Bounded(movementQuery, ct);
         var receiptIds = rows.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)
             .Concat(segments.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value))
             .Concat(movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)).Distinct().ToArray();

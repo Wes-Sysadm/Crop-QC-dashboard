@@ -22,7 +22,8 @@ public sealed partial class InventoryEvidenceLoader
         var related = await Bounded(db.RoomInventoryAdjustments.AsNoTracking()
             .Where(l => lots.Contains(l.LotNumber.Trim().ToUpper()) && l.CreatedAt <= asOf), ct);
         var rooms = related.Select(l => l.RoomId).Distinct().ToImmutableArray();
-        var closure = await LoadRoomsAsync(new(null, rooms), asOf, consistency, ct, includeRecordedCustody: false);
+        var closure = await LoadRoomsAsync(new(null, rooms), asOf, consistency, ct,
+            includeRecordedCustody: false, historyKeys: keys, historyLots: lots);
         var positions = closure.Positions.Where(p => keys.Contains(p.Identity.Key)).ToArray();
         var rowIds = positions.SelectMany(p => p.Ledger).Select(l => l.Id).ToHashSet();
         var rows = related.Where(l => rowIds.Contains(l.Id)).ToArray();

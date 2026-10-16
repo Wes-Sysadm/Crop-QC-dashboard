@@ -293,7 +293,7 @@ public sealed class HistoricalInterCrewDispatchTests
     // Synthetic analogue of Frenchman 1110 / MCD-15: +32,+64,+64,+60,-64,+66,+64 = 286.
     // Five historical transfer parents, an audited same-identity location correction, no modern movement/projection rows.
     // Treatment is explicitly recorded after the final arrival; no production treatment claim is implied by this fixture.
-    private static async Task<Fixture> HistoricalPool()
+    internal static async Task<Fixture> HistoricalPool()
     {
         var f = await Fixture.Create();
         await using var db = f.CreateDbContext();

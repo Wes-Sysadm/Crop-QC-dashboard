@@ -58,3 +58,20 @@ The correction preserves that immutable internal receipt snapshot; it does not
 suppress the strict readiness failure or alter completed ledger/movement evidence.
 Registry hashes below this review are content locks, not authority to bypass any
 runtime writer capability. No new writer, migration, or production operation.
+
+## Historical closure performance correction (2026-10-16)
+
+Reviewed against preparation head `590db49e3f8745421dcf774b186741938df2d0df`
+under the owner's focused correction instruction. The only application changes are
+three existing read adapters; no physical writer, shared replay rule or model changes.
+
+| Path | Reviewed change and capability conclusion |
+| --- | --- |
+| `RoomInventoryLedgerQueryService.cs` | Adds an internal historical lot-component scope before the existing SQL aggregate. A bounded SELECT of immutable Bins Run edges retains connected display labels. Local HashSet/Queue additions are not writes. Baseline subqueries deliberately retain the unfiltered ledger; normalization, grouping, reconciliation and metadata calculation are unchanged. |
+| `InventoryEvidenceLoader.cs` | Uses the scoped aggregate only for historical closure. Bounded no-tracking identity indexes select complete relevant segment/movement records using the existing canonical normalizer, including contradictory segment links. Ordinary reads, consistent transaction ownership, evidence objects and fingerprint composition remain unchanged. No SQL mutation, persistence, writer capability or readiness exemption. |
+| `InventoryEvidenceLoader.RecordedCustody.cs` | Passes the existing requested identity keys and normalized lots into the closure. Exact parent, paired ledger, audited relocation, chronology and fingerprint validation remain unchanged. |
+
+Registry updates for these three files record this reviewed read-only diff. They do
+not waive runtime writer fences, authorize projection repairs, or replace executed
+PostgreSQL correctness/performance validation. Protected-data rehearsal and production
+release remain separate pending gates.

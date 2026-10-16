@@ -252,7 +252,7 @@ public sealed class LegacyTransferEligibilityTests
         });
     }
 
-    private static async Task<Fixture> Legacy(bool treated = false)
+    internal static async Task<Fixture> Legacy(bool treated = false)
     {
         var f = await Fixture.Create();
         await using var db = f.CreateDbContext();

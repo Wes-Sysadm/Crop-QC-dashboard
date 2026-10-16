@@ -66,13 +66,47 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
         CancellationToken cancellationToken) =>
         await GetSnapshotsCoreAsync(warehouseId, roomIds, null, asOf, cancellationToken);
 
+    // Historical closure uses the canonical calculation, but does not aggregate
+    // every other occupant of its source rooms. Keep all growers/years for a lot:
+    // legacy nullable identity and canonical-year inference still need those rows.
+    internal async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetHistorySnapshotsAsync(
+        int[] rooms, string[] lots, DateTimeOffset asOf, CancellationToken ct)
+    {
+        // Bins Run can reconcile old display labels through an immutable edge.
+        // Include the complete connected lot component before grouping; filtering
+        // only one endpoint could resurrect already consumed stock.
+        var edges = await dbContext.BinsRunEntries.AsNoTracking()
+            .Where(x => rooms.Contains(x.RoomId) && x.RunAt <= asOf && x.SourceInventoryAdjustmentId != null)
+            .Select(x => new
+            {
+                Source = x.SourceInventoryAdjustment!.LotNumber != "" ? x.SourceInventoryAdjustment.LotNumber
+                    : x.SourceInventoryAdjustment.Receipt == null ? "" : x.SourceInventoryAdjustment.Receipt.GrowerNumber ?? x.SourceInventoryAdjustment.Receipt.LotCode,
+                Destination = x.InventoryAdjustment.LotNumber != "" ? x.InventoryAdjustment.LotNumber
+                    : x.InventoryAdjustment.Receipt == null ? "" : x.InventoryAdjustment.Receipt.GrowerNumber ?? x.InventoryAdjustment.Receipt.LotCode
+            }).Take(InventoryEvidenceLoader.MaximumEvidenceRowsPerTable + 1).ToListAsync(ct);
+        if (edges.Count > InventoryEvidenceLoader.MaximumEvidenceRowsPerTable)
+            throw new InvalidOperationException("Historical lineage scope exceeds the safe row limit.");
+        var connected = lots.ToHashSet(StringComparer.Ordinal);
+        var adjacency = edges.SelectMany(x => new[]
+            {
+                (Source: x.Source.Trim().ToUpperInvariant(), Destination: x.Destination.Trim().ToUpperInvariant()),
+                (Source: x.Destination.Trim().ToUpperInvariant(), Destination: x.Source.Trim().ToUpperInvariant())
+            }).ToLookup(x => x.Source, x => x.Destination, StringComparer.Ordinal);
+        var pending = new Queue<string>(connected);
+        while (pending.TryDequeue(out var lot))
+            foreach (var neighbour in adjacency[lot])
+                if (connected.Add(neighbour)) pending.Enqueue(neighbour);
+        return await GetSnapshotsCoreAsync(null, rooms, null, asOf, ct, normalizedLots: connected.ToArray());
+    }
+
     private async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsCoreAsync(
         int? warehouseId,
         IReadOnlyCollection<int>? roomIds,
         int? fruitProfileId,
         DateTimeOffset? asOf,
         CancellationToken cancellationToken,
-        IQueryable<RoomInventoryAdjustment>? overlay = null)
+        IQueryable<RoomInventoryAdjustment>? overlay = null,
+        string[]? normalizedLots = null)
     {
         var ledger = overlay ?? dbContext.RoomInventoryAdjustments.AsNoTracking();
         var query = ledger;
@@ -91,6 +125,14 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
             query = query.Where(x => x.AdjustmentAt <= asOf.Value);
         }
 
+        if (normalizedLots != null)
+        {
+            query = query.Where(x => normalizedLots.Contains((x.LotNumber != "" ? x.LotNumber
+                : x.Receipt == null ? "" : x.Receipt.GrowerNumber ?? x.Receipt.LotCode).Trim().ToUpper()));
+        }
+
+        // Baseline lookups intentionally use the unfiltered ledger. A room-wide
+        // opening balance can supersede an older row of a different identity.
         query = query
             .Where(x => !ledger.Any(baseline =>
                 baseline.RoomId == x.RoomId

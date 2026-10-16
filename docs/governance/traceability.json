@@ -164,6 +164,36 @@
           "member": "Wp7_accounts_for_duplicate_and_consumed_history_without_inventing_receipt_allocation",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Wide_history_preserves_proof_across_scopes_without_aggregating_other_lots",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scoped_aggregate_retains_room_baseline_and_nullable_identity_semantics",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Connected_run_labels_cannot_resurrect_depleted_inventory_or_merge_a_different_grower",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Multihop_treatment_and_intermediate_reversal_never_treat_later_arrivals",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scope_filter_keeps_aliases_contradictory_segment_links_and_historical_cutoffs",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Corrected historical receipt replay remains conservative; #273 revision diagnostics do not prove surviving custody."
