@@ -52,7 +52,7 @@
       "tests": [
         {
           "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
-          "member": "Historical_286_bin_source_is_selectable_but_WpDh_dispatch_is_rejected_by_current_route_contract",
+          "member": "Historical_286_bin_source_dispatches_and_receives_internally_with_exact_custody_and_treatment",
           "kind": "postgres",
           "required": true
         },
@@ -71,6 +71,12 @@
         {
           "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
           "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Historical_internal_dispatches_race_without_double_spend_and_replay_safely",
           "kind": "postgres",
           "required": true
         }
@@ -507,6 +513,24 @@
         {
           "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
           "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Supported_dispatch_and_cross_company_receipt_are_distinct",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Cross_company_dispatch_requires_exact_matched_receipt_and_cannot_use_internal_receive",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Unsupported_routes_reject_at_the_canonical_writer_without_any_changes",
           "kind": "postgres",
           "required": true
         }

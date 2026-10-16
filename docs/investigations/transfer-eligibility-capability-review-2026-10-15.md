@@ -37,3 +37,24 @@ fail-closed malformed numeric snapshot handling, and per-identity fingerprints.
 The pure replay carries original application events through intermediate legacy
 hops so a committed treatment reversal is not lost. These remain read-only proof
 changes; no physical writer capability is added.
+
+## Authorized internal route correction (2026-10-16)
+
+Reviewed against e67a4167b979a545cf3e03321e228d261c640597 under the owner's
+"Correct McDougall Internal Inter-Crew Route" instruction. No company grouping
+or source-origin policy changes. These are existing canonical capabilities:
+
+| Path | Reviewed change and capability conclusion |
+| --- | --- |
+| `TruckReceiptRoutes.cs` | Pure shared dispatch matrix; existing company group and receipt predicates unchanged. Unknown routes fail closed. |
+| `InventoryCommandCustody.cs` | Dispatch accepts the established internal route separately from receipt policy; persisted receipt requirement remains conditional on cross-company status and existing activation metadata. Internal received returns retain the historical receive snapshot as the legacy writer and strict ledger contract require. Cross-company reopen/return behavior unchanged. No fence, quantity, origin, seal, concurrency, source allocation, or treatment guard removed. |
+| `InterCrewTransferService.cs` | Destination options delegate to the shared pure matrix. Existing legacy receipt-activation calculation unchanged. |
+| `InterCrewTopologyReadiness.cs` | Adds canonical route/persisted-flag validation; historical noncanonical transfers retain their contract. Adds a blocking check, no readiness exemption. |
+| `_InterCrewTransfer.cshtml` | Renders allowed destinations from the shared matrix; removes the duplicated JavaScript default that allowed unknown sources. No write capability. |
+
+The complete internal lifecycle regression exposed the canonical received-return
+writer clearing BinsReceived/destination while retaining the receive ledger.
+The correction preserves that immutable internal receipt snapshot; it does not
+suppress the strict readiness failure or alter completed ledger/movement evidence.
+Registry hashes below this review are content locks, not authority to bypass any
+runtime writer capability. No new writer, migration, or production operation.

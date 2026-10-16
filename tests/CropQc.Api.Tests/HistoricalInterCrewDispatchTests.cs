@@ -11,6 +11,7 @@ using CropQc.Web.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using static CropQc.Api.Tests.InventoryCommandTests;
 
 namespace CropQc.Api.Tests;
@@ -18,7 +19,7 @@ namespace CropQc.Api.Tests;
 public sealed class HistoricalInterCrewDispatchTests
 {
     [InventoryPostgresFact]
-    public async Task Historical_286_bin_source_is_selectable_but_WpDh_dispatch_is_rejected_by_current_route_contract()
+    public async Task Historical_286_bin_source_dispatches_and_receives_internally_with_exact_custody_and_treatment()
     {
         await using var f = await HistoricalPool();
         var history = await History(f);
@@ -44,26 +45,134 @@ public sealed class HistoricalInterCrewDispatchTests
         await AssertRendered(f, option);
         var form = Form(option, 40);
         var service = Service(db, executor);
-        var beforeDispatch = await f.Snapshot();
         var sent = await service.DispatchAsync(form, default);
-        Assert.False(sent.Success);
-        Assert.Equal("Inter-company dispatch requires a configured cross-company route.", sent.Error);
+        Assert.True(sent.Success, sent.Error);
         var command = Assert.Single(executor.Commands);
         Assert.Equal(InventoryCommandKind.InterCompanyDispatch, command.Kind);
         Assert.Equal(8000, command.ActorId);
         Assert.Equal("WP_DH", command.CustodyGroup);
         Assert.Equal(resolved.Identity.Key, Assert.Single(command.Lines).Source.Identity.Key);
         Assert.Equal(resolved.Watermark.Fingerprint, command.Lines[0].Source.ExpectedFingerprint);
-        Assert.Equal(InventoryCommandStatus.Blocked, Assert.Single(executor.Results).Status);
+        Assert.Equal(InventoryCommandStatus.Committed, Assert.Single(executor.Results).Status);
         Assert.Equal("WP_DH", TruckReceiptRoutes.Group("MCD"));
-        Assert.Equal(286, await f.Physical(9003));
-        Assert.False(await db.InterCrewTransfers.AnyAsync());
-        Assert.False(await db.TreatmentLineageMovements.AnyAsync());
-        Assert.False(await db.TreatmentLineageSegments.AnyAsync());
+        var parent = await db.InterCrewTransfers.AsNoTracking().SingleAsync();
+        Assert.False(parent.RequiresTruckReceipt); // feature enabled, internal route remains internal
+        Assert.Null(parent.ReceivingReceiptId);
+        Assert.Equal(246, await f.Physical(9003));
+        await AssertCustody(db, parent.Id, 40, 0);
+        var saved = await f.Snapshot();
+        Assert.True((await service.DispatchAsync(form, default)).AlreadyApplied);
+        Assert.Equal(saved, await f.Snapshot());
+        Assert.False((await service.DispatchAsync(Form(option, 40), default)).Success);
+        form.BinsLoaded = 41;
+        Assert.False((await service.DispatchAsync(form, default)).Success);
+        Assert.Equal(saved, await f.Snapshot());
+        var receive = new InterCrewReceiveForm
+        {
+            TransferId = parent.Id,
+            DestinationRoomId = 9007,
+            BinsReceived = 39,
+            ReceivedAt = new PacificBusinessTimeService(new SystemClock()).NowPacific.DateTime,
+            Note = "Exact internal arrival"
+        };
+        Assert.False((await service.ReceiveAsync(receive, default)).Success);
+        Assert.Equal(saved, await f.Snapshot());
+        receive.BinsReceived = 40;
+        var received = await service.ReceiveAsync(receive, default);
+        Assert.True(received.Success, received.Error);
+        Assert.Equal(246, await f.Physical(9003));
+        await AssertCustody(db, parent.Id, 0, 40);
+        saved = await f.Snapshot();
+        Assert.True((await service.ReceiveAsync(receive, default)).AlreadyApplied);
+        Assert.Equal(saved, await f.Snapshot());
         Assert.Equal(5, await db.RoomInventoryAdjustments.CountAsync(x => x.AdjustmentType == "ReceiptAdd"));
-        Assert.Equal(beforeDispatch, await f.Snapshot());
         Assert.Equal(history, await History(f));
-        // This is a blocker regression, not evidence of a completed dispatch or Truck Receipt rehearsal.
+        var receivedSnapshot = await db.InterCrewTransfers.AsNoTracking().SingleAsync();
+        var reverse = new InterCrewReversalForm { TransferId = parent.Id, Reason = "Return untouched internal allocation" };
+        Assert.Null(await service.ReverseAsync(reverse, default));
+        var reversedSnapshot = await db.InterCrewTransfers.AsNoTracking().SingleAsync();
+        Assert.Equal(receivedSnapshot.BinsReceived, reversedSnapshot.BinsReceived);
+        Assert.Equal(receivedSnapshot.DestinationRoomId, reversedSnapshot.DestinationRoomId);
+        Assert.Equal(receivedSnapshot.DestinationWarehouseId, reversedSnapshot.DestinationWarehouseId);
+        Assert.Equal(receivedSnapshot.ReceivedAt, reversedSnapshot.ReceivedAt);
+        Assert.Equal(receivedSnapshot.ReceiveOperationKey, reversedSnapshot.ReceiveOperationKey);
+        Assert.Equal(286, await f.Physical(9003));
+        await AssertCustody(db, parent.Id, 0, 0);
+        saved = await f.Snapshot();
+        Assert.Null(await service.ReverseAsync(reverse, default));
+        Assert.Equal(saved, await f.Snapshot());
+        Assert.Equal(history, await History(f));
+    }
+
+    [InventoryPostgresFact]
+    public async Task Historical_internal_dispatches_race_without_double_spend_and_replay_safely()
+    {
+        await using var f = await HistoricalPool();
+        var history = await History(f);
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var aDb = factory.CreateDbContext();
+        await using var bDb = factory.CreateDbContext();
+        var ready = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executor = new InventoryCommandExecutor(factory, new Observer(async (stage, attempt) =>
+        {
+            if (stage != "Resolved" || attempt != 1) return;
+            if (Interlocked.Increment(ref ready) == 2) gate.SetResult();
+            await gate.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        }));
+        var option = await Source(aDb, executor);
+        var forms = new[] { Form(option, 160), Form(option, 160) };
+        var services = new[] { Service(aDb, executor), Service(bDb, executor) };
+        var results = await Task.WhenAll(services[0].DispatchAsync(forms[0], default), services[1].DispatchAsync(forms[1], default));
+        var winner = Assert.Single(results.Select((r, i) => (r, i)), x => x.r.Success).i;
+        Assert.Single(results, x => !x.Success);
+        Assert.Equal(126, await f.Physical(9003));
+        await AssertCustody(aDb, results[winner].TransferId!.Value, 160, 0);
+        var saved = await f.Snapshot();
+        Assert.True((await services[winner].DispatchAsync(forms[winner], default)).AlreadyApplied);
+        Assert.Equal(saved, await f.Snapshot());
+        Assert.Equal(history, await History(f));
+    }
+
+    private static async Task AssertCustody(CropQcDbContext db, long transferId, int transit, int destination)
+    {
+        db.ChangeTracker.Clear();
+        var result = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+            new(9001, [], InventoryCustody.InTransit), new(AllowedCustody: InventoryCustody.InTransit), DateTimeOffset.UtcNow);
+        Assert.Equal(transit, result.Positions.Sum(x => x.AuthoritativeQuantity));
+        Assert.All(result.Positions, x => Assert.True(x.IsOperable, JsonSerializer.Serialize(x.Blockers)));
+        if (transit == 0)
+        {
+            // An explicit completed-parent lookup retains historical evidence;
+            // it must not be mistaken for current or spendable transit stock.
+            var historical = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+                new(9001, [], InventoryCustody.InTransit, transferId), new(AllowedCustody: InventoryCustody.InTransit), DateTimeOffset.UtcNow);
+            Assert.All(historical.Positions, x => { Assert.False(x.IsOperable); Assert.Equal(0, x.AvailableQuantity); });
+        }
+        Assert.All(result.Positions.SelectMany(x => x.TreatmentSlices), x =>
+        {
+            Assert.Equal("u|a:800000", x.Signature);
+            Assert.Equal(800000, Assert.Single(x.ApplicationIds));
+        });
+        Assert.Equal(destination, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
+        Assert.Equal(286, await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount) + transit);
+        Assert.False(await db.ReceiptCustodyAcknowledgments.AnyAsync());
+        var segments = await db.TreatmentLineageSegments.AsNoTracking().Include(x => x.Applications)
+            .Where(x => x.Disposition == "Current" && x.CurrentBins > 0).ToArrayAsync();
+        Assert.Equal(286 - transit, segments.Sum(x => x.CurrentBins));
+        Assert.Contains(segments, x => x.ReceiptId == null);
+        Assert.All(segments, x =>
+        {
+            Assert.True(x.ReceiptId is null or 100004, "Shared ancestry must not acquire an invented receipt.");
+            Assert.Equal("u|a:800000", x.TreatmentSignature);
+            Assert.Equal(800000, Assert.Single(x.Applications).RoomTreatmentApplicationId);
+        });
+        var topology = await InterCrewTopologyReadiness.VerifyAsync(db, default);
+        Assert.True(topology.Issues.Count == 0, JsonSerializer.Serialize(topology));
+        var inventory = await new InventoryDeductionInvariantService(db, NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(default);
+        Assert.True(inventory.IsReady, JsonSerializer.Serialize(inventory.Issues));
+        var treatment = await new TreatmentLineageReadinessService(new CropQc.Web.Services.RoomInventoryLedgerQueryService(db), db).VerifyAsync(default);
+        Assert.True(treatment.Success, JsonSerializer.Serialize(treatment));
     }
 
     [InventoryPostgresFact]
@@ -112,6 +221,7 @@ public sealed class HistoricalInterCrewDispatchTests
         var input = Assert.Single(Regex.Matches(html, "<input\\b[^>]*>").Select(x => WebUtility.HtmlDecode(x.Value)),
             x => x.Contains("name=\"SourceKey\"") && x.Contains(option.SourceKey));
         Assert.DoesNotContain("disabled", input);
+        Assert.Contains("data-allowed-destinations=\"WP_DH,EBS\"", input);
         Assert.Equal(before, await f.Snapshot());
     }
 
@@ -133,7 +243,7 @@ public sealed class HistoricalInterCrewDispatchTests
         return option;
     }
 
-    private static InterCrewTransferService Service(CropQcDbContext db, IInventoryCommandExecutor executor) => new(db,
+    internal static InterCrewTransferService Service(CropQcDbContext db, IInventoryCommandExecutor executor) => new(db,
         CanonicalTruckReceiptWorkflowTests.Inventory(db, executor), new CropQc.Web.Services.RoomInventoryLedgerQueryService(db),
         null!, null!, null!, new CanonicalOutsideWorkflowTests.Access(), CanonicalReceivingWorkflowTests.Operator(),
         new PacificBusinessTimeService(new SystemClock()), truckReceiptOptions: new() { Enabled = true }, canonicalCommands: executor);

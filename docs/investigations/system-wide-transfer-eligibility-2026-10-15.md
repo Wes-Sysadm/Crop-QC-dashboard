@@ -1,7 +1,7 @@
 # System-wide transfer eligibility investigation
 
-Status: **NO-GO following focused review: McDougall → WP_DH route mismatch**.
-The 2026-10-16 addendum below supersedes the earlier human-review recommendation.
+Status: **GO for focused human review after the authorized internal route correction**.
+The final route-correction addendum supersedes the earlier blocker recommendation.
 This remains a draft; **not release authorization**.
 Base: `df977d041dae2d449cf6fe5f8581e1f5cae41947`.
 Branch: `codex/system-wide-transfer-eligibility`.
@@ -496,3 +496,117 @@ Focused-revision completion evidence:
   `db2eabf6c18c37694db2994952497283f2e25e946a525fb1e78524ec5793fe8a`
   were deleted and absence verified at **2026-10-16 07:38:58 UTC**. Unrelated
   containers, backup #204 and pre-existing untracked reports were preserved.
+
+## Authorized internal route correction — 2026-10-16
+
+Owner instruction: “PR #284 — Correct McDougall Internal Inter-Crew Route”,
+continuing reviewed head e67a4167b979a545cf3e03321e228d261c640597. Main was
+refetched unchanged at df977d041dae2d449cf6fe5f8581e1f5cae41947; no integration
+update was needed. The specification, governance commit and invariants above remain
+effective. Owner-supplied counts (22 internal received loads / 2,212 bins; five
+internal transit loads / 214 bins; 15 EBS loads / 630 bins) are context, not a new
+production audit this turn.
+
+### Exact contract and defects corrected
+
+The UI offered McDougall → WP_DH, but the canonical writer confused cross-company
+receipt eligibility with dispatch admission. The new shared
+`TruckReceiptRoutes.InterCrewDestinations/AllowsInterCrewDispatch` matrix supplies
+the service, rendered selector, canonical writer and canonical topology check.
+Existing Group/RequiresReceipt/RequiresReceiptForGroup meanings are unchanged.
+McDougall remains part of the WP_DH company group.
+
+| Source | Destination | Dispatch | Receipt policy |
+| --- | --- | --- | --- |
+| McDougall / MCD | WP_DH | Allowed internal transit | False; exact full-load internal receive |
+| McDougall / MCD | EBS | Allowed cross-company | Existing activation persisted at dispatch |
+| EBS | WP_DH | Allowed cross-company | Same persisted policy |
+| WP or DH | EBS | Allowed cross-company | Same persisted policy |
+| WP or DH | WP_DH | Blocked | No write |
+| EBS | EBS | Blocked | No write |
+| Unknown source or destination | Any | Blocked | No write |
+
+Enabling Truck Receipt cannot change an internal load into a cross-company load.
+Feature pause/reactivation does not rewrite the stored cross-company requirement.
+Partial acknowledgements/compensations retain their existing cross-company proof.
+The UI's JavaScript fallback allowing unknown sources was replaced with rendered
+shared-contract destinations. Canonical topology rejects unsupported routes and
+internal loads incorrectly flagged as requiring a Truck Receipt; historical
+noncanonical topology is not reinterpreted.
+
+A complete lifecycle test exposed a second defect: the canonical received-return
+writer cleared BinsReceived/destination while retaining the receive ledger. Strict
+readiness correctly failed. Internal returns now retain the completed receive
+snapshot, matching the established internal reversal and strict ledger contract.
+Cross-company reopen/return behavior is unchanged. No readiness assertion was
+removed and no error became a warning.
+
+### Exact reconciliation and integrity
+
+The regression uses the existing synthetic 286-bin Frenchman history, including
+five recorded room transfers and an audited receipt relocation. It retains 220
+shared-ancestry bins and 66 independently receipt-owned bins; an explicit application
+proves treatment membership. Actual service/command execution gives:
+
+| Checkpoint | Source room | Transit | WP room | Total |
+| --- | ---: | ---: | ---: | ---: |
+| Before | 286 | 0 | 0 | 286 |
+| Dispatch 40 | 246 | 40 | 0 | 286 |
+| Exact internal receive | 246 | 0 | 40 | 286 |
+| Untouched allocation return | 286 | 0 | 0 | 286 |
+
+Every checkpoint passes strict inventory deduction, treatment lineage and topology
+readiness. Original receipts, ledger history, transfer parents, receipt correction,
+application sources and audit evidence remain unchanged. New movements retain
+application 800000; ancestry remains null where shared and 100004 only where already
+proven. No second ReceiptAdd or transfer evidence receipt is created. Historical
+completed-parent manifests remain nonoperable; active transit has no completed load.
+
+Two independent PostgreSQL sessions attempt 160-bin dispatches from 286: one commits,
+one rejects, leaving 126 room / 160 transit. Replayed dispatch, receive and return
+are idempotent. Stale fingerprints, changed intent under the same key and a 39-bin
+receipt for the 40-bin load reject without writes. Duplicate origin still blocks
+despite selectable treatment evidence. The prior 1,179-bin selection improvement,
+56 separate origin failures and their exact evidence remain unchanged.
+
+Actual EBS → WP_DH and McDougall → EBS service controls persist the receipt flag,
+reject direct internal receive, unmatched completion and quantity mismatch without
+writes, then complete 19 bins exactly once with original ancestry and no new origin.
+Existing varied-profile matching, activation, held-custody, compensation, treatment,
+consumption, seal, origin and concurrency regressions cover the shared paths.
+
+### Final verification and release limits
+
+- 22 focused route/lifecycle cases passed. Initial reversal failure was corrected
+  in the writer; strict readiness was retained.
+- 188 mandatory contracts passed, zero skipped/failed; exact required-method and
+  structural-suite coverage independently checked against the TRX.
+- Expanded affected run: 266 passed, one content-lock encoding failure, three legacy
+  PostgreSQL test definitions skipped for missing fixture configuration. The content
+  lock was corrected using UTF-8 BOM handling after reviewing the unchanged service
+  diff. The mandatory rerun passed. The eight legacy PostgreSQL cases then passed
+  with their dedicated fixture configuration. Across final passing evidence, 275
+  distinct cases pass; the initial failed/skipped run is not represented as PASS.
+- 29 governance metadata tests passed; metadata validation reports 20 rules PASS.
+  Prior 290-case / 168-contract evidence is retained, without a new production audit
+  or unrelated full-suite run.
+- Solution restore, Release build (zero errors, 74 existing warnings), actual Linux
+  build, EF model consistency, changed-file formatting and whitespace checks passed.
+  No model change, migration, WinForms/MSI or hardware change.
+- Final-head CI is recorded by GitHub and in the completion response. Local results
+  are not a substitute for final-head CI or production release safeguards.
+
+Only synthetic data in the owned, network-isolated pr284-route-pg container was used
+this turn: no ports, production credentials or production connection. The separate
+legacy test database uses the current EF model. An extra full-chain empty-database
+migration attempt stopped on the existing identity migration's missing GrowerLots
+table. No migration source changed. The model-generated fixture is not evidence of
+a full-chain migration or production-schema rehearsal; established production-shaped
+schema/compatibility preflight remains required for release.
+
+Recommendation: GO for focused human review, subject to final-head CI. This is not
+production release approval. A future release still requires a fresh independently
+verified backup, strict readiness, schema preflight, compensation-aware rollback,
+authenticated affected routes and independent post-deployment verification. No new
+rollback artifact was prepared or claimed here. No production access, correction,
+projection reconstruction, migration, merge or deployment occurred.

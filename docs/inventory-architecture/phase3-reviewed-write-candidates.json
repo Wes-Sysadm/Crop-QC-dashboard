@@ -3,7 +3,7 @@
     "Path": "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Release topology snapshot: AsNoTracking reads, read-only transaction and local result lists only. Reuses immutable custody, physical-flow, origin and treatment proofs; no physical write capability or SaveChanges.",
-    "Sha256": "E15214E5AD96E65E8EBF6C16005E3CA9A00854AF155A1DA81FB8D26BEC826B92"
+    "Sha256": "68AF0F5452AAD939BDF61E959451DDC44A6C3F90027B9697C5A4CE1D4AB82033"
   },
   {
     "Path": "src/CropQc.Api/Services/QcFruitReadingService.cs",
@@ -75,7 +75,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "9AE739C42BBD46840C5E1C49F9682D4F40DA26DFE353451FE22FCE4DEFAC3876"
+    "Sha256": "910855994E17ABEFF29D4C7664BA1DE44451EEEF94B8651343918580707D8C45"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
@@ -405,7 +405,7 @@
     "Path": "src/CropQc.Web/Services/InterCrewTransferService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "1D984693D784AAF5AD7A127279EDE05B16C2DA0C6ECC67BF9D53D8468D4DFD4A"
+    "Sha256": "0057F5CED8032AB7EAB29D64BAB8FBAD9614F790FD681BFB38CD6B627189BD1C"
   },
   {
     "Path": "src/CropQc.Web/Services/InventoryDeductionInvariantService.cs",
