@@ -195,7 +195,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "F4508C10012280D551FADAD8627C8A4CF09FB75B37122BA35FB552B8DED18F1D"
+    "Sha256": "14325A423F2E1B587A35C57689C470E3D84D335143D3D59E17E263D56F28FED8"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
@@ -249,7 +249,7 @@
     "Path": "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Shared read-only evidence/resolver/preview infrastructure; Add operates on local collections, no physical SaveChanges.",
-    "Sha256": "04102854551C796B07464C5CBEE7037E3CA9DE04B6F8DE454F1E842140B80930"
+    "Sha256": "7E0B19760D10C7ABD5C3CE49D5A310046783E1B8283CB8FDEB73EB4E85E113BF"
   },
   {
     "Path": "src/CropQc.Data/Inventory/SelectiveProjectionReconstruction.cs",
@@ -651,7 +651,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Reviewed read-only parent/custody proof, per-identity fingerprint dependencies, and malformed numeric snapshot rejection. No persistence, new origins or writer capability. See docs/investigations/transfer-eligibility-capability-review-2026-10-15.md.",
-    "Sha256": "522017F9AC8936C35ED428717E71EE7D460F7AFE2C6A48B3B070A246B2D7A325"
+    "Sha256": "C57F37CDD435506F3152C5F4432BC3810350E3F39B942C3E044F4BF20767E4A4"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",

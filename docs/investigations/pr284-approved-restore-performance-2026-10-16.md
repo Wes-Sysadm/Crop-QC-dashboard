@@ -1,5 +1,9 @@
 # PR #284 — approved restore: remaining broad-closure performance blocker
 
+Subsequent synthetic-only correction: [broad aggregate reuse](pr284-broad-aggregate-reuse-2026-10-16.md).
+This restored checkpoint remains failed until a separately authorized new rehearsal;
+the later synthetic result does not replace its production-shaped release gate.
+
 **NO-GO.** The single-room historical closure regression is corrected, but the restored broad selectors still incur approximately four extra seconds. Preparation stopped at that performance safeguard before synthetic workflow mutations, authenticated-route rehearsal, rollback or handback. This report supersedes earlier conditional GO wording; it does not discard the earlier evidence for its identified executable.
 
 ## Scope, authority and source

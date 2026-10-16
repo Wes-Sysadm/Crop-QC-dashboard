@@ -1,5 +1,8 @@
 # PR #284 historical custody closure performance correction
 
+Latest synthetic continuation: [reuse already-loaded broad aggregate groups](pr284-broad-aggregate-reuse-2026-10-16.md).
+Protected performance, rollback/handback and release gates remain separate.
+
 Latest status: **NO-GO** after the newly approved #204 restore. Single-room latency is corrected, but broad historical closure still adds about four seconds. Read the [current restore report](pr284-approved-restore-performance-2026-10-16.md). All 269,834 original rows were preserved; the database/volume were deleted; workflow and rollback rehearsal stopped before mutations. Earlier evidence and conditional conclusions below apply only to their stated checkpoints.
 
 Status: synthetic correction and integrity validation PASS; focused human performance review required. Production release remains NO-GO pending reviewed/frozen binaries and the separately authorized production-shaped and rollback/handback gates. No production access, new protected restore, merge, deployment, migration or repair occurred in this task.

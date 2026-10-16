@@ -29,6 +29,17 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
 {
     public const int MaximumRoomLotRows = 2000;
 
+    // Owned by one evidence-loader read, never a cross-request cache. Retain the
+    // persisted groups BEFORE year inference and Bins Run reconciliation: those
+    // later steps must run again over the complete historical closure.
+    private AggregateRead? aggregateRead;
+    private sealed record AggregateRead(Guid TransactionId, DateTimeOffset AsOf,
+        HashSet<int> Rooms, IReadOnlyList<GroupedLedgerRow> Rows);
+
+    internal Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsForHistoryAsync(
+        int? warehouseId, int[]? rooms, DateTimeOffset asOf, CancellationToken ct) =>
+        GetSnapshotsCoreAsync(warehouseId, rooms, null, asOf, ct, captureAggregate: true);
+
     // A SELECT-only hypothetical source, composed through the SAME baseline cutoffs,
     // identity grouping and metadata query as ordinary reads. No temporary writes.
     internal Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> PreviewBaselinesAsync(
@@ -96,7 +107,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
         while (pending.TryDequeue(out var lot))
             foreach (var neighbour in adjacency[lot])
                 if (connected.Add(neighbour)) pending.Enqueue(neighbour);
-        return await GetSnapshotsCoreAsync(null, rooms, null, asOf, ct, normalizedLots: connected.ToArray());
+        return await GetSnapshotsCoreAsync(null, rooms, null, asOf, ct, normalizedLots: connected.ToArray(), reuseAggregate: true);
     }
 
     private async Task<IReadOnlyList<RoomInventoryLedgerSnapshot>> GetSnapshotsCoreAsync(
@@ -106,10 +117,20 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
         DateTimeOffset? asOf,
         CancellationToken cancellationToken,
         IQueryable<RoomInventoryAdjustment>? overlay = null,
-        string[]? normalizedLots = null)
+        string[]? normalizedLots = null,
+        bool captureAggregate = false,
+        bool reuseAggregate = false)
     {
+        // Warehouse-filtered reads do not prove complete room coverage. Reuse is
+        // permitted only inside the same database transaction and as-of snapshot.
+        var reusable = reuseAggregate && overlay == null && warehouseId == null && fruitProfileId == null
+            && normalizedLots != null && roomIds is { Count: > 0 }
+            && aggregateRead is { } prior && prior.AsOf == asOf
+            && dbContext.Database.CurrentTransaction?.TransactionId == prior.TransactionId ? prior : null;
+        var missingRooms = reusable == null ? null : roomIds!.Where(x => !reusable.Rooms.Contains(x)).ToArray();
         var ledger = overlay ?? dbContext.RoomInventoryAdjustments.AsNoTracking();
         var query = ledger;
+        if (missingRooms != null) query = query.Where(x => missingRooms.Contains(x.RoomId));
         if (warehouseId is not null)
         {
             query = query.Where(x => x.WarehouseId == warehouseId.Value);
@@ -262,7 +283,7 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
             normalizedQuery = normalizedQuery.Where(x => x.FruitProfileId == fruitProfileId.Value);
         }
 
-        var persistedGroups = await normalizedQuery
+        var aggregateQuery = normalizedQuery
             .Where(x => x.LotNumber != "" && x.VarietyCode != "")
             .GroupBy(x => new { x.WarehouseId, x.RoomId, x.CropYear, x.GrowerLotId, x.LotNumber, x.VarietyCode, x.FruitProfileId })
             .Select(x => new GroupedLedgerRow
@@ -301,12 +322,34 @@ public class RoomInventoryLedgerQueryService(CropQcDbContext dbContext) : IRoomI
             .ThenBy(x => x.RoomId)
             .ThenBy(x => x.LotNumber)
             .ThenBy(x => x.VarietyCode)
-            .Take(MaximumRoomLotRows + 1)
-            .ToListAsync(cancellationToken);
+            .Take(MaximumRoomLotRows + 1);
+        var persistedGroups = missingRooms is { Length: 0 }
+            ? new List<GroupedLedgerRow>() : await aggregateQuery.ToListAsync(cancellationToken);
+        if (reusable != null)
+        {
+            var covered = reusable.Rows.Where(x => roomIds!.Contains(x.RoomId)).ToArray();
+            var latestIdsInScope = covered.Select(x => x.LatestAdjustmentId).ToArray();
+            // Evaluate the SAME effective-lot predicate in the provider. In-memory
+            // Trim/ToUpper can differ from PostgreSQL for tabs or Unicode labels.
+            // One bounded key lookup replaces an aggregate, not one query per lot.
+            var includedIds = (await ledger.Where(x => latestIdsInScope.Contains(x.Id)
+                    && normalizedLots!.Contains((x.LotNumber != "" ? x.LotNumber
+                        : x.Receipt == null ? "" : x.Receipt.GrowerNumber ?? x.Receipt.LotCode).Trim().ToUpper()))
+                .Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+            persistedGroups.AddRange(covered.Where(x => includedIds.Contains(x.LatestAdjustmentId)));
+            // Each room's groups retain the database ordering used by the fresh
+            // query, including its provider collation for legacy display labels.
+            persistedGroups = persistedGroups.OrderBy(x => x.WarehouseId).ThenBy(x => x.RoomId).ToList();
+        }
         if (persistedGroups.Count > MaximumRoomLotRows)
         {
             throw new InvalidOperationException($"Room inventory selection exceeds the safe limit of {MaximumRoomLotRows} room-lot rows. Filter by facility or room.");
         }
+
+        if (captureAggregate && overlay == null && warehouseId == null && fruitProfileId == null
+            && normalizedLots == null && roomIds is { Count: > 0 } && asOf != null
+            && dbContext.Database.CurrentTransaction is { } transaction)
+            aggregateRead = new(transaction.TransactionId, asOf.Value, roomIds.ToHashSet(), persistedGroups.ToArray());
 
         var canonicalYears = persistedGroups
             .GroupBy(CanonicalIdentity)

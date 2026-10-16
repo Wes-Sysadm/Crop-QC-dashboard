@@ -9,7 +9,7 @@ namespace CropQc.Data.Inventory;
 public sealed partial class InventoryEvidenceLoader
 {
     private async Task<InventoryEvidenceBatch> IncludeRecordedCustodyAsync(InventoryEvidenceBatch original,
-        DateTimeOffset asOf, string consistency, CancellationToken ct)
+        DateTimeOffset asOf, string consistency, CancellationToken ct, RoomInventoryLedgerQueryService ledger)
     {
         var requested = original.Positions.Where(p => p.AuthoritativeQuantity > 0 && p.Ledger.Any(l => l.Quantity > 0
             && l.Kind is "TransferIn" or "ReceiptAdminOverride"
@@ -23,7 +23,7 @@ public sealed partial class InventoryEvidenceLoader
             .Where(l => lots.Contains(l.LotNumber.Trim().ToUpper()) && l.CreatedAt <= asOf), ct);
         var rooms = related.Select(l => l.RoomId).Distinct().ToImmutableArray();
         var closure = await LoadRoomsAsync(new(null, rooms), asOf, consistency, ct,
-            includeRecordedCustody: false, historyKeys: keys, historyLots: lots);
+            includeRecordedCustody: false, historyKeys: keys, historyLots: lots, historicalLedger: ledger);
         var positions = closure.Positions.Where(p => keys.Contains(p.Identity.Key)).ToArray();
         var rowIds = positions.SelectMany(p => p.Ledger).Select(l => l.Id).ToHashSet();
         var rows = related.Where(l => rowIds.Contains(l.Id)).ToArray();

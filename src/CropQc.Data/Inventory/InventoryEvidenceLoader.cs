@@ -59,12 +59,13 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
     }
 
     private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct,
-        bool includeRecordedCustody = true, HashSet<string>? historyKeys = null, string[]? historyLots = null)
+        bool includeRecordedCustody = true, HashSet<string>? historyKeys = null, string[]? historyLots = null,
+        RoomInventoryLedgerQueryService? historicalLedger = null)
     {
         var roomIds = scope.RoomIds.IsDefaultOrEmpty ? null : scope.RoomIds.ToArray();
-        var ledger = new RoomInventoryLedgerQueryService(db);
+        var ledger = historicalLedger ?? new RoomInventoryLedgerQueryService(db);
         var snapshots = historyKeys == null
-            ? await ledger.GetSnapshotsAsOfAsync(scope.WarehouseId, roomIds, asOf, ct)
+            ? await ledger.GetSnapshotsForHistoryAsync(scope.WarehouseId, roomIds, asOf, ct)
             : (await ledger.GetHistorySnapshotsAsync(roomIds!, historyLots!, asOf, ct))
                 .Where(x => historyKeys.Contains(Identity(x).Key)).ToArray();
         // Include rooms with orphan projections even if the ledger has no matching position.
@@ -219,7 +220,7 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
                 0, 0, false, true, [], projections, [], [], [], Watermark(projections, consistency, [])));
         }
         var batch = new InventoryEvidenceBatch(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
-        return includeRecordedCustody ? await IncludeRecordedCustodyAsync(batch, asOf, consistency, ct) : batch;
+        return includeRecordedCustody ? await IncludeRecordedCustodyAsync(batch, asOf, consistency, ct, ledger) : batch;
     }
 
     internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,

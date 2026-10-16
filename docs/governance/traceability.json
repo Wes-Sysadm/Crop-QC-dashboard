@@ -160,6 +160,24 @@
       ],
       "tests": [
         {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Broad_history_reuses_aggregate_without_losing_complete_position_proof",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Aggregate_reuse_is_transaction_and_effective_time_bound",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Reused_groups_preserve_provider_normalization_and_combined_row_limit",
+          "kind": "postgres",
+          "required": true
+        },
+        {
           "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
           "member": "Wp7_accounts_for_duplicate_and_consumed_history_without_inventing_receipt_allocation",
           "kind": "unit",

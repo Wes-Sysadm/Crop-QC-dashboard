@@ -86,3 +86,24 @@ quantity/identity. The original mismatch predicate and revision interpretation
 remain unchanged. It loads no unrelated receipt entities, performs no writes,
 and introduces no capability, schema, authority or readiness exemption. Update
 only this read adapter's content lock after this review.
+
+### Broad aggregate reuse review (2026-10-16)
+
+Reviewed the application diff against `7367a9d5d497111f2df200404ccf271d7b839dab`
+before updating its three read-adapter content locks. `InventoryEvidenceLoader`
+passes one locally owned ledger reader through its historical closure. The ledger
+reader retains at most 2,000 persisted aggregate groups before canonical-year and
+Bins Run reconciliation. Reuse requires the same transaction ID, effective cutoff,
+complete room coverage and no warehouse/profile/overlay filter. Missing rooms use
+the existing canonical SQL; a bounded provider-side key lookup selects reused
+groups with the same effective-label predicate. The combined result retains the
+global 2,000-row rejection before inference/reconciliation. No quantity arithmetic,
+parent/receipt/correction/treatment proof, replay, fingerprint formula or writer is
+changed. Local collection additions and retained groups are not persistence. No
+schema change, permission, command-fence exemption or readiness relaxation exists.
+
+The aggregate SQL, metadata and complete historical evidence remain authoritative
+read inputs. Finished availability results and treatment projections are never
+reused as proof. Cross-request caching and unbounded per-identity query loops are
+not introduced. Runtime correctness and performance evidence are separate gates;
+these reviewed hashes do not establish release or protected-restore authorization.
