@@ -1,0 +1,1259 @@
+{
+  "status": "Synthetic correctness/performance PASS; human review and protected-data rehearsal pending",
+  "applicationSource": "dbb488fabac83014d5ba70ff6c75779b1bbfc6de",
+  "base": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+  "preFix": "377cde9812242d9dec239a9fdb49c0791558cfe5",
+  "runtime": {
+    "platform": "Linux x64",
+    "dotnet": "9.0.21",
+    "postgres": "18.4 Debian 13 x86_64",
+    "runtimeImage": "sha256:7da398155e0d6439cf0058bc1afa937817a03e320714b876a5f58a7d64f79d50",
+    "postgresImage": "sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636",
+    "jit": "on",
+    "jit_above_cost": 100000,
+    "jit_inline_above_cost": 500000,
+    "jit_optimize_above_cost": 500000,
+    "random_page_cost": 1.1,
+    "work_mem": "26468kB",
+    "max_parallel_workers_per_gather": 1,
+    "eachContainerMemoryBytes": 2147483648,
+    "eachContainerCpus": 2
+  },
+  "fixture": {
+    "syntheticOnly": true,
+    "historicalRooms": 25,
+    "targetBins": 286,
+    "sharedAncestryBins": 220,
+    "exactReceiptOwnedBins": 66,
+    "unrelatedIdentities": 500,
+    "unrelatedReceipts": 2000,
+    "unrelatedBins": 20000,
+    "productionData": false
+  },
+  "notes": [
+    "Round 0 is the first pass in a new process; only its first selector is fully process-cold. Database buffer caches are not claimed cold.",
+    "Final baseline, pre-fix and revised runs were sequential, with no overlapping test/build/measurement workload.",
+    "RowsLoaded counts proof records, excluding aggregate metadata and thin selection indexes. ReadCount includes reader calls and terminal false reads; it is not an exact row count.",
+    "No new release artifact is frozen; DLL hashes identify the development binaries measured."
+  ],
+  "runs": {
+    "baseline": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 8821.3487,
+        "cpuMs": 2715.191,
+        "allocatedBytes": 282969312,
+        "workingSet": 176005120,
+        "peakWorkingSet": 176005120,
+        "queryCount": 18,
+        "rowsRead": 6224,
+        "evidenceRows": null,
+        "outputRows": 0,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 6820.9147,
+        "cpuMs": 845.765,
+        "allocatedBytes": 27902776,
+        "workingSet": 184975360,
+        "peakWorkingSet": 184975360,
+        "queryCount": 14,
+        "rowsRead": 6219,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 91.5365,
+        "cpuMs": 62.328,
+        "allocatedBytes": 8544848,
+        "workingSet": 185765888,
+        "peakWorkingSet": 185765888,
+        "queryCount": 13,
+        "rowsRead": 269,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 7036.3181,
+        "cpuMs": 717.421,
+        "allocatedBytes": 27558952,
+        "workingSet": 193953792,
+        "peakWorkingSet": 193953792,
+        "queryCount": 16,
+        "rowsRead": 6722,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 40.5977,
+        "cpuMs": 19.621,
+        "allocatedBytes": 2386352,
+        "workingSet": 194486272,
+        "peakWorkingSet": 194486272,
+        "queryCount": 10,
+        "rowsRead": 224,
+        "evidenceRows": 171,
+        "outputRows": 21,
+        "treatmentSlices": 0
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 7044.3627,
+        "cpuMs": 405.174,
+        "allocatedBytes": 27694112,
+        "workingSet": 200695808,
+        "peakWorkingSet": 201482240,
+        "queryCount": 18,
+        "rowsRead": 6224,
+        "evidenceRows": null,
+        "outputRows": 0,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 6993.1594,
+        "cpuMs": 90.344,
+        "allocatedBytes": 27611504,
+        "workingSet": 200851456,
+        "peakWorkingSet": 201482240,
+        "queryCount": 14,
+        "rowsRead": 6219,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 40.7723,
+        "cpuMs": 21.779,
+        "allocatedBytes": 2632064,
+        "workingSet": 200884224,
+        "peakWorkingSet": 201482240,
+        "queryCount": 13,
+        "rowsRead": 269,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 7048.0395,
+        "cpuMs": 91.256,
+        "allocatedBytes": 27277072,
+        "workingSet": 210800640,
+        "peakWorkingSet": 215568384,
+        "queryCount": 16,
+        "rowsRead": 6722,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 24.776,
+        "cpuMs": 33.681,
+        "allocatedBytes": 2048456,
+        "workingSet": 210968576,
+        "peakWorkingSet": 215568384,
+        "queryCount": 10,
+        "rowsRead": 224,
+        "evidenceRows": 171,
+        "outputRows": 21,
+        "treatmentSlices": 0
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 7196.8302,
+        "cpuMs": 83.019,
+        "allocatedBytes": 27672544,
+        "workingSet": 211095552,
+        "peakWorkingSet": 215568384,
+        "queryCount": 18,
+        "rowsRead": 6224,
+        "evidenceRows": null,
+        "outputRows": 0,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 7178.7771,
+        "cpuMs": 67.3,
+        "allocatedBytes": 27591744,
+        "workingSet": 203964416,
+        "peakWorkingSet": 215568384,
+        "queryCount": 14,
+        "rowsRead": 6219,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 41.422,
+        "cpuMs": 9.811,
+        "allocatedBytes": 2645248,
+        "workingSet": 212434944,
+        "peakWorkingSet": 215568384,
+        "queryCount": 13,
+        "rowsRead": 269,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 7079.1912,
+        "cpuMs": 81.561,
+        "allocatedBytes": 27254408,
+        "workingSet": 212578304,
+        "peakWorkingSet": 215568384,
+        "queryCount": 16,
+        "rowsRead": 6722,
+        "evidenceRows": null,
+        "outputRows": 480,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 24.5185,
+        "cpuMs": 11.487,
+        "allocatedBytes": 1950544,
+        "workingSet": 212598784,
+        "peakWorkingSet": 215568384,
+        "queryCount": 10,
+        "rowsRead": 224,
+        "evidenceRows": 171,
+        "outputRows": 21,
+        "treatmentSlices": 0
+      }
+    ],
+    "before": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 12342.2083,
+        "cpuMs": 3491.61,
+        "allocatedBytes": 301497104,
+        "workingSet": 189333504,
+        "peakWorkingSet": 189333504,
+        "queryCount": 32,
+        "rowsRead": 11457,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 10300.7681,
+        "cpuMs": 683.157,
+        "allocatedBytes": 44907072,
+        "workingSet": 196710400,
+        "peakWorkingSet": 196710400,
+        "queryCount": 28,
+        "rowsRead": 11452,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 3633.6076,
+        "cpuMs": 601.712,
+        "allocatedBytes": 23908632,
+        "workingSet": 206127104,
+        "peakWorkingSet": 206127104,
+        "queryCount": 27,
+        "rowsRead": 5502,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 10445.0284,
+        "cpuMs": 236.321,
+        "allocatedBytes": 44504208,
+        "workingSet": 204140544,
+        "peakWorkingSet": 204775424,
+        "queryCount": 30,
+        "rowsRead": 11955,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 3582.5275,
+        "cpuMs": 119.003,
+        "allocatedBytes": 17705152,
+        "workingSet": 209305600,
+        "peakWorkingSet": 209489920,
+        "queryCount": 24,
+        "rowsRead": 5457,
+        "evidenceRows": 4319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 10416.0813,
+        "cpuMs": 254.333,
+        "allocatedBytes": 44701080,
+        "workingSet": 220532736,
+        "peakWorkingSet": 221114368,
+        "queryCount": 32,
+        "rowsRead": 11457,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 10542.3177,
+        "cpuMs": 125.151,
+        "allocatedBytes": 44594472,
+        "workingSet": 223776768,
+        "peakWorkingSet": 225730560,
+        "queryCount": 28,
+        "rowsRead": 11452,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 3636.9996,
+        "cpuMs": 64.718,
+        "allocatedBytes": 18006424,
+        "workingSet": 223870976,
+        "peakWorkingSet": 225730560,
+        "queryCount": 27,
+        "rowsRead": 5502,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 10721.2831,
+        "cpuMs": 113.265,
+        "allocatedBytes": 44218528,
+        "workingSet": 226004992,
+        "peakWorkingSet": 226004992,
+        "queryCount": 30,
+        "rowsRead": 11955,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 3611.0444,
+        "cpuMs": 59.933,
+        "allocatedBytes": 17593608,
+        "workingSet": 219246592,
+        "peakWorkingSet": 226070528,
+        "queryCount": 24,
+        "rowsRead": 5457,
+        "evidenceRows": 4319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 10765.8344,
+        "cpuMs": 144.616,
+        "allocatedBytes": 44672904,
+        "workingSet": 219500544,
+        "peakWorkingSet": 226070528,
+        "queryCount": 32,
+        "rowsRead": 11457,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 10913.813,
+        "cpuMs": 118.047,
+        "allocatedBytes": 44652376,
+        "workingSet": 222756864,
+        "peakWorkingSet": 226070528,
+        "queryCount": 28,
+        "rowsRead": 11452,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 3839.0327,
+        "cpuMs": 74.888,
+        "allocatedBytes": 17999936,
+        "workingSet": 231137280,
+        "peakWorkingSet": 231137280,
+        "queryCount": 27,
+        "rowsRead": 5502,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 10791.4209,
+        "cpuMs": 112.1,
+        "allocatedBytes": 44281264,
+        "workingSet": 234336256,
+        "peakWorkingSet": 234336256,
+        "queryCount": 30,
+        "rowsRead": 11955,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 3663.8623,
+        "cpuMs": 51.165,
+        "allocatedBytes": 17329968,
+        "workingSet": 231362560,
+        "peakWorkingSet": 231362560,
+        "queryCount": 24,
+        "rowsRead": 5457,
+        "evidenceRows": 4319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      }
+    ],
+    "after": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 8973.9786,
+        "cpuMs": 2899.895,
+        "allocatedBytes": 296149776,
+        "workingSet": 177938432,
+        "peakWorkingSet": 177938432,
+        "queryCount": 35,
+        "rowsRead": 6460,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 6722.5766,
+        "cpuMs": 1187.67,
+        "allocatedBytes": 31831416,
+        "workingSet": 195444736,
+        "peakWorkingSet": 195444736,
+        "queryCount": 31,
+        "rowsRead": 6455,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 122.0409,
+        "cpuMs": 77.896,
+        "allocatedBytes": 10846512,
+        "workingSet": 196968448,
+        "peakWorkingSet": 196968448,
+        "queryCount": 30,
+        "rowsRead": 505,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 6800.3566,
+        "cpuMs": 531.267,
+        "allocatedBytes": 31428200,
+        "workingSet": 207065088,
+        "peakWorkingSet": 207065088,
+        "queryCount": 33,
+        "rowsRead": 6958,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 58.9596,
+        "cpuMs": 23.643,
+        "allocatedBytes": 4641848,
+        "workingSet": 210530304,
+        "peakWorkingSet": 210530304,
+        "queryCount": 27,
+        "rowsRead": 460,
+        "evidenceRows": 319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 6811.6836,
+        "cpuMs": 373.067,
+        "allocatedBytes": 31631808,
+        "workingSet": 213106688,
+        "peakWorkingSet": 213106688,
+        "queryCount": 35,
+        "rowsRead": 6460,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 6744.5301,
+        "cpuMs": 120.166,
+        "allocatedBytes": 31468144,
+        "workingSet": 219328512,
+        "peakWorkingSet": 224305152,
+        "queryCount": 31,
+        "rowsRead": 6455,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 64.7586,
+        "cpuMs": 16.936,
+        "allocatedBytes": 4839976,
+        "workingSet": 219332608,
+        "peakWorkingSet": 224305152,
+        "queryCount": 30,
+        "rowsRead": 505,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 6913.6876,
+        "cpuMs": 88.924,
+        "allocatedBytes": 31135376,
+        "workingSet": 219426816,
+        "peakWorkingSet": 224305152,
+        "queryCount": 33,
+        "rowsRead": 6958,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 56.5325,
+        "cpuMs": 32.477,
+        "allocatedBytes": 4178184,
+        "workingSet": 219643904,
+        "peakWorkingSet": 224305152,
+        "queryCount": 27,
+        "rowsRead": 460,
+        "evidenceRows": 319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 6991.8186,
+        "cpuMs": 96.921,
+        "allocatedBytes": 31545336,
+        "workingSet": 219774976,
+        "peakWorkingSet": 224305152,
+        "queryCount": 35,
+        "rowsRead": 6460,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 7013.829,
+        "cpuMs": 93.912,
+        "allocatedBytes": 31476000,
+        "workingSet": 219992064,
+        "peakWorkingSet": 224305152,
+        "queryCount": 31,
+        "rowsRead": 6455,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 69.1016,
+        "cpuMs": 17.866,
+        "allocatedBytes": 4864112,
+        "workingSet": 225669120,
+        "peakWorkingSet": 225669120,
+        "queryCount": 30,
+        "rowsRead": 505,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 7261.2934,
+        "cpuMs": 89.011,
+        "allocatedBytes": 31193864,
+        "workingSet": 225804288,
+        "peakWorkingSet": 225804288,
+        "queryCount": 33,
+        "rowsRead": 6958,
+        "evidenceRows": null,
+        "outputRows": 501,
+        "treatmentSlices": null
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 51.1318,
+        "cpuMs": 20.879,
+        "allocatedBytes": 4375448,
+        "workingSet": 226058240,
+        "peakWorkingSet": 226058240,
+        "queryCount": 27,
+        "rowsRead": 460,
+        "evidenceRows": 319,
+        "outputRows": 21,
+        "treatmentSlices": 2
+      }
+    ]
+  },
+  "plans": {
+    "baseline": {
+      "single-room": [
+        {
+          "sqlSha256": "348B0CEF0B4179F7F731E6E9C312777CFB5F856C86E87DBB82B29A011976BB9F",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.263,
+          "executionMs": 4.715,
+          "totalCost": 20822.35,
+          "aggregateRows": 21.0,
+          "sharedHitBlocks": 9662,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": null,
+          "lotPredicateBeforeGrouping": false
+        }
+      ],
+      "outside": [
+        {
+          "sqlSha256": "2D2042C0A49EA546858B0AA488A32952488304158E82B0FFD926DA0998C5C1C3",
+          "parameters": [
+            {
+              "ParameterName": "@__p_0",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.221,
+          "executionMs": 3369.2,
+          "totalCost": 1615363.36,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 53682,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 582,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 13.176,
+                "Total": 26.509
+              },
+              "Inlining": 17.822,
+              "Optimization": 1926.45,
+              "Emission": 1358.531,
+              "Total": 3329.311
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "348B0CEF0B4179F7F731E6E9C312777CFB5F856C86E87DBB82B29A011976BB9F",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.288,
+          "executionMs": 3488.391,
+          "totalCost": 835167.22,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 50598,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 580,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 14.425,
+                "Total": 28.558
+              },
+              "Inlining": 19.552,
+              "Optimization": 2015.969,
+              "Emission": 1386.251,
+              "Total": 3450.33
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        }
+      ]
+    },
+    "before": {
+      "single-room": [
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.29,
+          "executionMs": 4.046,
+          "totalCost": 20823.2,
+          "aggregateRows": 21.0,
+          "sharedHitBlocks": 9662,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": null,
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.039,
+          "executionMs": 3660.026,
+          "totalCost": 835179.97,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 50598,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 580,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 16.357,
+                "Total": 31.805
+              },
+              "Inlining": 23.796,
+              "Optimization": 2046.862,
+              "Emission": 1518.07,
+              "Total": 3620.533
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        }
+      ],
+      "outside": [
+        {
+          "sqlSha256": "A4AA47561F87D451BDAA06A1FDC145095FFE3BA5EEEA05C796BCAF133AE43494",
+          "parameters": [
+            {
+              "ParameterName": "@__p_0",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.766,
+          "executionMs": 3528.786,
+          "totalCost": 1615383.32,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 53682,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 582,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 15.218,
+                "Total": 30.265
+              },
+              "Inlining": 22.301,
+              "Optimization": 1979.845,
+              "Emission": 1457.981,
+              "Total": 3490.393
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.311,
+          "executionMs": 3573.999,
+          "totalCost": 835179.97,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 50598,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 580,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 15.682,
+                "Total": 30.681
+              },
+              "Inlining": 21.974,
+              "Optimization": 2051.882,
+              "Emission": 1430.097,
+              "Total": 3534.634
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 8.851,
+          "executionMs": 3598.466,
+          "totalCost": 835179.97,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 50598,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 580,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 16.331,
+                "Total": 32.58
+              },
+              "Inlining": 22.529,
+              "Optimization": 2069.138,
+              "Emission": 1433.671,
+              "Total": 3557.918
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        }
+      ]
+    },
+    "after": {
+      "single-room": [
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.409,
+          "executionMs": 4.112,
+          "totalCost": 20823.2,
+          "aggregateRows": 21.0,
+          "sharedHitBlocks": 9662,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": null,
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "ED3A25CC5DBE4972451C77FD39D02710C113D9B53654642C9F721CA43BEA6390",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__normalizedLots_2",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_3",
+              "count": 1
+            }
+          ],
+          "planningMs": 8.909,
+          "executionMs": 5.24,
+          "totalCost": 8752.9,
+          "aggregateRows": 45.0,
+          "sharedHitBlocks": 1842,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": null,
+          "lotPredicateBeforeGrouping": true
+        }
+      ],
+      "outside": [
+        {
+          "sqlSha256": "A4AA47561F87D451BDAA06A1FDC145095FFE3BA5EEEA05C796BCAF133AE43494",
+          "parameters": [
+            {
+              "ParameterName": "@__p_0",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.339,
+          "executionMs": 3490.606,
+          "totalCost": 1615383.32,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 53682,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 582,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 14.868,
+                "Total": 30.208
+              },
+              "Inlining": 21.621,
+              "Optimization": 2007.927,
+              "Emission": 1390.789,
+              "Total": 3450.545
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "5FC6182D2EE097EC41453362A5776FA644E3774F679BCAA6A9E98C58A2BB2F58",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_2",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.059,
+          "executionMs": 3511.329,
+          "totalCost": 835179.97,
+          "aggregateRows": 545.0,
+          "sharedHitBlocks": 50598,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": {
+            "Functions": 580,
+            "Options": {
+              "Inlining": true,
+              "Optimization": true,
+              "Expressions": true,
+              "Deforming": true
+            },
+            "Timing": {
+              "Generation": {
+                "Deform": 13.744,
+                "Total": 27.508
+              },
+              "Inlining": 19.392,
+              "Optimization": 2007.79,
+              "Emission": 1417.488,
+              "Total": 3472.179
+            }
+          },
+          "lotPredicateBeforeGrouping": false
+        },
+        {
+          "sqlSha256": "ED3A25CC5DBE4972451C77FD39D02710C113D9B53654642C9F721CA43BEA6390",
+          "parameters": [
+            {
+              "ParameterName": "@__roomIds_0",
+              "count": 25
+            },
+            {
+              "ParameterName": "@__asOf_Value_1",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__normalizedLots_2",
+              "count": 1
+            },
+            {
+              "ParameterName": "@__p_3",
+              "count": 1
+            }
+          ],
+          "planningMs": 9.546,
+          "executionMs": 5.37,
+          "totalCost": 8752.9,
+          "aggregateRows": 45.0,
+          "sharedHitBlocks": 1842,
+          "sharedReadBlocks": 0,
+          "tempReadBlocks": 0,
+          "tempWrittenBlocks": 0,
+          "jit": null,
+          "lotPredicateBeforeGrouping": true
+        }
+      ]
+    }
+  },
+  "proof": {
+    "allEvidenceIdentical": true,
+    "allResolvedOutputsIdentical": true,
+    "positions": 21,
+    "totalAuthority": 1086,
+    "AuthoritativeQuantity": 286,
+    "AvailableQuantity": 286,
+    "ReceiptProvenance": {
+      "Confidence": "Unknown",
+      "ReceiptIds": [
+        100004
+      ],
+      "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+    },
+    "TreatmentSlices": [
+      {
+        "Signature": "u|a:800000",
+        "State": "Confirmed",
+        "Quantity": 220,
+        "Confidence": "Proven",
+        "ProjectionIds": [],
+        "ApplicationIds": [
+          800000
+        ],
+        "ReceiptEvidenceIds": []
+      },
+      {
+        "Signature": "u|a:800000",
+        "State": "Confirmed",
+        "Quantity": 66,
+        "Confidence": "Proven",
+        "ProjectionIds": [],
+        "ApplicationIds": [
+          800000
+        ],
+        "ReceiptEvidenceIds": [
+          100004
+        ]
+      }
+    ],
+    "Blockers": []
+  },
+  "databaseIntegrity": {
+    "unchanged": true,
+    "tables": 112,
+    "sha256": "920421a40752c22ab2192da42640648922671ab1b09e4958c1b567b2eb93b1fd"
+  },
+  "mandatoryCoverage": {
+    "requiredMethods": 81,
+    "mandatoryCases": 194,
+    "allPassed": true,
+    "structuralSuites": [
+      "CropQc.Api.Tests.CanonicalInventoryArchitectureTests",
+      "CropQc.Api.Tests.GovernanceArchitectureTests"
+    ]
+  },
+  "cleanup": {
+    "volume": "1d678ce925083aac4acee3abec583819b03fed474e6a7b1fa369b0fd9a62a5e7",
+    "utc": "2026-10-16T15:45:43.4538292+00:00",
+    "syntheticOnly": true,
+    "container": "743f5b28fb3615a3fc7bb8193f43749ad4f6c48166a4374cf93d6f258590e0f5",
+    "deleted": true,
+    "verifiedAbsent": true
+  },
+  "developmentDllSha256": {
+    "CropQc.Web.dll": "2917a460979cfe0809acb588b9e3d83cb5d2669da5dcb228c6b93231ce1b1525",
+    "CropQc.Data.dll": "f7b34a9480bd8e45e2b393e39bdcc35429ce687206e8f39d9312b6ee27129bdc",
+    "CropQc.Shared.dll": "54b2982cd7da82099e9bf18b784579fe4bb7733a29067f63af0121320c4d9b9b"
+  },
+  "rawArtifactsSha256": {
+    "after-final-evidence.json": "7f3276bc81e53b14243f5e5fc590a57afc43366a9a55262b438c08f73f967417",
+    "after-final-outside-plans.json": "b0cb09901c2ebe9a248471820f15b34e6ace706c643c07cd9ce86f72d3d03069",
+    "after-final-single-room-plans.json": "04852edfceeed43594ba7061ebe5f63567eb6bcb8f2ec4f17feebec3a57e6c16",
+    "after-final.json": "f6dd88e114de7ff842e4a24a6ed633c4ac244afd7be71ed74d0e7a6453d7ee1a",
+    "baseline-final-evidence.json": "bc1724493a17365fb87bff045eff44b334d0804e14a1be8b56f9f9306f03719c",
+    "baseline-final-outside-plans.json": "f618a7f77501e99777f5ca27d255fef25249740a7d2018aa6720a5dc1dc8c9c5",
+    "baseline-final-single-room-plans.json": "9f0ddbb486d96a58975dc70828fa20244e4cd887fdd76341721373c690dd1f49",
+    "baseline-final.json": "03f37bf3168e6a169c2273219f8a1f27c5e6bfd9b869d8535544c2d017e73cd5",
+    "before-final-evidence.json": "7f3276bc81e53b14243f5e5fc590a57afc43366a9a55262b438c08f73f967417",
+    "before-final-outside-plans.json": "b9ceef0947a1df47d13ddeb68798a4ec1edbe6b18f8bbc7cee5386392b7b9eb6",
+    "before-final-single-room-plans.json": "e03a007b280a273bde767e50362b88506245aa173802675831add382a95a0bb3",
+    "before-final.json": "2c4ac26cedeaf8f6772a1ac48ab0e3507c4a3dd5276daf9d9b8bab83f002d7b7"
+  }
+}
