@@ -243,6 +243,18 @@
           "member": "Scope_filter_keeps_aliases_contradictory_segment_links_and_historical_cutoffs",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedCustodyScopeTests",
+          "member": "Modern_peers_keep_complete_proof_across_all_scopes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedCustodyScopeTests",
+          "member": "Mixed_modern_peers_preserve_legacy_dependencies_unknown_ancestry_and_safety_blocks",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Corrected historical receipt replay remains conservative; #273 revision diagnostics do not prove surviving custody."

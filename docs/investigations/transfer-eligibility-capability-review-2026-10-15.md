@@ -133,3 +133,21 @@ read inputs. Finished availability results and treatment projections are never
 reused as proof. Cross-request caching and unbounded per-identity query loops are
 not introduced. Runtime correctness and performance evidence are separate gates;
 these reviewed hashes do not establish release or protected-restore authorization.
+
+### Position-specific recorded-custody attachment review (2026-10-16)
+
+Reviewed `InventoryEvidenceLoader.RecordedCustody.cs` against `efb340f6` before
+updating its content lock. The only executable additions are an in-memory set of
+the original requesting `(RoomId, Identity.Key)` positions and a membership guard
+before attaching replay output. The request predicate, complete historical
+closure, parent/debit/credit and audited-correction validation, replay algorithm,
+fingerprint serialization and all SQL remain unchanged. Intermediate, depleted
+and modern-backed rooms remain available to prove a requesting position; they
+do not acquire optional arrival proof merely by sharing a screen with that position.
+
+Modern movement evidence remains primary in `InventoryEventReplay`; a related
+contradictory modern movement still prevents legacy fallback. There is no database
+write, tracking mutation, schema change, physical origin, new capability, writer
+fence exception or readiness relaxation. This is a read-only attachment boundary
+correction. Synthetic runtime and performance evidence, human review, and the
+separately authorized protected-data verification remain distinct requirements.

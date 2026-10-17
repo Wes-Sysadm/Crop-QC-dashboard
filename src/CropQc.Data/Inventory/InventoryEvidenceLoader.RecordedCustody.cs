@@ -15,6 +15,7 @@ public sealed partial class InventoryEvidenceLoader
             && l.Kind is "TransferIn" or "ReceiptAdminOverride"
             && !p.Movements.Any(m => m.Incoming && InventoryCohortEvidence.Related(l, m)))).ToArray();
         if (requested.Length == 0) return original;
+        var requestedPositions = requested.Select(p => (p.Location.RoomId, p.Identity.Key)).ToHashSet();
         var keys = requested.Select(p => p.Identity.Key).ToHashSet(StringComparer.Ordinal);
         var lots = requested.Select(p => N(p.Identity.Lot)).Distinct().ToArray();
         // Include depleted source rooms and earlier hops. Room/facility names
@@ -70,7 +71,11 @@ public sealed partial class InventoryEvidenceLoader
         var enriched = InventoryRecordedCustodyReplay.Enrich(positions, links).ToDictionary(p => (p.Location.RoomId, p.Identity.Key));
         return new(original.Positions.Select(p =>
         {
-            if (!enriched.TryGetValue((p.Location.RoomId, p.Identity.Key), out var updated) || updated.RecordedArrivals.IsEmpty) return p;
+            // The full closure includes intermediate and modern-backed peers.
+            // Attach its proof only to positions whose own ledger needs the
+            // bridge, independently of which other rooms share this read scope.
+            var position = (p.Location.RoomId, p.Identity.Key);
+            if (!requestedPositions.Contains(position) || !enriched.TryGetValue(position, out var updated) || updated.RecordedArrivals.IsEmpty) return p;
             // A selection must have the same fingerprint on an all-room screen
             // and in a command's narrower scope. Unrelated identities cannot
             // become dependencies merely because they share a page load.

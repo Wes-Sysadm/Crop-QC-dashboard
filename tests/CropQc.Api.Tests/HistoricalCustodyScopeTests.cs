@@ -45,11 +45,6 @@ public sealed class HistoricalCustodyScopeTests
                 var actual = Assert.Single(single.Positions, p => p.Identity.Key == expected.Identity.Key);
                 Assert.Equal(expected.AuthoritativeQuantity, actual.AuthoritativeQuantity);
                 Assert.Equal(JsonSerializer.Serialize(expected.Ledger), JsonSerializer.Serialize(actual.Ledger));
-                // Zero positions are not selectable. A broad read can attach
-                // historical arrival context for another room's positive source;
-                // a depleted-only read intentionally does not request that closure.
-                // Full broad-versus-fresh evidence (including these rows) is above.
-                if (expected.AuthoritativeQuantity <= 0) continue;
                 Assert.Equal(Position(expected), Position(actual));
             }
         }

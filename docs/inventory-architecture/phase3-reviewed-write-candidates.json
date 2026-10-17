@@ -651,7 +651,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Reviewed read-only parent/custody proof, per-identity fingerprint dependencies, and malformed numeric snapshot rejection. No persistence, new origins or writer capability. See docs/investigations/transfer-eligibility-capability-review-2026-10-15.md.",
-    "Sha256": "C57F37CDD435506F3152C5F4432BC3810350E3F39B942C3E044F4BF20767E4A4"
+    "Sha256": "8CD8CA9223F5C652C8F4C9603B400073D6867227D5E22E4671B99E03BBD97E7E"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",
