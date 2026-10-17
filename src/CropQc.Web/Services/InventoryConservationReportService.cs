@@ -1,6 +1,7 @@
 using CropQc.Data;
 using CropQc.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CropQc.Web.Services;
 
@@ -41,16 +42,23 @@ public sealed record InventoryConservationReport(
     long OutsideWarehouseCustodyBins,
     long ReceiptHeldBins = 0)
 {
+    public IReadOnlyList<InvalidLocationCorrection> InvalidLocationCorrections { get; init; } = [];
     public long TreatmentIdentityDifference => TreatmentIdentityCredit - TreatmentIdentityDebit;
     public bool IsReady => Receiving.MismatchCount == 0 && Global.Difference == 0
         && Facilities.All(x => x.Difference == 0) && UnclassifiedTypes.Count == 0
         && UnbalancedRoomTransfers.Count == 0 && UnbalancedIdentityCorrections.Count == 0
-        && InvalidTreatmentIdentityMovements == 0 && TreatmentIdentityDifference == 0;
+        && InvalidTreatmentIdentityMovements == 0 && TreatmentIdentityDifference == 0
+        && InvalidLocationCorrections.Count == 0;
 }
+
+public sealed record InvalidLocationCorrection(Guid? CorrectionId, IReadOnlyList<long> AdjustmentIds);
 
 /// <summary>Read-only quantity accounting. Unknown categories are reported and fail the release gate.</summary>
 public sealed class InventoryConservationReportService(CropQcDbContext db, IRoomInventoryLedgerQueryService ledger, int cropYear)
 {
+    // This type-only predicate is also used by historical-only receipt editing.
+    // Do not broaden that operation's proof: location types are recognized in the
+    // report only alongside the complete parent/pair validation below.
     public static bool IsKnownMovement(string type) => type is
         "ReceiptAdd" or "ReceiptEdit" or "ReceiptAdminOverride" or "StartingInventoryImport"
         or "BinsRun" or "BinsRunReversal" or "Depletion" or "DepletionReversal"
@@ -112,8 +120,9 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             .Where(x => x.InventoryIdentityCorrectionId != null
                 && x.MovementType != TreatmentLineageMovementTypes.IdentityReclassification)
             .Select(x => new { x.MovementType, x.BinCount }).ToListAsync(cancellationToken);
+        var invalidLocations = await ValidateLocationCorrectionsAsync(allRows, cancellationToken);
         return new(receiving, facilities, global,
-            effective.Where(x => !IsKnownMovement(x.AdjustmentType)).Select(x => x.AdjustmentType).Distinct().Order().ToList(),
+            effective.Where(x => !IsKnownMovement(x.AdjustmentType) && !IsLocationMovement(x.AdjustmentType)).Select(x => x.AdjustmentType).Distinct().Order().ToList(),
             pairs.Where(x => x.RoomTransferId != null).GroupBy(x => x.RoomTransferId!.Value)
                 .Where(x => x.Sum(y => (long)y.ChangeAmount) != 0).Select(x => x.Key).ToList(),
             pairs.Where(x => x.InventoryIdentityCorrectionId != null).GroupBy(x => x.InventoryIdentityCorrectionId!.Value)
@@ -129,7 +138,98 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             (await db.ReceiptCustodyAcknowledgments.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 - (await db.ReceiptCustodyReversals.Where(x => x.PlacementId == null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 + (await db.ReceiptCustodyReversals.Where(x => x.PlacementId != null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
-                - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0));
+                - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0))
+        { InvalidLocationCorrections = invalidLocations };
+    }
+
+    private static bool IsLocationMovement(string type) => type is "CorrectOriginalRoomOut" or "CorrectOriginalRoomIn";
+
+    private async Task<IReadOnlyList<InvalidLocationCorrection>> ValidateLocationCorrectionsAsync(
+        IReadOnlyList<RoomInventoryAdjustment> rows, CancellationToken ct)
+    {
+        // Validate complete operations before opening-baseline filtering. Never let
+        // supersession hide a missing side, or unrelated balanced rows cancel it.
+        var audits = await db.AuditLogs.AsNoTracking().Where(x => x.Action == "CanonicalReceiptLocationCorrected").ToListAsync(ct);
+        var ids = rows.Where(x => IsLocationMovement(x.AdjustmentType) && x.ReceiptInventoryOverrideId != null)
+            .Select(x => x.ReceiptInventoryOverrideId!.Value).ToHashSet();
+        var locationParents = await db.ReceiptInventoryOverrides.AsNoTracking()
+            .Where(x => x.ActionType == ReceiptInventoryOverrideActionTypes.LocationCorrection && x.ExpectedAdjustmentCount == 2)
+            .ToListAsync(ct);
+        // Legacy ReceiptAdminOverride pairs retain their existing deduction validator.
+        // A canonical parent must not disappear from diagnostics when both legs or
+        // its audit are missing.
+        foreach (var parent in locationParents)
+            if (!rows.Any(x => x.ReceiptInventoryOverrideId == parent.Id && x.AdjustmentType == "ReceiptAdminOverride")) ids.Add(parent.Id);
+        foreach (var audit in audits)
+            if (Guid.TryParse(audit.EntityKey, out var id)) ids.Add(id);
+        var parents = await db.ReceiptInventoryOverrides.AsNoTracking().Where(x => ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var rooms = await db.Rooms.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.WarehouseId, ct);
+        var invalid = rows.Where(x => IsLocationMovement(x.AdjustmentType) && x.ReceiptInventoryOverrideId == null)
+            .Select(x => new InvalidLocationCorrection(null, new[] { x.Id })).ToList();
+        foreach (var id in ids.Order())
+        {
+            var pair = rows.Where(x => x.ReceiptInventoryOverrideId == id).OrderBy(x => x.Id).ToArray();
+            var evidence = audits.Where(x => x.EntityKey == id.ToString()).ToArray();
+            if (!parents.TryGetValue(id, out var parent) || !ValidLocationPair(parent, pair, evidence, rooms))
+                invalid.Add(new(id, pair.Select(x => x.Id).ToArray()));
+        }
+        return invalid;
+    }
+
+    private static bool ValidLocationPair(ReceiptInventoryOverride parent, RoomInventoryAdjustment[] rows,
+        AuditLog[] audits, IReadOnlyDictionary<int, int> rooms)
+    {
+        if (!parent.IsComplete || parent.ActionType != ReceiptInventoryOverrideActionTypes.LocationCorrection
+            || parent.ExpectedAdjustmentCount != 2 || rows.Length != 2 || parent.InventoryDelta != 0
+            || parent.OldReceiptBinCount != parent.NewReceiptBinCount || parent.CurrentInventoryBefore != parent.CurrentInventoryAfter
+            || string.IsNullOrWhiteSpace(parent.OperationKey) || string.IsNullOrWhiteSpace(parent.Reason)
+            || audits.Length != 1) return false;
+        if (rows.Count(x => x.AdjustmentType == "CorrectOriginalRoomOut") != 1
+            || rows.Count(x => x.AdjustmentType == "CorrectOriginalRoomIn") != 1) return false;
+        var outgoing = rows.Single(x => x.AdjustmentType == "CorrectOriginalRoomOut");
+        var incoming = rows.Single(x => x.AdjustmentType == "CorrectOriginalRoomIn");
+        if (outgoing == null || incoming == null || outgoing.ChangeAmount >= 0
+            || (long)outgoing.ChangeAmount + incoming.ChangeAmount != 0 || outgoing.RoomId == incoming.RoomId) return false;
+        if (rows.Any(x => x.ReceiptId != parent.ReceiptId || x.CreatedByUserId != parent.AdministratorUserId
+            || x.InventoryInvariantVersion != 3 || x.CreatedAt != parent.CreatedAt || x.Reason != parent.Reason
+            || x.OldBinCount == null || (long)x.NewBinCount != (long)x.OldBinCount + x.ChangeAmount
+            || !rooms.TryGetValue(x.RoomId, out var warehouse) || warehouse != x.WarehouseId)
+            || outgoing.AdjustmentAt != incoming.AdjustmentAt
+            || outgoing.InventoryOperationKey != parent.OperationKey + ":location:out"
+            || incoming.InventoryOperationKey != parent.OperationKey + ":location:in"
+            || outgoing.CropYear != incoming.CropYear || outgoing.GrowerLotId != incoming.GrowerLotId
+            || outgoing.FruitProfileId != incoming.FruitProfileId || outgoing.LotNumber != incoming.LotNumber
+            || outgoing.VarietyCode != incoming.VarietyCode || outgoing.InventoryStatus != incoming.InventoryStatus) return false;
+        try
+        {
+            using var before = JsonDocument.Parse(parent.BeforeReceiptSnapshotJson);
+            using var after = JsonDocument.Parse(parent.AfterReceiptSnapshotJson);
+            using var affected = JsonDocument.Parse(parent.AffectedInventorySnapshotJson);
+            var b = before.RootElement; var a = after.RootElement; var s = affected.RootElement;
+            var audit = audits[0];
+            using var auditAfter = JsonDocument.Parse(audit.AfterValuesJson ?? "null");
+            var history = auditAfter.RootElement;
+            return b.GetProperty("id").GetInt64() == parent.ReceiptId && a.GetProperty("id").GetInt64() == parent.ReceiptId
+                && b.GetProperty("binCount").GetInt32() == parent.OldReceiptBinCount
+                && a.GetProperty("binCount").GetInt32() == parent.NewReceiptBinCount
+                && s.GetProperty("sourceRoomId").GetInt32() == outgoing.RoomId
+                && s.GetProperty("sourceWarehouseId").GetInt32() == outgoing.WarehouseId
+                && s.GetProperty("relocatedBins").GetInt32() == incoming.ChangeAmount
+                && s.GetProperty("destination").GetProperty("roomId").GetInt32() == incoming.RoomId
+                && s.GetProperty("destination").GetProperty("warehouseId").GetInt32() == incoming.WarehouseId
+                && a.GetProperty("roomId").GetInt32() == incoming.RoomId && a.GetProperty("warehouseId").GetInt32() == incoming.WarehouseId
+                && audit.UserId == parent.AdministratorUserId && audit.CreatedAt == parent.CreatedAt
+                && audit.EntityName == "CanonicalInventory" && audit.SourceApplication == "CanonicalInventory/v1"
+                && JsonSerializer.Deserialize<string>(audit.BeforeValuesJson ?? "null") == parent.BeforeReceiptSnapshotJson
+                && history.GetProperty("afterReceiptSnapshotJson").GetString() == parent.AfterReceiptSnapshotJson
+                && history.GetProperty("sourceRoomId").GetInt32() == outgoing.RoomId
+                && history.GetProperty("sourceWarehouseId").GetInt32() == outgoing.WarehouseId
+                && history.GetProperty("destination").GetProperty("roomId").GetInt32() == incoming.RoomId
+                && history.GetProperty("destination").GetProperty("warehouseId").GetInt32() == incoming.WarehouseId
+                && history.GetProperty("relocatedBins").GetInt32() == incoming.ChangeAmount;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
+        { return false; }
     }
 
     private static long EffectiveBins(RoomInventoryAdjustment x) =>

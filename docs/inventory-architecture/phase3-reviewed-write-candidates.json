@@ -1,5 +1,11 @@
 [
   {
+    "Reason": "Conservation diagnostic uses AsNoTracking reads of complete location-correction parents, signed ledger pairs, snapshots and audit records. Add calls affect local ID/result collections only. No SaveChanges, SQL mutation, writer capability or new inventory origin; synthetic PostgreSQL report snapshots prove no writes.",
+    "Path": "src/CropQc.Web/Services/InventoryConservationReportService.cs",
+    "Classification": "Nonphysical or read-only",
+    "Sha256": "9DFF0552FA0067A4DE97FF3958645A831EA0DF5C2E55BD1E28776DA50FA9B1C5"
+  },
+  {
     "Path": "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Release topology snapshot: AsNoTracking reads, read-only transaction and local result lists only. Reuses immutable custody, physical-flow, origin and treatment proofs; no physical write capability or SaveChanges.",
