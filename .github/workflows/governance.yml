@@ -55,6 +55,14 @@ jobs:
           --filter 'FullyQualifiedName~ReceiptCorrectionFormHttpTests|FullyQualifiedName~ReceiptQuantityHttpTests|FullyQualifiedName~ReceiptLocationHttpTests|FullyQualifiedName~AdminReceiptEditHttpTests'
           --results-directory artifacts/governance/receipt-form
           --logger 'trx;LogFileName=receipt-form.trx'
+      - name: Receipt location conservation and workflow contracts
+        run: >-
+          dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj
+          --configuration Release --no-build
+          --settings tests/CropQc.Api.Tests/canonical-postgres.runsettings
+          --filter 'FullyQualifiedName~ReceiptLocationConservationTests|FullyQualifiedName~CanonicalReceiptLocationWorkflowTests|FullyQualifiedName~ReceiptLocationCorrectionTests'
+          --results-directory artifacts/governance/location-conservation
+          --logger 'trx;LogFileName=location-conservation.trx'
       - name: Inventory transfer antiforgery and custody HTTP contracts
         run: >-
           dotnet test tests/CropQc.Api.Tests/CropQc.Api.Tests.csproj
