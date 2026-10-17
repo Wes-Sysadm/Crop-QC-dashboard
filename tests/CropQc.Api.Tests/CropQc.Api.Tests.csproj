@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <EmbeddedResource Include="Fixtures\SixLineageBlockers.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using CropQc.Data;
 using CropQc.Data.Entities;
+using CropQc.Shared.Inventory;
 using CropQc.Shared.Time;
 using Microsoft.EntityFrameworkCore;
 
@@ -83,7 +84,18 @@ public sealed record TreatmentLineageReadinessIssue(
     int AuthoritativeBins,
     int ExplicitLineageBins,
     int Difference,
-    string IdentityKey);
+    string IdentityKey)
+{
+    public TreatmentLineageReadinessEvidence? Evidence { get; init; }
+}
+
+public sealed record TreatmentLineageReadinessEvidence(
+    string Assessment,
+    InventoryConfidence TreatmentConfidence,
+    InventoryConfidence ReceiptConfidence,
+    IReadOnlyList<long> SegmentIds,
+    IReadOnlyList<string> CanonicalBlockers,
+    IReadOnlyList<HistoricalInventoryProjection> HistoricalProjections);
 
 public interface ITreatmentLineage144CorrectionService
 {
@@ -98,7 +110,8 @@ public interface ITreatmentLineageReadinessService
 
 public sealed class TreatmentLineageReadinessService(
     IRoomInventoryLedgerQueryService ledger,
-    CropQcDbContext dbContext) : ITreatmentLineageReadinessService
+    CropQcDbContext dbContext,
+    IInventoryEvidenceLoader? evidenceLoader = null) : ITreatmentLineageReadinessService
 {
     private const int MaximumReportedIssues = 50;
 
@@ -153,12 +166,41 @@ public sealed class TreatmentLineageReadinessService(
             .ThenBy(x => x.IdentityKey)
             .ToList();
         var reported = issues.Take(MaximumReportedIssues).ToList();
+        // Explain failures with the same evidence resolver used by inventory reads.
+        // A proven pool is not a repaired projection and never clears this gate.
+        if (reported.Count > 0)
+        {
+            var evidence = await (evidenceLoader ?? new CropQc.Data.Inventory.InventoryEvidenceLoader(dbContext))
+                .LoadAsync(new(null, [.. reported.Select(x => x.RoomId).Distinct()]), DateTimeOffset.UtcNow, cancellationToken);
+            reported = reported.Select(issue => issue with
+            {
+                Evidence = Assess(issue, evidence.Positions.SingleOrDefault(x => x.Location.RoomId == issue.RoomId
+                    && x.Identity.Key == issue.IdentityKey))
+            }).ToList();
+        }
         return issues.Count == 0
             ? new(true, authoritative.Count, 0, [],
                 $"Treatment-lineage readiness passed for {authoritative.Count} current inventory identities; no explicit lineage exceeds authoritative inventory.")
             : new(false, authoritative.Count, issues.Count, reported,
                 $"Treatment-lineage readiness failed: {issues.Count} current inventory identity/identities exceed authoritative inventory. "
                 + $"Reporting the first {reported.Count} bounded issue(s).");
+    }
+
+    internal static TreatmentLineageReadinessEvidence Assess(TreatmentLineageReadinessIssue issue, InventoryPositionEvidence? evidence)
+    {
+        if (evidence is null)
+            return new("EvidenceUnavailable", InventoryConfidence.Unknown, InventoryConfidence.Unknown, [], [], []);
+        var result = InventoryAvailabilityResolver.Resolve(evidence, new());
+        var segments = evidence.Projections.Where(x => x.Disposition != "Historical" && x.Quantity > 0)
+            .Select(x => x.Id).Order().ToArray();
+        // The initial excess scan and canonical read can observe different commits.
+        // Do not attach a proof for different quantities to the original failure.
+        if (result.AuthoritativeQuantity != issue.AuthoritativeBins || result.RawProjectionQuantity != issue.ExplicitLineageBins)
+            return new("EvidenceChanged", InventoryConfidence.Unknown, InventoryConfidence.Unknown, segments, [], []);
+        return new(result.IsOperable && result.TreatmentConfidence == InventoryConfidence.Proven
+                ? "ProvenPoolRequiresProjectionReview" : "UnresolvedEvidenceRequiresReconciliation",
+            result.TreatmentConfidence, result.ReceiptProvenance.Confidence, segments,
+            result.Blockers.Select(x => x.Code.ToString()).ToArray(), result.HistoricalProjections);
     }
 }
 
