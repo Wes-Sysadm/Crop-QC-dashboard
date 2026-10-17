@@ -1,5 +1,8 @@
 # PR #284 production release preparation — performance safeguard stop
 
+Latest read-only continuation: **GO for separately authorized forward / rollback / handback rehearsal only.** The [recorded-custody scope verification](pr284-scope-correction-verification-2026-10-16.md) on reviewed executable `3e3eae16c8abddedc734f637d65115ac154a954f` passes all 452 positive positions / 1,356 complete-evidence comparisons and all 18 prior failures. All 56 origin rejections remain; strict readiness, conservation, treatment and matched performance pass. All 269,834 original rows in 113 tables are unchanged; the single authorized #204 restore, volume and raw diagnostics are deleted. No application code or production data changed. PR #284 remains draft; production release and forward/rollback/handback execution remain unauthorized. Earlier findings below are historical checkpoints.
+
+
 
 Latest synthetic continuation: **GO for focused human review only; NO-GO for release advancement.** The [position-deterministic recorded-custody correction](pr284-recorded-custody-scope-2026-10-16.md) restricts enrichment to independently requesting positions while retaining complete intermediate history. All 18 synthetic reference patterns fail before and pass after; 249 scoped cases including 221 mandatory cases / 91 methods pass, along with 29 governance tests. Matched SQL, row and aggregate counts are unchanged; seven workflow outputs differ only in explained redundant proof. No protected restore or production access occurred. After review, one new read-only #204 restore requires separate owner approval to recheck all 452 positions. Forward/rollback/handback remains a separate later authorization. Keep draft, unmerged and undeployed.
 
