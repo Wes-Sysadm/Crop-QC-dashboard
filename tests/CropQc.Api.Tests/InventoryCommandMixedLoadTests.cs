@@ -88,6 +88,16 @@ public sealed class InventoryCommandMixedLoadTests
         { OriginalOperationKey = receive.OperationKey, ReceivingEvidence = new(receipt.Id, receipt.ConcurrencyVersion + 1) };
         var reopened = await f.Execute(reopen);
         Assert.True(reopened.Status == InventoryCommandStatus.Committed, reopened.Detail);
+        var reopenedParent = await db.InterCrewTransfers.AsNoTracking().SingleAsync();
+        Assert.Equal(InterCrewTransferStatuses.InTransit, reopenedParent.Status);
+        Assert.Null(reopenedParent.BinsReceived);
+        Assert.Null(reopenedParent.ReceivedAt);
+        Assert.Null(reopenedParent.ReceivedByUserId);
+        Assert.Null(reopenedParent.DestinationRoomId);
+        Assert.Null(reopenedParent.DestinationWarehouseId);
+        Assert.Null(reopenedParent.ReceiveOperationKey);
+        Assert.Null(reopenedParent.VarianceBins);
+        Assert.Null(reopenedParent.ReceivingReceiptId);
         transit = await resolver.ResolveAsync(new(9001, [], InventoryCustody.InTransit, parent), new(AllowedCustody: InventoryCustody.InTransit), DateTimeOffset.UtcNow);
         Assert.Equal(38, transit.Positions.Sum(x => x.AvailableQuantity));
         var ret = Command(InventoryCommandKind.Return, transit.Positions.Select(x => Line(x))) with { OriginalOperationKey = dispatch.OperationKey };

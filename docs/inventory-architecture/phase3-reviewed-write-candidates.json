@@ -81,7 +81,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned transaction; immutable journal, audited physical effects and proof-based projection lifecycle.",
-    "Sha256": "9AE739C42BBD46840C5E1C49F9682D4F40DA26DFE353451FE22FCE4DEFAC3876"
+    "Sha256": "18AC133E526DDACECFF98AF85FB661316D00EC349B09067FDE2144A7FB89642D"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
