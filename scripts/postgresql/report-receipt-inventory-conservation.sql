@@ -86,6 +86,15 @@ WITH parameters AS (SELECT 2026::integer AS crop_year), receiving AS (
     AND r."OldBinCount" IS NOT NULL AND r."NewBinCount"::bigint=r."OldBinCount"::bigint+r."ChangeAmount"
     AND room."WarehouseId"=r."WarehouseId",false))
  AND p.before_snapshot->>'id'=p."ReceiptId"::text AND p.after_snapshot->>'id'=p."ReceiptId"::text
+ AND NOT EXISTS (SELECT 1 FROM (VALUES
+   (p.before_snapshot->'id'),(p.after_snapshot->'id'),
+   (p.before_snapshot->'binCount'),(p.after_snapshot->'binCount'),
+   (p.affected->'sourceRoomId'),(p.affected->'sourceWarehouseId'),(p.affected->'relocatedBins'),
+   (p.affected#>'{destination,roomId}'),(p.affected#>'{destination,warehouseId}'),
+   (p.after_snapshot->'roomId'),(p.after_snapshot->'warehouseId'),
+   (history.value->'sourceRoomId'),(history.value->'sourceWarehouseId'),(history.value->'relocatedBins'),
+   (history.value#>'{destination,roomId}'),(history.value#>'{destination,warehouseId}')) numbers(value)
+   WHERE jsonb_typeof(numbers.value) IS DISTINCT FROM 'number')
  AND p.before_snapshot->>'binCount'=p."OldReceiptBinCount"::text AND p.after_snapshot->>'binCount'=p."NewReceiptBinCount"::text
  AND p.affected->>'sourceRoomId'=outgoing."RoomId"::text AND p.affected->>'sourceWarehouseId'=outgoing."WarehouseId"::text
  AND p.affected->>'relocatedBins'=incoming."ChangeAmount"::text

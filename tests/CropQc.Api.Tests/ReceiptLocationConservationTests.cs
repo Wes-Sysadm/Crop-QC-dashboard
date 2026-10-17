@@ -76,6 +76,7 @@ public sealed class ReceiptLocationConservationTests
     [InlineData("missing-audit")]
     [InlineData("wrong-source")]
     [InlineData("malformed-snapshot")]
+    [InlineData("quoted-quantity")]
     [InlineData("unsupported")]
     public async Task Malformed_or_unknown_location_events_fail_both_reports_without_writing(string scenario)
     {
@@ -108,6 +109,7 @@ public sealed class ReceiptLocationConservationTests
             "missing-audit" => "DELETE FROM \"AuditLogs\" WHERE \"Action\"='CanonicalReceiptLocationCorrected' AND \"EntityKey\"=@parent::text",
             "wrong-source" => "UPDATE \"ReceiptInventoryOverrides\" SET \"AffectedInventorySnapshotJson\"=replace(\"AffectedInventorySnapshotJson\",'\"sourceRoomId\":9002','\"sourceRoomId\":9003') WHERE \"Id\"=@parent",
             "malformed-snapshot" => "UPDATE \"ReceiptInventoryOverrides\" SET \"AffectedInventorySnapshotJson\"='{' WHERE \"Id\"=@parent",
+            "quoted-quantity" => "UPDATE \"ReceiptInventoryOverrides\" SET \"AffectedInventorySnapshotJson\"=jsonb_set(\"AffectedInventorySnapshotJson\"::jsonb,'{relocatedBins}',to_jsonb('19'::text))::text WHERE \"Id\"=@parent",
             "unsupported" => "UPDATE \"RoomInventoryAdjustments\" SET \"AdjustmentType\"='UnreviewedExternalAddition' WHERE \"Id\"=@incoming",
             _ => throw new ArgumentOutOfRangeException(nameof(scenario))
         };

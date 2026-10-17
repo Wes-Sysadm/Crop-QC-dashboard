@@ -152,6 +152,19 @@ the command. The fixture now uses `PacificBusinessTimeService.NowPacific`, match
 the actual form. No command validation or application time behavior changed; the
 same workflow assertions and all CI selections remain required on the final head.
 
+Final SQL review additionally found that text extraction could accept quoted JSON
+quantities/IDs where the C# reader requires JSON numbers. SQL now requires numeric
+JSON types for the compared quantity/location/receipt fields. A focused quoted-
+quantity corruption case protects this parity; it must fail both diagnostics.
+This affects only malformed evidence classification, not application writers.
+The final impacted parity/location-workflow selection passed **19 tests, zero
+skipped** on fresh synthetic PostgreSQL 18.4. This includes the new quoted-quantity
+case and corrected Pacific-time fixture; counts overlap earlier runs. Formatting,
+test-project compilation and whitespace checks passed. The second synthetic
+container and its volume were removed and absence verified. The preceding head's
+four Linux/Windows CI jobs passed after the timezone fix; the additional SQL-only
+change and regression require a final-head CI run before human-review handoff.
+
 ## Release preparation supersession and remaining gates
 
 The prior frozen `540798c` package is not the changed candidate. After human review,
