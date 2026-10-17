@@ -818,6 +818,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Transfer")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> Transfer(RoomTransferForm form, CancellationToken cancellationToken)
     {
@@ -835,6 +836,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("Transfer/{id:long}/Reverse")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReverseTransfer(
         long id,
@@ -848,6 +850,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("OutsideTransfers")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> OutsideTransfer(OutsideWarehouseTransferForm form, CancellationToken cancellationToken)
     {
@@ -871,6 +874,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("OutsideTransfers/{id:long}/Reverse")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReverseOutsideTransfer(
         long id,
@@ -885,6 +889,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("InterCrewTransfers")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> DispatchInterCrewTransfer(InterCrewDispatchForm form, CancellationToken cancellationToken)
     {
@@ -908,6 +913,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("InterCrewTransfers/{id:long}/Receive")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
     public async Task<IActionResult> ReceiveInterCrewTransfer(long id, InterCrewReceiveForm form, CancellationToken cancellationToken)
     {
@@ -921,6 +927,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("InterCrewTransfers/{id:long}/Review")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReviewInterCrewTransfer(long id, InterCrewReviewForm form, CancellationToken cancellationToken)
     {
@@ -932,6 +939,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("InterCrewTransfers/{id:long}/Reverse")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersAdmin)]
     public async Task<IActionResult> ReverseInterCrewTransfer(long id, InterCrewReversalForm form, CancellationToken cancellationToken)
     {
@@ -943,6 +951,7 @@ public sealed class BinsRunController(
     }
 
     [HttpPost("TrueUp")]
+    [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TrueUpAdmin)]
     public async Task<IActionResult> TrueUp(RoomInventoryTrueUpForm form, CancellationToken cancellationToken)
     {

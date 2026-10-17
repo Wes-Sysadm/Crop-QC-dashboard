@@ -1608,6 +1608,7 @@ else
                 <form class="form-grid transfer-workflow" method="post" action="/BinsRun/Transfer" data-transfer-workflow
                       data-source-facility="@(Model.TransferDestinationFacilities.FirstOrDefault(x => x.WarehouseId == Model.RoomSummary?.WarehouseId)?.Label ?? Model.RoomSummary?.Facility)"
                       data-source-room="@Model.RoomSummary?.RoomName">
+                    @Html.AntiForgeryToken()
                     <input type="hidden" name="OperationKey" value="@Model.TransferForm.OperationKey" />
                     <input type="hidden" name="ExpectedInventoryToken" value="@Model.TransferForm.ExpectedInventoryToken" />
                     <input type="hidden" name="TransferAllEligible" value="false" />
@@ -1779,6 +1780,7 @@ else
             else
             {
                 <form class="form-grid" method="post" action="/BinsRun/TrueUp">
+                    @Html.AntiForgeryToken()
                     <input type="hidden" name="CanonicalFingerprint" />
                     <input type="hidden" name="OperationKey" value="@Model.TrueUpForm.OperationKey" />
                     <input type="hidden" name="RoomId" value="@Model.Filter.RoomId" />

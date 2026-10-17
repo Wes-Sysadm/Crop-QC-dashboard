@@ -1,5 +1,6 @@
 using CropQc.Data.Inventory;
 using CropQc.Shared.Inventory;
+using CropQc.Shared.Time;
 using CropQc.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using static CropQc.Api.Tests.InventoryCommandTests;
@@ -83,7 +84,8 @@ public sealed class CanonicalReceiptLocationWorkflowTests
             OutsideWarehouseId = 9005,
             SourceKey = source.SourceKey,
             BinCount = 19,
-            TransferredAt = new CropQc.Shared.Time.PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()).NowPacific.DateTime,
+            // The form accepts Pacific wall time, independently of the runner's zone.
+            TransferredAt = new PacificBusinessTimeService(new SystemClock()).NowPacific.DateTime,
             ExpectedAvailableBins = 19,
             ConfirmedReview = true,
             TruckLoadBolNumber = "LOCAL-RECEIVING-CORRECTION"
