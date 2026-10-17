@@ -144,6 +144,14 @@ same invalid-parent/orphan IDs. No application reader/writer change followed the
 successful mandatory-contract run. Final-head Linux CI remains a separate required
 result recorded on the PR, not inferred from these local results.
 
+The first Linux CI execution also exposed a pre-existing host-timezone assumption
+in the existing depleted-source/location-correction workflow test. It submitted
+`DateTime.Now` to a form whose contract is Pacific wall time. On the UTC runner
+that became a future effective timestamp and the unchanged canonical guard rejected
+the command. The fixture now uses `PacificBusinessTimeService.NowPacific`, matching
+the actual form. No command validation or application time behavior changed; the
+same workflow assertions and all CI selections remain required on the final head.
+
 ## Release preparation supersession and remaining gates
 
 The prior frozen `540798c` package is not the changed candidate. After human review,
