@@ -23,10 +23,11 @@
             <input type="hidden" name="ExpectedAvailableBins" value="0" data-custody-expected />
             <input type="hidden" name="ConfirmedReview" value="false" data-custody-confirmed />
             <fieldset class="field wide"><legend>Current inventory to load</legend>
-                <div class="table-wrap"><table class="compact-table"><thead><tr><th>Select</th><th>Facility / Room</th><th>Grower / Lot</th><th>Variety</th><th>Treatment</th><th>Available</th></tr></thead><tbody>
+                <p class="muted">Position totals repeat across treatment rows. Treatment selection shows bins with proven treatment evidence; it is not final transfer approval. Origin, custody, permissions and current inventory are validated when submitted. Sealed rooms cannot dispatch.</p>
+                <div class="table-wrap"><table class="compact-table"><thead><tr><th>Select</th><th>Facility / Room</th><th>Grower / Lot</th><th>Variety</th><th>Treatment</th><th>Position total / Treatment selection</th></tr></thead><tbody>
                 @foreach (var item in Model.Inventory)
                 {
-                    <tr class="@(item.IsRoomSealed || !item.IsAvailable ? "muted" : null)"><td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@(item.IsRoomSealed || !item.IsAvailable)" data-source-facility="@item.Facility" data-available="@item.AvailableBins" /></td><td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td><td>@item.VarietyCode - @item.VarietyName<br /><span class="muted">@item.ProductionType</span></td><td>@item.TreatmentSummary@if (!item.IsAvailable) { <br /><strong class="status-warning">@item.UnavailableReason</strong> }</td><td class="numeric">@item.AvailableBins</td></tr>
+                    <tr class="@(item.IsRoomSealed || !item.IsAvailable ? "muted" : null)"><td><input type="radio" name="SourceKey" value="@item.SourceKey" required disabled="@(item.IsRoomSealed || !item.IsAvailable)" data-allowed-destinations="@string.Join(',', CropQc.Data.Entities.TruckReceiptRoutes.InterCrewDestinations(item.Facility))" data-available="@item.AvailableBins" /></td><td>@item.Facility / @item.Room@(item.IsRoomSealed ? " (Sealed)" : "")</td><td>@item.GrowerNumber - @item.GrowerName<br /><span class="muted">Lot @item.LotNumber</span></td><td>@item.VarietyCode - @item.VarietyName<br /><span class="muted">@item.ProductionType</span></td><td>@item.TreatmentSummary@if (!item.IsAvailable) { <br /><strong class="status-warning">@item.UnavailableReason</strong> }</td><td class="numeric">@(item.AuthoritativeBins ?? item.AvailableBins) / @item.TreatmentSelectionBins</td></tr>
                 }
                 </tbody></table></div>
             </fieldset>
@@ -46,9 +47,8 @@
             const destination = form.querySelector('[data-custody-destination]');
             const review = form.querySelector('[data-custody-review]'); const confirmed = form.querySelector('[data-custody-confirmed]');
             const expected = form.querySelector('[data-custody-expected]'); const bins = form.querySelector('[data-custody-bins]');
-            const allowed = facility => facility === 'EBS' ? ['WP_DH'] : (facility === 'WP' || facility === 'DH') ? ['EBS'] : ['WP_DH', 'EBS'];
             const reset = () => { confirmed.value = 'false'; review.hidden = true; };
-            form.addEventListener('change', event => { reset(); if (event.target.name === 'SourceKey') { const groups = allowed(event.target.dataset.sourceFacility); [...destination.options].forEach(o => { if (o.dataset.group) o.disabled = !groups.includes(o.dataset.group); }); if (destination.selectedOptions[0]?.disabled) destination.value = ''; } });
+            form.addEventListener('change', event => { reset(); if (event.target.name === 'SourceKey') { const groups = (event.target.dataset.allowedDestinations || '').split(','); [...destination.options].forEach(o => { if (o.dataset.group) o.disabled = !groups.includes(o.dataset.group); }); if (destination.selectedOptions[0]?.disabled) destination.value = ''; } });
             form.querySelector('[data-custody-review-button]')?.addEventListener('click', () => { if (!form.reportValidity()) return; const source = form.querySelector('input[name="SourceKey"]:checked'); const available = Number(source?.dataset.available || 0); if (Number(bins.value) > available) { bins.setCustomValidity(`Only ${available} bins are available.`); form.reportValidity(); bins.setCustomValidity(''); return; } expected.value = String(available); confirmed.value = 'true'; review.hidden = false; });
             form.addEventListener('submit', e => { if (confirmed.value !== 'true') { e.preventDefault(); form.querySelector('[data-custody-review-button]')?.click(); } });
         })();

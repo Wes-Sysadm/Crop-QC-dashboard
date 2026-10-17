@@ -58,27 +58,83 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
         }
     }
 
-    private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct)
+    private async Task<InventoryEvidenceBatch> LoadRoomsAsync(InventoryScope scope, DateTimeOffset asOf, string consistency, CancellationToken ct,
+        bool includeRecordedCustody = true, HashSet<string>? historyKeys = null, string[]? historyLots = null,
+        RoomInventoryLedgerQueryService? historicalLedger = null)
     {
         var roomIds = scope.RoomIds.IsDefaultOrEmpty ? null : scope.RoomIds.ToArray();
-        var snapshots = await new RoomInventoryLedgerQueryService(db).GetSnapshotsAsOfAsync(scope.WarehouseId, roomIds, asOf, ct);
+        var ledger = historicalLedger ?? new RoomInventoryLedgerQueryService(db);
+        var snapshots = historyKeys == null
+            ? await ledger.GetSnapshotsForHistoryAsync(scope.WarehouseId, roomIds, asOf, ct)
+            : (await ledger.GetHistorySnapshotsAsync(roomIds!, historyLots!, asOf, ct))
+                .Where(x => historyKeys.Contains(Identity(x).Key)).ToArray();
         // Include rooms with orphan projections even if the ledger has no matching position.
-        var rows = await Bounded(db.RoomInventoryAdjustments.AsNoTracking().Where(x =>
-            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId))), ct);
-        var segments = await Bounded(db.TreatmentLineageSegments.AsNoTracking().Include(x => x.Applications).AsSingleQuery().Where(x =>
-            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId))), ct);
+        var rowQuery = db.RoomInventoryAdjustments.AsNoTracking().Where(x =>
+            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId)));
+        if (historyLots != null) rowQuery = rowQuery.Where(x => historyLots.Contains(x.LotNumber.Trim().ToUpper()));
+        var rows = await Bounded(rowQuery, ct);
+        var segmentQuery = db.TreatmentLineageSegments.AsNoTracking().Where(x =>
+            (scope.WarehouseId == null || x.WarehouseId == scope.WarehouseId) && (roomIds == null || roomIds.Contains(x.RoomId)));
+        if (historyKeys != null)
+        {
+            // Normalize in the existing canonical helper, including spaces inside
+            // historical keys and redundant status aliases. Do not drop a corrupt
+            // link merely because its persisted identity columns disagree.
+            var index = await Bounded(segmentQuery.Select(x => new { x.Id, x.RoomId, x.IdentityKey, x.CropYear, x.GrowerLotId, x.FruitProfileId }), ct);
+            var positions = snapshots.Select(x => (x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId)).ToHashSet();
+            var ids = index.Where(x => historyKeys.Contains(InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey))
+                || positions.Contains((x.RoomId, x.CropYear, x.GrowerLotId, x.FruitProfileId))).Select(x => x.Id).ToArray();
+            segmentQuery = segmentQuery.Where(x => ids.Contains(x.Id));
+        }
+        var segments = await Bounded(segmentQuery.Include(x => x.Applications).AsSingleQuery(), ct);
         var rooms = rows.Select(x => x.RoomId).Concat(segments.Select(x => x.RoomId)).Distinct().ToArray();
-        var movements = await Bounded(db.TreatmentLineageMovements.AsNoTracking().Where(x =>
-            rooms.Contains(x.SourceRoomId ?? -1) || rooms.Contains(x.DestinationRoomId ?? -1)), ct);
+        var movementQuery = db.TreatmentLineageMovements.AsNoTracking().Where(x =>
+            rooms.Contains(x.SourceRoomId ?? -1) || rooms.Contains(x.DestinationRoomId ?? -1));
+        if (historyKeys != null)
+        {
+            var index = await Bounded(movementQuery.Select(x => new { x.Id, x.IdentityKey, x.SourceSegmentId, x.DestinationSegmentId }), ct);
+            var segmentIds = segments.Select(x => x.Id).ToHashSet();
+            var ids = index.Where(x => historyKeys.Contains(InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey))
+                || segmentIds.Contains(x.SourceSegmentId ?? -1) || segmentIds.Contains(x.DestinationSegmentId ?? -1)).Select(x => x.Id).ToArray();
+            movementQuery = movementQuery.Where(x => ids.Contains(x.Id));
+        }
+        var movements = await Bounded(movementQuery, ct);
         var receiptIds = rows.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)
             .Concat(segments.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value))
             .Concat(movements.Where(x => x.ReceiptId != null).Select(x => x.ReceiptId!.Value)).Distinct().ToArray();
         var receipts = await Bounded(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct);
-        var correctedOriginIds = receipts.Where(r => rows.Any(l => l.AdjustmentType == "ReceiptAdd" && l.ReceiptId == r.Id
-            && (l.ChangeAmount != r.BinCount || l.CropYear != r.CropYear || l.GrowerLotId != r.GrowerLotId || l.FruitProfileId != r.FruitProfileId)))
-            .Select(r => r.Id).ToArray();
+        var receiptIndex = receipts.ToDictionary(x => x.Id);
+        // Receipt provenance follows the already-relevant receipt IDs, not the
+        // current room, facility or historical lot filter. An earlier identity
+        // elsewhere must trigger the same original-snapshot interpretation in
+        // selectors and command reads. One bounded, indexed dependency lookup;
+        // these rows do not enter the selected room's quantity ledger.
+        var origins = await Bounded(db.RoomInventoryAdjustments.AsNoTracking()
+            .Where(l => l.ReceiptId != null && receiptIds.Contains(l.ReceiptId.Value) && l.AdjustmentType == "ReceiptAdd")
+            .Select(l => new
+            {
+                l.Id,
+                ReceiptId = l.ReceiptId!.Value,
+                l.ChangeAmount,
+                l.CropYear,
+                l.GrowerLotId,
+                l.FruitProfileId,
+                l.WarehouseId,
+                l.RoomId,
+                l.AdjustmentAt,
+                l.CreatedAt
+            })
+            .TagWith("Canonical receipt-origin dependencies"), ct);
+        // Compare the compact origin rows with receipts already in this snapshot.
+        // A SQL join can repeatedly evaluate a broad ID array for every origin.
+        var correctedOriginIds = origins.Where(l => receiptIndex.TryGetValue(l.ReceiptId, out var r)
+            && (l.ChangeAmount != r.BinCount || l.CropYear != r.CropYear || l.GrowerLotId != r.GrowerLotId || l.FruitProfileId != r.FruitProfileId))
+            .Select(l => l.ReceiptId).Distinct().ToArray();
         var originRevisions = correctedOriginIds.Length == 0 ? [] : await Bounded(db.ReceiptInventoryOverrides.AsNoTracking()
             .Where(x => correctedOriginIds.Contains(x.ReceiptId)), ct);
+        var originIndex = origins.ToLookup(x => x.ReceiptId);
+        var revisionIndex = originRevisions.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .GroupBy(x => x.ReceiptId).ToDictionary(x => x.Key, x => x.First());
         var appIds = segments.SelectMany(x => x.Applications).Select(x => x.RoomTreatmentApplicationId)
             .Concat(movements.SelectMany(x => InventoryEventReplay.ApplicationIds(x.TreatmentSignatureSnapshot))).Distinct().ToArray();
         var applications = await Bounded(db.RoomTreatmentApplications.AsNoTracking().Include(x => x.Sources).AsSingleQuery().Where(x =>
@@ -100,7 +156,6 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             .Select(room => (Room: room!.Value, Movement: x))).ToLookup(x => (x.Room, Key: InventoryStatusIdentity.NormalizeLineageKey(x.Movement.IdentityKey)), x => x.Movement);
         var segmentMovementIndex = movements.SelectMany(x => new[] { x.SourceSegmentId, x.DestinationSegmentId }.Where(y => y != null).Distinct()
             .Select(id => (Id: id!.Value, Movement: x))).ToLookup(x => x.Id, x => x.Movement);
-        var receiptIndex = receipts.ToDictionary(x => x.Id);
         var roomApps = applications.Where(x => x.ReceiptId == null).ToLookup(x => x.RoomId);
         var receiptApps = applications.Where(x => x.ReceiptId != null).ToLookup(x => x.ReceiptId!.Value);
         var appsById = applications.ToDictionary(x => x.Id);
@@ -134,7 +189,22 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             var projectionEvidence = matchingSegments.Select(x => Projection(x, identity, snapshot.WarehouseId)).ToImmutableArray();
             var movementEvidence = matchingMovements.Select(x => Movement(x, identity, snapshot.RoomId)).ToImmutableArray();
             var receiptEvidence = matchingReceipts.Select(x => OriginalReceipt(Receipt(x, identity), identity,
-                originRevisions.Where(r => r.ReceiptId == x.Id).OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).FirstOrDefault())).ToImmutableArray();
+                revisionIndex.GetValueOrDefault(x.Id))).ToImmutableArray();
+            // Retain the inputs, not just the interpreted true/false result. A
+            // contradictory original under another profile must stale a source
+            // even when OriginalIdentityVerified remains false in every scope.
+            var originEvidence = ids.SelectMany(id => originIndex[id]).OrderBy(x => x.Id).ToArray();
+            var revisionEvidence = ids.Where(revisionIndex.ContainsKey).Select(id => revisionIndex[id])
+                .Select(r => new
+                {
+                    r.Id,
+                    r.ReceiptId,
+                    r.CreatedAt,
+                    r.IsComplete,
+                    r.ActionType,
+                    r.OldReceiptBinCount,
+                    r.BeforeReceiptSnapshotJson
+                }).ToArray();
             var appEvidence = matchingApps.Select(x => new InventoryApplicationEvidence(x.Id, x.AppliedAt, x.ReversedAt, x.ReceiptId, x.RoomId)
             {
                 RecordedAt = x.CreatedAt,
@@ -158,13 +228,16 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
                 projectionEvidence,
                 movementEvidence,
                 receiptEvidence,
+                originEvidence,
+                revisionEvidence,
                 appEvidence,
                 Profile = profile == null ? null : new { profile.Id, profile.VarietyCode, profile.ProductionType, profile.IsOrganic }
             }, consistency, versions);
             result.Add(new(identity, new(InventoryCustody.Room, snapshot.WarehouseId, snapshot.RoomId, snapshot.Facility, snapshot.Room),
                 physical, 0, identityVerified, true, ledgerEvidence, projectionEvidence, movementEvidence, receiptEvidence, appEvidence, watermark,
                 matchingRows.Any(x => x.CreatedAt > asOf) || matchingSegments.Any(x => x.UpdatedAt > asOf)
-                    || matchingReceipts.Any(x => x.UpdatedAt > asOf) || matchingApps.Any(x => x.CreatedAt > asOf || x.ReversedAt > asOf))
+                    || matchingReceipts.Any(x => x.UpdatedAt > asOf) || matchingApps.Any(x => x.CreatedAt > asOf || x.ReversedAt > asOf)
+                    || originEvidence.Any(x => x.CreatedAt > asOf) || revisionEvidence.Any(x => x.CreatedAt > asOf))
             { ApplicationAllocationsLoaded = true });
         }
         // Orphan projections are never converted into physical stock or silently dropped.
@@ -177,7 +250,8 @@ public sealed partial class InventoryEvidenceLoader(CropQcDbContext db) : IInven
             result.Add(new(identity, new(InventoryCustody.Room, first.WarehouseId, first.RoomId, "", $"Room {first.RoomId}"),
                 0, 0, false, true, [], projections, [], [], [], Watermark(projections, consistency, [])));
         }
-        return new(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
+        var batch = new InventoryEvidenceBatch(result.ToImmutable(), rows.Count + segments.Count + movements.Count + receipts.Count + origins.Count + originRevisions.Count + applications.Count + profiles.Count + runParents.Count);
+        return includeRecordedCustody ? await IncludeRecordedCustodyAsync(batch, asOf, consistency, ct, ledger) : batch;
     }
 
     internal static InventoryIdentity Identity(RoomInventoryLedgerSnapshot x) => new(x.CropYear, x.GrowerLotId, x.FruitProfileId,

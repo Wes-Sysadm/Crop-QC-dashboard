@@ -150,6 +150,9 @@ public sealed record InventoryPositionEvidence(InventoryIdentity Identity, Inven
     bool HistoricalSnapshotUnavailable = false, ImmutableArray<InventoryEvidenceReference> IdentityCorrections = default,
     ImmutableArray<InventoryCustodyAllocation> CustodyAllocations = default)
 {
+    // Read-only proof carried from recorded source custody, never a fabricated
+    // TreatmentLineageMovement or a physical inventory credit.
+    public ImmutableArray<InventoryRecordedArrival> RecordedArrivals { get; init; } = [];
     public bool ApplicationAllocationsLoaded { get; init; }
     public ImmutableArray<InventoryEvidenceReference> IdentityCorrections { get; init; } =
         IdentityCorrections.IsDefault ? [] : IdentityCorrections;

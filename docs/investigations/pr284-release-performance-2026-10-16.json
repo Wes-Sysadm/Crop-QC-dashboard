@@ -1,0 +1,606 @@
+{
+  "status": "NO-GO: demonstrated reader-performance regression; stopped before workflow mutations",
+  "reviewedExecutable": "377cde9812242d9dec239a9fdb49c0791558cfe5",
+  "baselineExecutable": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+  "authorization": "Owner reply: Approve this isolated #204 restore, 2026-10-16",
+  "backup": 204,
+  "isolation": {
+    "containerId": "150985da9fa9f7c1476dd0b88d3cf14fbb024281a287519b8da5c76432b6e73e",
+    "network": "none",
+    "publishedPorts": false,
+    "volumeNames": [
+      "9e606d57734292861998283cafc14e8006fcf1b861bb6d89aff78144b629050c"
+    ],
+    "database": "pr284_preparation_test",
+    "version": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "migrations": [
+      "20260521173857_InitialMvp1ReceivingQcModel",
+      "20260521220136_AddQcSummaryOverrideFields",
+      "20260529210944_AddDashboardConfiguration",
+      "20260529212812_AddUserAccessFields",
+      "20260529230504_AddGoogleDrivePhotoMetadata",
+      "20260530010358_AddQcStationEnrollmentFields",
+      "20260711195500_LinkVarietyColorsToFruitProfiles",
+      "20260711213000_AddCanonicalGrowers",
+      "20260717213000_AddFieldSamplesAndOrchardBlocks",
+      "20260721233604_AddOrchardReportRecipients",
+      "20260722233135_AddFieldSampleEmailHistory",
+      "20260723011519_AddFieldSampleAutosaveDefectInspection",
+      "20260723024710_AddProductionBackupHistory",
+      "20260723055241_AddBackupNotificationsAndReceiptPurgeAudit",
+      "20260723142741_AddFieldSampleDeletionAudit",
+      "20260723163704_AddRunProjections",
+      "20260723230325_AddRunProjectionPackoutAndGradeSnapshots",
+      "20260724003812_AddPreharvestRunProjectionMode",
+      "20260724020525_AddRunProjectionFacilityAndSoftDelete",
+      "20260724053022_AddCommercialPackProjectionConfiguration",
+      "20260724074306_AddOrchardManagerContactImports",
+      "20260724150253_AddRunProjectionOutcomeTrendSnapshots",
+      "20260724194806_AddRunProjectionCullSnapshot",
+      "20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels",
+      "20260804052104_AddFacilityRunReporting",
+      "20260805014812_AddReceiptInventoryOverrides",
+      "20260923202144_AddTruckReceiptReconciliation",
+      "20261001144023_CanonicalInventoryCommands",
+      "20261001203105_CanonicalIdentityRestorationSides",
+      "20261002031709_BoundedBackupSnapshotProgress",
+      "20261007212154_ReceiptHeldTransferCustody",
+      "20261007235352_ReceiptCustodyCompensations",
+      "20261007235822_ReceiptCustodyGuardrails",
+      "20261009150448_IsolatedInventoryMovementCohorts"
+    ]
+  },
+  "runtime": ".NET/ASP.NET 9.0.21 Linux amd64; PostgreSQL 18.4",
+  "baselineReadiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1139,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1046,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 452,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": []
+      },
+      "invalidOutside": 0
+    }
+  },
+  "candidateReadiness": {
+    "success": true,
+    "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+    "expectedSchemaObjects": 1007,
+    "schemaReady": true,
+    "inventory": {
+      "isReady": true,
+      "negativeAdjustmentCount": 1139,
+      "historicalNegativeCount": 93,
+      "newFormatNegativeCount": 1046,
+      "blockingIssues": []
+    },
+    "treatment": {
+      "success": true,
+      "currentIdentityCount": 452,
+      "blockingIssueCount": 0,
+      "blockingIssues": [],
+      "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+    },
+    "topology": {
+      "success": true,
+      "missingWarehouseCodes": [],
+      "custodyRulesReady": true,
+      "invalidOutsideWarehouseMasterRows": 0,
+      "duplicateOutsideWarehouseCodes": 0,
+      "invalidInterCrew": 0,
+      "interCrew": {
+        "issues": [],
+        "custody": []
+      },
+      "invalidOutside": 0
+    }
+  },
+  "conservation": {
+    "global": {
+      "facility": "GLOBAL",
+      "categories": {
+        "Internal transfers": 0,
+        "Receiving / quantity corrections / voids": 110085,
+        "Opening inventory": 6143,
+        "Runs (net of reversals)": -36315,
+        "Identity/location corrections": 0,
+        "Depletions / losses (net)": -18,
+        "Outside warehouse custody (net room removal)": -1409,
+        "Inter-crew custody (net room movement)": -844
+      },
+      "authoritativeCurrentBins": 77642,
+      "accountedBins": 77642,
+      "difference": 0
+    },
+    "unclassifiedTypes": [],
+    "unbalancedRoomTransfers": [],
+    "unbalancedIdentityCorrections": [],
+    "treatmentIdentityDebit": 6088,
+    "treatmentIdentityCredit": 6088,
+    "invalidTreatmentIdentityMovements": 0,
+    "otherHistoricalTreatmentCorrections": {
+      "IdentityReclassificationUntreatedBackfill": 426,
+      "IdentityReclassificationRetirement": 535,
+      "InventoryIdentityCorrectionOut": 64,
+      "InventoryIdentityCorrectionIn": 64
+    },
+    "interCrewTransitBins": 844,
+    "outsideWarehouseCustodyBins": 1409,
+    "receiptHeldBins": 0,
+    "treatmentIdentityDifference": 0,
+    "isReady": true
+  },
+  "receiving": {
+    "cropYear": 2026,
+    "receiptCount": 2627,
+    "receiptTotal": 109559,
+    "ledgerTotal": 109559,
+    "netDifference": 0,
+    "mismatchReceiptIds": [],
+    "mismatchCount": 0
+  },
+  "exploratoryFiveSelectorSamples": {
+    "baseline": [
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 8446.0928,
+        "cpuMs": 518.993,
+        "allocatedBytes": 66166800,
+        "workingSet": 248479744,
+        "peakWorkingSet": 252952576,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 8114.232,
+        "cpuMs": 226.704,
+        "allocatedBytes": 64795424,
+        "workingSet": 248295424,
+        "peakWorkingSet": 252952576,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 44.8685,
+        "cpuMs": 12.153,
+        "allocatedBytes": 2246296,
+        "workingSet": 248344576,
+        "peakWorkingSet": 252952576,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 8052.4016,
+        "cpuMs": 221.245,
+        "allocatedBytes": 64543096,
+        "workingSet": 255873024,
+        "peakWorkingSet": 260915200,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 22.2174,
+        "cpuMs": 21.605,
+        "allocatedBytes": 1295792,
+        "workingSet": 256536576,
+        "peakWorkingSet": 260915200,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      }
+    ],
+    "candidate": [
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 11826.4574,
+        "cpuMs": 363.058,
+        "allocatedBytes": 133668864,
+        "workingSet": 279552000,
+        "peakWorkingSet": 279552000,
+        "queryCount": 46,
+        "rowsRead": 29742,
+        "evidenceRows": null,
+        "outputRows": 9
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 11862.0611,
+        "cpuMs": 292.093,
+        "allocatedBytes": 132335752,
+        "workingSet": 280055808,
+        "peakWorkingSet": 280055808,
+        "queryCount": 30,
+        "rowsRead": 29461,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 3944.2988,
+        "cpuMs": 53.326,
+        "allocatedBytes": 20312840,
+        "workingSet": 280813568,
+        "peakWorkingSet": 280813568,
+        "queryCount": 28,
+        "rowsRead": 5145,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 11994.876,
+        "cpuMs": 308.343,
+        "allocatedBytes": 132003112,
+        "workingSet": 277032960,
+        "peakWorkingSet": 280100864,
+        "queryCount": 32,
+        "rowsRead": 29917,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 3844.3079,
+        "cpuMs": 70.722,
+        "allocatedBytes": 19424968,
+        "workingSet": 277131264,
+        "peakWorkingSet": 280100864,
+        "queryCount": 25,
+        "rowsRead": 5104,
+        "evidenceRows": 3869,
+        "outputRows": 19
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 12153.7334,
+        "cpuMs": 336.96,
+        "allocatedBytes": 133833224,
+        "workingSet": 277495808,
+        "peakWorkingSet": 280100864,
+        "queryCount": 46,
+        "rowsRead": 29742,
+        "evidenceRows": null,
+        "outputRows": 9
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 12400.1509,
+        "cpuMs": 328.912,
+        "allocatedBytes": 132357160,
+        "workingSet": 277442560,
+        "peakWorkingSet": 280100864,
+        "queryCount": 30,
+        "rowsRead": 29461,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 3905.4536,
+        "cpuMs": 58.248,
+        "allocatedBytes": 20456136,
+        "workingSet": 277811200,
+        "peakWorkingSet": 280100864,
+        "queryCount": 28,
+        "rowsRead": 5145,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 12119.9318,
+        "cpuMs": 297.93,
+        "allocatedBytes": 132063352,
+        "workingSet": 276779008,
+        "peakWorkingSet": 280100864,
+        "queryCount": 32,
+        "rowsRead": 29917,
+        "evidenceRows": null,
+        "outputRows": 459
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 4030.2205,
+        "cpuMs": 76.711,
+        "allocatedBytes": 19548784,
+        "workingSet": 276807680,
+        "peakWorkingSet": 280100864,
+        "queryCount": 25,
+        "rowsRead": 5104,
+        "evidenceRows": 3869,
+        "outputRows": 19
+      }
+    ]
+  },
+  "measurementQualification": "One initial baseline round overlapped candidate startup; baseline round 2 and candidate round 0 excluded from comparison. Initial combined database resource counters are not comparative evidence. Focused confirmations ran sequentially. Baseline/candidate use identical method calls, same database, no writes and same limits. Selector service measurements are not authenticated HTTP-route proof. The historical rowsRead field is EF DataReaderDisposingEventData.ReadCount: reader operations including terminal reads, not a count of exact returned SQL rows. evidenceRows is the loader RowsLoaded value.",
+  "targetPlannerSettings": {
+    "jit": "on",
+    "jit_above_cost": 100000,
+    "jit_inline_above_cost": 500000,
+    "jit_optimize_above_cost": 500000,
+    "random_page_cost": 1.1,
+    "work_mem_kB": 26468,
+    "max_parallel_workers_per_gather": 1
+  },
+  "sequentialTargetSettingsConfirmation": {
+    "baseline": [
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 1877.9496,
+        "cpuMs": 1846.063,
+        "allocatedBytes": 249946792,
+        "workingSet": 157179904,
+        "peakWorkingSet": 157179904,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 127.5754,
+        "cpuMs": 88.948,
+        "allocatedBytes": 8852656,
+        "workingSet": 161693696,
+        "peakWorkingSet": 161693696,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 55.6024,
+        "cpuMs": 39.218,
+        "allocatedBytes": 1303688,
+        "workingSet": 161910784,
+        "peakWorkingSet": 161910784,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 45.977,
+        "cpuMs": 14.527,
+        "allocatedBytes": 2196752,
+        "workingSet": 162332672,
+        "peakWorkingSet": 162332672,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 26.4442,
+        "cpuMs": 10.527,
+        "allocatedBytes": 1298896,
+        "workingSet": 163684352,
+        "peakWorkingSet": 163684352,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 47.399,
+        "cpuMs": 15.674,
+        "allocatedBytes": 2181552,
+        "workingSet": 165912576,
+        "peakWorkingSet": 165912576,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": -1
+      }
+    ],
+    "candidate": [
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 5650.051,
+        "cpuMs": 2106.927,
+        "allocatedBytes": 269883864,
+        "workingSet": 162865152,
+        "peakWorkingSet": 162865152,
+        "queryCount": 25,
+        "rowsRead": 5104,
+        "evidenceRows": 3869,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 3852.2681,
+        "cpuMs": 822.974,
+        "allocatedBytes": 27209752,
+        "workingSet": 180285440,
+        "peakWorkingSet": 180285440,
+        "queryCount": 28,
+        "rowsRead": 5145,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 3729.7655,
+        "cpuMs": 696.645,
+        "allocatedBytes": 19365968,
+        "workingSet": 185229312,
+        "peakWorkingSet": 185229312,
+        "queryCount": 25,
+        "rowsRead": 5104,
+        "evidenceRows": 3869,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 3660.148,
+        "cpuMs": 263.865,
+        "allocatedBytes": 20153928,
+        "workingSet": 191799296,
+        "peakWorkingSet": 191799296,
+        "queryCount": 28,
+        "rowsRead": 5145,
+        "evidenceRows": null,
+        "outputRows": -1
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 3688.6194,
+        "cpuMs": 158.834,
+        "allocatedBytes": 19225208,
+        "workingSet": 192368640,
+        "peakWorkingSet": 192368640,
+        "queryCount": 25,
+        "rowsRead": 5104,
+        "evidenceRows": 3869,
+        "outputRows": 19
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 3893.938,
+        "cpuMs": 94.701,
+        "allocatedBytes": 20197824,
+        "workingSet": 198074368,
+        "peakWorkingSet": 198074368,
+        "queryCount": 28,
+        "rowsRead": 5145,
+        "evidenceRows": null,
+        "outputRows": -1
+      }
+    ]
+  },
+  "plan": {
+    "parameters": [
+      {
+        "ParameterName": "@__roomIds_0",
+        "count": 25
+      },
+      {
+        "ParameterName": "@__asOf_Value_1",
+        "count": 1
+      },
+      {
+        "ParameterName": "@__p_2",
+        "count": 1
+      }
+    ],
+    "executionMs": 3757.942,
+    "planningMs": 8.698,
+    "jit": {
+      "Functions": 626,
+      "Options": {
+        "Inlining": true,
+        "Optimization": true,
+        "Expressions": true,
+        "Deforming": true
+      },
+      "Timing": {
+        "Generation": {
+          "Deform": 11.499,
+          "Total": 28.067
+        },
+        "Inlining": 18.924,
+        "Optimization": 2121.576,
+        "Emission": 1516.581,
+        "Total": 3685.148
+      }
+    },
+    "sharedHitBlocks": 151817,
+    "sharedReadBlocks": 0,
+    "tempReadBlocks": 0,
+    "tempWrittenBlocks": 0,
+    "estimatedCost": 920325.18,
+    "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58"
+  },
+  "integrity": {
+    "allOriginalRowsPreserved": true,
+    "tables": 113,
+    "originalRows": 269834,
+    "differences": [],
+    "migrationsUnchanged": true,
+    "newRowsByTable": {}
+  },
+  "cleanup": {
+    "utc": "2026-10-16T15:01:25.837996+00:00",
+    "container": "pr284-preparation-pg",
+    "containerId": "150985da9fa9f7c1476dd0b88d3cf14fbb024281a287519b8da5c76432b6e73e",
+    "containerDeleted": true,
+    "volumesDeleted": [
+      "9e606d57734292861998283cafc14e8006fcf1b861bb6d89aff78144b629050c"
+    ],
+    "uncompressedRestoreSqlDeleted": true,
+    "originalBackupRetained": true,
+    "productionAccessByRehearsal": false
+  },
+  "forwardRollbackHandback": "NOT RUN: stopped at performance safeguard",
+  "authenticatedRouteRehearsal": "NOT RUN: stopped at performance safeguard",
+  "implementationChanged": false,
+  "merged": false,
+  "deployed": false,
+  "productionDataModified": false
+}

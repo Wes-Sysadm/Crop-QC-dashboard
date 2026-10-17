@@ -16,7 +16,7 @@ public sealed partial class InventoryCommandExecutor
         if (c.Kind == InventoryCommandKind.InterCompanyDispatch)
         {
             var sourceCode = await db.Warehouses.Where(x => x.Id == loc.WarehouseId).Select(x => x.Code).SingleAsync(ct);
-            Require(TruckReceiptRoutes.RequiresReceiptForGroup(sourceCode, c.CustodyGroup!), "Inter-company dispatch requires a configured cross-company route.");
+            Require(TruckReceiptRoutes.AllowsInterCrewDispatch(sourceCode, c.CustodyGroup), "Inter-crew dispatch requires a supported route.");
             var transfer = db.InterCrewTransfers.Local.SingleOrDefault(x => x.OperationKey == c.OperationKey + ":load");
             if (transfer == null)
             {
@@ -44,7 +44,8 @@ public sealed partial class InventoryCommandExecutor
                     LoadedByUserId = c.ActorId,
                     CreatedAt = now,
                     Status = InterCrewTransferStatuses.InTransit,
-                    RequiresTruckReceipt = c.Dispatch?.RequiresTruckReceipt ?? true,
+                    RequiresTruckReceipt = TruckReceiptRoutes.RequiresReceiptForGroup(sourceCode, c.CustodyGroup!)
+                        && (c.Dispatch?.RequiresTruckReceipt ?? true),
                     TruckLoadBolNumber = c.Dispatch?.Reference,
                     Notes = c.Dispatch?.Notes ?? c.Reason
                 };
@@ -324,9 +325,16 @@ public sealed partial class InventoryCommandExecutor
         }
         if (c.Kind == InventoryCommandKind.Return)
         { transfer.ReversedAt = now; transfer.ReversedByUserId = c.ActorId; transfer.ReversalReason = c.Reason; transfer.ReversalOperationKey = c.OperationKey; }
-        transfer.ReceivedAt = null; transfer.ReceivedByUserId = null; transfer.ReceiveOperationKey = null; transfer.VarianceBins = null;
+        // Internal returns retain the completed receipt snapshot, as the legacy
+        // internal reversal and strict ledger contract require. Reopening a load
+        // (including Truck Receipt reconciliation) clears its current destination.
+        if (c.Kind != InventoryCommandKind.Return || transfer.RequiresTruckReceipt)
+        {
+            transfer.ReceivedAt = null; transfer.ReceivedByUserId = null; transfer.ReceiveOperationKey = null; transfer.VarianceBins = null;
+            transfer.BinsReceived = null; transfer.DestinationRoomId = null; transfer.DestinationWarehouseId = null;
+        }
         transfer.Status = c.Kind == InventoryCommandKind.Return ? InterCrewTransferStatuses.Reversed : InterCrewTransferStatuses.InTransit;
-        transfer.BinsReceived = null; transfer.DestinationRoomId = null; transfer.DestinationWarehouseId = null; if (firstReversal) transfer.ConcurrencyVersion++;
+        if (firstReversal) transfer.ConcurrencyVersion++;
         debit!.InterCrewTransfer = transfer; debit.AdjustmentType = InterCrewTransferAdjustmentTypes.ReversalDestination;
         if (destinationRoom != null)
         {

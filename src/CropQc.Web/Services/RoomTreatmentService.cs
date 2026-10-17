@@ -25,7 +25,7 @@ public sealed record TreatmentSegmentSelection(
     long? SegmentId = null,
     bool IsAvailable = true,
     string? UnavailableReason = null,
-    int? ExplicitBins = null, string CanonicalFingerprint = "");
+    int? ExplicitBins = null, string CanonicalFingerprint = "", int? AuthoritativeBins = null);
 
 public sealed record ActualRunTreatmentRestorationSource(
     long BinsRunEntryId,

@@ -1,0 +1,1111 @@
+{
+  "scope": "Synthetic development only; no protected restore or production access",
+  "base": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+  "continuationHead": "176eaddee066ff9b9939e4c7807887260ae5bb8d",
+  "baselineApplication": "512940de3714eb4dec7eb26dcab282d1d6289acc",
+  "sourceLfSha256": "9c205a0f0e4c483a1224097a42c0914766a0be586128661143879f3201d52953",
+  "runtime": {
+    "os": "Linux x86_64",
+    "dotnet": "9.0.21",
+    "postgres": "18.4",
+    "applicationCpu": 2,
+    "applicationMemoryGiB": 2,
+    "databaseCpu": 2,
+    "databaseMemoryGiB": 3,
+    "network": "none; application joins only disposable PostgreSQL network namespace",
+    "ports": [],
+    "plannerSettings": {
+      "random_page_cost": "1.1",
+      "work_mem": "26468kB",
+      "max_parallel_workers_per_gather": "1",
+      "jit": "unchanged/on"
+    }
+  },
+  "scopeProof": {
+    "scopes": [
+      {
+        "Watermark": {
+          "Fingerprint": "896F05F182BD94EE8D9090B65064691F3B9A3C86538549A055C57178A2CF51C4",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "Receipt",
+              "Id": "100000",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100001",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100002",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100003",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            }
+          ]
+        },
+        "Receipts": [
+          {
+            "Id": 100000,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": true
+          },
+          {
+            "Id": 100001,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": false
+          },
+          {
+            "Id": 100002,
+            "Quantity": 54,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          },
+          {
+            "Id": 100003,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          }
+        ],
+        "scope": "all-rooms"
+      },
+      {
+        "Watermark": {
+          "Fingerprint": "896F05F182BD94EE8D9090B65064691F3B9A3C86538549A055C57178A2CF51C4",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "Receipt",
+              "Id": "100000",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100001",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100002",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100003",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            }
+          ]
+        },
+        "Receipts": [
+          {
+            "Id": 100000,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": true
+          },
+          {
+            "Id": 100001,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": false
+          },
+          {
+            "Id": 100002,
+            "Quantity": 54,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          },
+          {
+            "Id": 100003,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          }
+        ],
+        "scope": "warehouse"
+      },
+      {
+        "Watermark": {
+          "Fingerprint": "896F05F182BD94EE8D9090B65064691F3B9A3C86538549A055C57178A2CF51C4",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "Receipt",
+              "Id": "100000",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100001",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100002",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100003",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            }
+          ]
+        },
+        "Receipts": [
+          {
+            "Id": 100000,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": true
+          },
+          {
+            "Id": 100001,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": false
+          },
+          {
+            "Id": 100002,
+            "Quantity": 54,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          },
+          {
+            "Id": 100003,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          }
+        ],
+        "scope": "single-room"
+      },
+      {
+        "Watermark": {
+          "Fingerprint": "896F05F182BD94EE8D9090B65064691F3B9A3C86538549A055C57178A2CF51C4",
+          "Consistency": "RepeatableRead",
+          "Versions": [
+            {
+              "Entity": "Receipt",
+              "Id": "100000",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100001",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100002",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            },
+            {
+              "Entity": "Receipt",
+              "Id": "100003",
+              "Version": 0,
+              "UpdatedAt": "2026-01-01T02:00:00+00:00"
+            }
+          ]
+        },
+        "Receipts": [
+          {
+            "Id": 100000,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": true
+          },
+          {
+            "Id": 100001,
+            "Quantity": 56,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": 56,
+            "OriginalIdentityVerified": false
+          },
+          {
+            "Id": 100002,
+            "Quantity": 54,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          },
+          {
+            "Id": 100003,
+            "Quantity": 64,
+            "ExactIdentity": true,
+            "IsDeleted": false,
+            "IsTransferReceipt": false,
+            "UpdatedAt": "2026-01-01T02:00:00+00:00",
+            "Version": 0,
+            "OriginalQuantity": null,
+            "OriginalIdentityVerified": null
+          }
+        ],
+        "scope": "canonical-command-source"
+      }
+    ],
+    "originRejection": "Ledger 1: custody parent receipt-change:7b83bb83-e706-45e5-a256-e0b057850aaa credits more inventory than its recorded debits.",
+    "AuthoritativeQuantity": 238,
+    "allTablesUnchanged": true,
+    "selectorFingerprint": "896F05F182BD94EE8D9090B65064691F3B9A3C86538549A055C57178A2CF51C4",
+    "selectorVerification": "Actual OutsideWarehouseTransferService SourceKey assertion in passing PostgreSQL test"
+  },
+  "validation": {
+    "distinctCombinedCases": 270,
+    "mandatoryCases": 202,
+    "mandatoryMethods": 89,
+    "affectedCases": 111,
+    "failed": 0,
+    "skipped": 0,
+    "governanceNodeCases": 29,
+    "restore": "PASS",
+    "solutionBuild": "PASS",
+    "linuxBuild": "PASS",
+    "model": "PASS; no migration",
+    "format": "PASS",
+    "gitDiffCheck": "PASS"
+  },
+  "measurements": {
+    "baseline-final": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 5810.9826,
+        "cpuMs": 3951.607,
+        "queryCount": 36,
+        "rowsRead": 20817,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 198758400,
+        "peakWorkingSet": 198758400,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 3534.6053,
+        "cpuMs": 1311.354,
+        "queryCount": 32,
+        "rowsRead": 20812,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 223367168,
+        "peakWorkingSet": 223367168,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 328.5016,
+        "cpuMs": 88.136,
+        "queryCount": 32,
+        "rowsRead": 827,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 224423936,
+        "peakWorkingSet": 224423936,
+        "aggregateCount": 3,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 3236.9275,
+        "cpuMs": 1109.789,
+        "queryCount": 34,
+        "rowsRead": 21390,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 248279040,
+        "peakWorkingSet": 251326464,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 200.5759,
+        "cpuMs": 26.127,
+        "queryCount": 29,
+        "rowsRead": 782,
+        "evidenceRows": 639,
+        "outputRows": 21,
+        "workingSet": 249106432,
+        "peakWorkingSet": 251326464,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 0,
+        "elapsedMs": 2393.7512,
+        "cpuMs": 829.336,
+        "queryCount": 29,
+        "rowsRead": 18836,
+        "evidenceRows": 15678,
+        "outputRows": 1005,
+        "workingSet": 275546112,
+        "peakWorkingSet": 275546112,
+        "aggregateCount": 1,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 3209.1888,
+        "cpuMs": 496.083,
+        "queryCount": 36,
+        "rowsRead": 20817,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 271327232,
+        "peakWorkingSet": 287547392,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 3145.4818,
+        "cpuMs": 428.915,
+        "queryCount": 32,
+        "rowsRead": 20812,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 272510976,
+        "peakWorkingSet": 287547392,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 252.9756,
+        "cpuMs": 32.761,
+        "queryCount": 32,
+        "rowsRead": 827,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 272556032,
+        "peakWorkingSet": 287547392,
+        "aggregateCount": 3,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 3222.386,
+        "cpuMs": 456.828,
+        "queryCount": 34,
+        "rowsRead": 21390,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 285028352,
+        "peakWorkingSet": 287547392,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 190.5197,
+        "cpuMs": 18.997,
+        "queryCount": 29,
+        "rowsRead": 782,
+        "evidenceRows": 639,
+        "outputRows": 21,
+        "workingSet": 285061120,
+        "peakWorkingSet": 287547392,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 1,
+        "elapsedMs": 2263.9344,
+        "cpuMs": 494.684,
+        "queryCount": 29,
+        "rowsRead": 18836,
+        "evidenceRows": 15678,
+        "outputRows": 1005,
+        "workingSet": 301056000,
+        "peakWorkingSet": 301056000,
+        "aggregateCount": 1,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 3268.5968,
+        "cpuMs": 465.482,
+        "queryCount": 36,
+        "rowsRead": 20817,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 301076480,
+        "peakWorkingSet": 305369088,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 3163.3591,
+        "cpuMs": 442.739,
+        "queryCount": 32,
+        "rowsRead": 20812,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 282947584,
+        "peakWorkingSet": 305369088,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 258.8979,
+        "cpuMs": 41.432,
+        "queryCount": 32,
+        "rowsRead": 827,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 291266560,
+        "peakWorkingSet": 305369088,
+        "aggregateCount": 3,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 3202.4222,
+        "cpuMs": 490.09,
+        "queryCount": 34,
+        "rowsRead": 21390,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 293249024,
+        "peakWorkingSet": 305369088,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 193.3344,
+        "cpuMs": 43.827,
+        "queryCount": 29,
+        "rowsRead": 782,
+        "evidenceRows": 639,
+        "outputRows": 21,
+        "workingSet": 283463680,
+        "peakWorkingSet": 305369088,
+        "aggregateCount": 2,
+        "originQueryCount": 0
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 2,
+        "elapsedMs": 2241.5234,
+        "cpuMs": 455.369,
+        "queryCount": 29,
+        "rowsRead": 18836,
+        "evidenceRows": 15678,
+        "outputRows": 1005,
+        "workingSet": 310599680,
+        "peakWorkingSet": 310599680,
+        "aggregateCount": 1,
+        "originQueryCount": 0
+      }
+    ],
+    "candidate-final": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 5564.6991,
+        "cpuMs": 3255.364,
+        "queryCount": 37,
+        "rowsRead": 27064,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 198144000,
+        "peakWorkingSet": 198144000,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 3320.6252,
+        "cpuMs": 1350.995,
+        "queryCount": 33,
+        "rowsRead": 27059,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 232308736,
+        "peakWorkingSet": 237592576,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 333.8014,
+        "cpuMs": 85.539,
+        "queryCount": 33,
+        "rowsRead": 1075,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 229076992,
+        "peakWorkingSet": 237592576,
+        "aggregateCount": 3,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 3048.9368,
+        "cpuMs": 1083.068,
+        "queryCount": 35,
+        "rowsRead": 27637,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 242737152,
+        "peakWorkingSet": 244674560,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 202.0247,
+        "cpuMs": 94.138,
+        "queryCount": 30,
+        "rowsRead": 1030,
+        "evidenceRows": 886,
+        "outputRows": 21,
+        "workingSet": 244199424,
+        "peakWorkingSet": 244674560,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 0,
+        "elapsedMs": 2096.7735,
+        "cpuMs": 449.12,
+        "queryCount": 30,
+        "rowsRead": 25083,
+        "evidenceRows": 21924,
+        "outputRows": 1005,
+        "workingSet": 283992064,
+        "peakWorkingSet": 283992064,
+        "aggregateCount": 1,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 3042.2877,
+        "cpuMs": 320.529,
+        "queryCount": 37,
+        "rowsRead": 27064,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 282030080,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 2979.1934,
+        "cpuMs": 270.429,
+        "queryCount": 33,
+        "rowsRead": 27059,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 282050560,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 251.6508,
+        "cpuMs": 36.832,
+        "queryCount": 33,
+        "rowsRead": 1075,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 282116096,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 3,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 2969.1074,
+        "cpuMs": 263.84,
+        "queryCount": 35,
+        "rowsRead": 27637,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 283295744,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 191.3873,
+        "cpuMs": 19.282,
+        "queryCount": 30,
+        "rowsRead": 1030,
+        "evidenceRows": 886,
+        "outputRows": 21,
+        "workingSet": 283787264,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 1,
+        "elapsedMs": 2119.756,
+        "cpuMs": 322.858,
+        "queryCount": 30,
+        "rowsRead": 25083,
+        "evidenceRows": 21924,
+        "outputRows": 1005,
+        "workingSet": 293523456,
+        "peakWorkingSet": 300908544,
+        "aggregateCount": 1,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 2996.2661,
+        "cpuMs": 263.312,
+        "queryCount": 37,
+        "rowsRead": 27064,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 298438656,
+        "peakWorkingSet": 311644160,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 2969.0243,
+        "cpuMs": 281.882,
+        "queryCount": 33,
+        "rowsRead": 27059,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 284917760,
+        "peakWorkingSet": 311644160,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 274.924,
+        "cpuMs": 36.902,
+        "queryCount": 33,
+        "rowsRead": 1075,
+        "evidenceRows": null,
+        "outputRows": 21,
+        "workingSet": 293527552,
+        "peakWorkingSet": 311644160,
+        "aggregateCount": 3,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 3019.0458,
+        "cpuMs": 300.659,
+        "queryCount": 35,
+        "rowsRead": 27637,
+        "evidenceRows": null,
+        "outputRows": 577,
+        "workingSet": 291389440,
+        "peakWorkingSet": 311644160,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 189.1026,
+        "cpuMs": 22.968,
+        "queryCount": 30,
+        "rowsRead": 1030,
+        "evidenceRows": 886,
+        "outputRows": 21,
+        "workingSet": 291405824,
+        "peakWorkingSet": 311644160,
+        "aggregateCount": 2,
+        "originQueryCount": 2
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 2,
+        "elapsedMs": 2051.0846,
+        "cpuMs": 267.879,
+        "queryCount": 30,
+        "rowsRead": 25083,
+        "evidenceRows": 21924,
+        "outputRows": 1005,
+        "workingSet": 312397824,
+        "peakWorkingSet": 313212928,
+        "aggregateCount": 1,
+        "originQueryCount": 2
+      }
+    ]
+  },
+  "originPlans": {
+    "baseline-final-single-room": [],
+    "baseline-final-outside": [],
+    "candidate-final-single-room": [
+      {
+        "sql": "-- Canonical receipt-origin dependencies\n\nSELECT r.\"Id\", r.\"ReceiptId\", r.\"ChangeAmount\", r.\"CropYear\", r.\"GrowerLotId\", r.\"FruitProfileId\", r.\"WarehouseId\", r.\"RoomId\", r.\"AdjustmentAt\", r.\"CreatedAt\"\nFROM \"RoomInventoryAdjustments\" AS r\nWHERE r.\"ReceiptId\" IS NOT NULL AND r.\"ReceiptId\" = ANY (@__receiptIds_0) AND r.\"AdjustmentType\" = 'ReceiptAdd'\nLIMIT @__p_1",
+        "parameters": [
+          {
+            "ParameterName": "@__receiptIds_0",
+            "count": 242
+          },
+          {
+            "ParameterName": "@__p_1",
+            "count": 1
+          }
+        ],
+        "executionMs": 0.516,
+        "cost": 146.54,
+        "jit": null,
+        "nodes": [
+          {
+            "Node Type": "Limit",
+            "Actual Rows": 242.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.504,
+            "Shared Hit Blocks": 141,
+            "Shared Read Blocks": 0
+          },
+          {
+            "Node Type": "Seq Scan",
+            "Relation Name": "RoomInventoryAdjustments",
+            "Actual Rows": 242.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.495,
+            "Shared Hit Blocks": 141,
+            "Shared Read Blocks": 0
+          }
+        ]
+      },
+      {
+        "sql": "-- Canonical receipt-origin dependencies\n\nSELECT r.\"Id\", r.\"ReceiptId\", r.\"ChangeAmount\", r.\"CropYear\", r.\"GrowerLotId\", r.\"FruitProfileId\", r.\"WarehouseId\", r.\"RoomId\", r.\"AdjustmentAt\", r.\"CreatedAt\"\nFROM \"RoomInventoryAdjustments\" AS r\nWHERE r.\"ReceiptId\" IS NOT NULL AND r.\"ReceiptId\" = ANY (@__receiptIds_0) AND r.\"AdjustmentType\" = 'ReceiptAdd'\nLIMIT @__p_1",
+        "parameters": [
+          {
+            "ParameterName": "@__receiptIds_0",
+            "count": 5
+          },
+          {
+            "ParameterName": "@__p_1",
+            "count": 1
+          }
+        ],
+        "executionMs": 0.02,
+        "cost": 14.7,
+        "jit": null,
+        "nodes": [
+          {
+            "Node Type": "Limit",
+            "Actual Rows": 5.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.011,
+            "Shared Hit Blocks": 4,
+            "Shared Read Blocks": 0
+          },
+          {
+            "Node Type": "Index Scan",
+            "Relation Name": "RoomInventoryAdjustments",
+            "Index Name": "IX_RoomInventoryAdjustments_ReceiptId_AdjustmentAt",
+            "Actual Rows": 5.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.011,
+            "Shared Hit Blocks": 4,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    ],
+    "candidate-final-outside": [
+      {
+        "sql": "-- Canonical receipt-origin dependencies\n\nSELECT r.\"Id\", r.\"ReceiptId\", r.\"ChangeAmount\", r.\"CropYear\", r.\"GrowerLotId\", r.\"FruitProfileId\", r.\"WarehouseId\", r.\"RoomId\", r.\"AdjustmentAt\", r.\"CreatedAt\"\nFROM \"RoomInventoryAdjustments\" AS r\nWHERE r.\"ReceiptId\" IS NOT NULL AND r.\"ReceiptId\" = ANY (@__receiptIds_0) AND r.\"AdjustmentType\" = 'ReceiptAdd'\nLIMIT @__p_1",
+        "parameters": [
+          {
+            "ParameterName": "@__receiptIds_0",
+            "count": 6123
+          },
+          {
+            "ParameterName": "@__p_1",
+            "count": 1
+          }
+        ],
+        "executionMs": 1.32,
+        "cost": 161.24,
+        "jit": null,
+        "nodes": [
+          {
+            "Node Type": "Limit",
+            "Actual Rows": 6123.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 1.19,
+            "Shared Hit Blocks": 141,
+            "Shared Read Blocks": 0
+          },
+          {
+            "Node Type": "Seq Scan",
+            "Relation Name": "RoomInventoryAdjustments",
+            "Actual Rows": 6123.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.964,
+            "Shared Hit Blocks": 141,
+            "Shared Read Blocks": 0
+          }
+        ]
+      },
+      {
+        "sql": "-- Canonical receipt-origin dependencies\n\nSELECT r.\"Id\", r.\"ReceiptId\", r.\"ChangeAmount\", r.\"CropYear\", r.\"GrowerLotId\", r.\"FruitProfileId\", r.\"WarehouseId\", r.\"RoomId\", r.\"AdjustmentAt\", r.\"CreatedAt\"\nFROM \"RoomInventoryAdjustments\" AS r\nWHERE r.\"ReceiptId\" IS NOT NULL AND r.\"ReceiptId\" = ANY (@__receiptIds_0) AND r.\"AdjustmentType\" = 'ReceiptAdd'\nLIMIT @__p_1",
+        "parameters": [
+          {
+            "ParameterName": "@__receiptIds_0",
+            "count": 123
+          },
+          {
+            "ParameterName": "@__p_1",
+            "count": 1
+          }
+        ],
+        "executionMs": 0.058,
+        "cost": 139.92,
+        "jit": null,
+        "nodes": [
+          {
+            "Node Type": "Limit",
+            "Actual Rows": 123.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.047,
+            "Shared Hit Blocks": 9,
+            "Shared Read Blocks": 0
+          },
+          {
+            "Node Type": "Bitmap Heap Scan",
+            "Relation Name": "RoomInventoryAdjustments",
+            "Actual Rows": 123.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.043,
+            "Shared Hit Blocks": 9,
+            "Shared Read Blocks": 0
+          },
+          {
+            "Node Type": "Bitmap Index Scan",
+            "Index Name": "IX_RoomInventoryAdjustments_ReceiptId_AdjustmentAt",
+            "Actual Rows": 126.0,
+            "Actual Loops": 1,
+            "Actual Total Time": 0.02,
+            "Shared Hit Blocks": 4,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    ]
+  },
+  "integrity": {
+    "unchanged": true,
+    "tables": 112,
+    "sha256": "1d610cdd3688c354f5d7173e21181f9549f15dd8db22fcbb8b5d29a2ccdf0753"
+  },
+  "outputComparison": {
+    "allFieldsExceptBoundDependencyFingerprintsIdentical": true,
+    "changes": {
+      "sourceKey": 1177,
+      "fingerprint": 1026
+    }
+  },
+  "limitations": [
+    "Fresh separately authorized protected restore must check all 452 positive positions after human review.",
+    "Ledger 1187 and all 56 production origin failures remain outside repair scope.",
+    "Forward/rollback/handback separately authorized only after the read-only gate.",
+    "No merge, deployment or production authorization."
+  ],
+  "runtimeEvidence": {
+    "dotnetInfo": [
+      "",
+      "Host:",
+      "  Version:      9.0.21",
+      "  Architecture: x64",
+      "  Commit:       d280e4fb38",
+      "  RID:          linux-x64",
+      "",
+      ".NET SDKs installed:",
+      "  No SDKs were found.",
+      "",
+      ".NET runtimes installed:",
+      "  Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+      "  Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]",
+      "",
+      "Other architectures found:",
+      "  None",
+      "",
+      "Environment variables:",
+      "  Not set",
+      "",
+      "global.json file:",
+      "  Not found",
+      "",
+      "Learn more:",
+      "  https://aka.ms/dotnet/info",
+      "",
+      "Download .NET:",
+      "  https://aka.ms/dotnet/download"
+    ],
+    "databaseContainerId": "596bf1d073fce8e461ee5d607c0e068bfeebf41396acfb8001c4b356ef802f47",
+    "candidateBinaries": [
+      {
+        "name": "CropQc.Web",
+        "sha256": "3C4B605DD62EDFE435F09666F8886375E4D90A1256348DB81735E53505CFC95B"
+      },
+      {
+        "name": "CropQc.Data",
+        "sha256": "D6B5A5C81BCD793BCD682FE14F6111BA85FD611809B2775893F540C5092BE8B8"
+      },
+      {
+        "name": "CropQc.Shared",
+        "sha256": "54B2982CD7DA82099E9BF18B784579FE4BB7733A29067F63AF0121320C4D9B9B"
+      }
+    ],
+    "postgres": "postgres (PostgreSQL) 18.4 (Debian 18.4-1.pgdg13+1)",
+    "databaseImage": "postgres@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636",
+    "baselineImageId": "sha256:b77fa7cd22791b965368a4b9dc6aec3580f826484ab69b6de9e4324ef86a2f9e"
+  },
+  "cleanup": {
+    "productionAccess": false,
+    "protectedRestorePerformed": false,
+    "volumesAbsent": true,
+    "containerAbsent": true,
+    "deletedAtUtc": "2026-10-16T20:25:59.9923367+00:00",
+    "volumes": [
+      "bded970336ad80356a5f8d0aa87523c59a9150aa94a29e8a871149b22625d059"
+    ],
+    "containerId": "596bf1d073fce8e461ee5d607c0e068bfeebf41396acfb8001c4b356ef802f47"
+  }
+}

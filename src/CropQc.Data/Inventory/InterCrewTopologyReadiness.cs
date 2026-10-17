@@ -37,6 +37,12 @@ public static class InterCrewTopologyReadiness
         {
             var acks = acknowledgments.Where(x => x.InterCrewTransferId == parent.Id).ToArray();
             var canonical = commands.Any(x => x.OperationKey + ":load" == parent.OperationKey);
+            if (canonical && (!TruckReceiptRoutes.AllowsInterCrewDispatch(parent.SourceWarehouse?.Code, parent.DestinationCustodyGroup)
+                || parent.RequiresTruckReceipt && !TruckReceiptRoutes.RequiresReceiptForGroup(parent.SourceWarehouse?.Code, parent.DestinationCustodyGroup)))
+            {
+                issues.Add(new(parent.Id, "Canonical dispatch route or persisted Truck Receipt policy is inconsistent."));
+                continue;
+            }
             // Full-load legacy receive/return uses its existing lifecycle, not the
             // partial receipt compensation lifecycle. Do not reinterpret its history.
             if (acks.Length == 0 && (!canonical || parent.Status != InterCrewTransferStatuses.InTransit))

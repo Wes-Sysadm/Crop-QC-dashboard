@@ -10,6 +10,12 @@
       ],
       "tests": [
         {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Qualified_selection_does_not_certify_origin_and_origin_rejection_has_no_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
           "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
           "member": "Ordinary_receipt_conversion_and_unposted_receiving_use_one_audited_stock_creation",
           "kind": "postgres",
@@ -39,9 +45,17 @@
     {
       "id": "INV-002",
       "code": [
-        "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs"
+        "src/CropQc.Data/Inventory/InventoryCustodyEvidence.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Historical_286_bin_source_dispatches_and_receives_internally_with_exact_custody_and_treatment",
+          "kind": "postgres",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
           "member": "Normal_completion_reopen_match_and_recompletion_preserve_one_destination_population",
@@ -51,6 +65,18 @@
         {
           "type": "CropQc.Api.Tests.BusinessRuleContractTests",
           "member": "INV002_partial_transit_return_conserves_each_container_and_replay",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
+          "member": "Historical_internal_dispatches_race_without_double_spend_and_replay_safely",
           "kind": "postgres",
           "required": true
         }
@@ -101,13 +127,27 @@
       "id": "INV-004",
       "code": [
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
-        "src/CropQc.Shared/Inventory/InventoryCommands.cs"
+        "src/CropQc.Shared/Inventory/InventoryCommands.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryRecordedCustodyReplayTests",
+          "member": "Projection_quantity_or_identity_cannot_override_complete_recorded_custody",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.BusinessRuleContractTests",
           "member": "INV004_shared_projection_excess_cannot_invent_quantity_or_receipt_ancestry",
           "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
           "required": true
         }
       ],
@@ -116,13 +156,104 @@
     {
       "id": "INV-005",
       "code": [
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.cs",
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs"
       ],
       "tests": [
         {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Cross_facility_corrected_origins_match_every_source_scope_without_authorizing_unproven_stock",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Relevant_original_proof_changes_invalidate_selection_but_unrelated_receipts_do_not",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Earliest_revision_missing_and_contradictory_origins_preserve_unknown_or_false_proof",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptOriginScopeTests",
+          "member": "Consistent_snapshot_and_historical_cutoff_survive_cross_facility_dependency_loading",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Broad_history_reuses_aggregate_without_losing_complete_position_proof",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Aggregate_reuse_is_transaction_and_effective_time_bound",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Reused_groups_preserve_provider_normalization_and_combined_row_limit",
+          "kind": "postgres",
+          "required": true
+        },
+        {
           "type": "CropQc.Api.Tests.InventoryAvailabilityTests",
           "member": "Wp7_accounts_for_duplicate_and_consumed_history_without_inventing_receipt_allocation",
           "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scope_retains_original_receipt_revision_when_another_identity_triggers_its_validation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Wide_history_preserves_proof_across_scopes_without_aggregating_other_lots",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scoped_aggregate_retains_room_baseline_and_nullable_identity_semantics",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Connected_run_labels_cannot_resurrect_depleted_inventory_or_merge_a_different_grower",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Multihop_treatment_and_intermediate_reversal_never_treat_later_arrivals",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.HistoricalCustodyScopeTests",
+          "member": "Scope_filter_keeps_aliases_contradictory_segment_links_and_historical_cutoffs",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedCustodyScopeTests",
+          "member": "Modern_peers_keep_complete_proof_across_all_scopes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedCustodyScopeTests",
+          "member": "Mixed_modern_peers_preserve_legacy_dependencies_unknown_ancestry_and_safety_blocks",
+          "kind": "postgres",
           "required": true
         }
       ],
@@ -131,6 +262,7 @@
     {
       "id": "INV-006",
       "code": [
+        "src/CropQc.Data/Inventory/RoomInventoryLedgerQueryService.cs",
         "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",
         "src/CropQc.Shared/Inventory/InventoryAvailabilityResolver.cs",
         "src/CropQc.Shared/Inventory/InventoryCohortEvidence.cs"
@@ -197,9 +329,17 @@
       "id": "TRT-001",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
-        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.InventoryRecordedCustodyReplayTests",
+          "member": "Reversal_between_legacy_hops_is_replayed_without_intermediate_projection_links",
+          "kind": "unit",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.CanonicalReceivingWorkflowTests",
           "member": "New_receipt_after_room_treatment_is_separate_untreated_stock_and_reversal_preserves_both_receipts",
@@ -251,6 +391,12 @@
         {
           "type": "CropQc.Api.Tests.DepletedReceiptCorrectionTests",
           "member": "Additional_origin_after_complete_consumption_preserves_old_treatment_and_movement",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
           "kind": "postgres",
           "required": true
         }
@@ -414,7 +560,9 @@
       "id": "MOV-001",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
-        "src/CropQc.Data/Inventory/InventoryCommandCustody.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
+        "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
       ],
       "tests": [
         {
@@ -450,6 +598,30 @@
         {
           "type": "CropQc.Api.Tests.CanonicalTruckReceiptWorkflowTests",
           "member": "Partial_return_then_exact_receipt_into_depleted_alias_preserves_exclusive_custody",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
+          "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Supported_dispatch_and_cross_company_receipt_are_distinct",
+          "kind": "unit",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Cross_company_dispatch_requires_exact_matched_receipt_and_cannot_use_internal_receive",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
+          "member": "Unsupported_routes_reject_at_the_canonical_writer_without_any_changes",
           "kind": "postgres",
           "required": true
         }
