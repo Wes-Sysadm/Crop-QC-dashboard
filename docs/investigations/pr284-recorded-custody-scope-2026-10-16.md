@@ -125,7 +125,11 @@ retained rather than rerunning an unrelated full suite.
   blanket resolver block instead of event-replay rejection. Its test-only correction
   checks replay and actual command seal enforcement at their existing boundaries;
   its final rerun passed, including explicit five-bin application membership and
-  reversal assertions. No application guard changed to satisfy the test.
+  reversal assertions. Final review also added explicit sealed-destination
+  rejection with a full-table no-write assertion to that same mixed contract;
+  its targeted final rerun passed on a new synthetic-only instance, subsequently
+  deleted. Both source and destination seal checks are executed. No application
+  guard changed to satisfy the test, and the case count remains 249.
 - Existing recorded-custody, receipt-origin, treatment/time/reversal, origin guard,
   room/inter-crew route, cross-company receipt, return/audit, concurrency,
   idempotency, strict readiness/conservation and architecture contracts passed.

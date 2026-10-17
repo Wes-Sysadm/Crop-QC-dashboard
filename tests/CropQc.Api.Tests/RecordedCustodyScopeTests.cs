@@ -187,6 +187,11 @@ public sealed class RecordedCustodyScopeTests
             (await change.Rooms.SingleAsync(r => r.Id == 9013)).IsSealed = true;
             await change.SaveChangesAsync();
         }
+        var sealedBefore = await f.Snapshot();
+        var sealedDestination = await Executor(f).ExecuteAsync(await Command(f, 9002, 9013, 1, "BROAD-01", "u|a:810001"));
+        Assert.Equal(InventoryCommandStatus.Blocked, sealedDestination.Status);
+        Assert.Contains("sealed", sealedDestination.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(sealedBefore, await f.Snapshot());
         await Commit(f, selection with { OperationKey = Guid.NewGuid().ToString("N") });
         at = DateTimeOffset.UtcNow;
         var changed = await loader.LoadAsync(new(null, rooms), at, default);

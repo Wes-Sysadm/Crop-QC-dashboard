@@ -39,7 +39,8 @@
     "Skipped": 0,
     "Runs": [
       "..\\local-test-runtime\\transfer-eligibility\\scope-final.trx",
-      "..\\local-test-runtime\\transfer-eligibility\\scope-mixed-final.trx"
+      "..\\local-test-runtime\\transfer-eligibility\\scope-mixed-final.trx",
+      "..\\local-test-runtime\\transfer-eligibility\\scope-seal-final.trx"
     ],
     "TestOnlyCorrection": "Mixed fixture asserts replay rejection and command seal enforcement at their existing boundaries; persisted writer fence unchanged.",
     "governanceNodeCases": 29,
@@ -4097,6 +4098,19 @@
     "protectedRestore": false,
     "productionAccess": false,
     "cleanupUtc": "2026-10-17T03:10:04.6466210+00:00",
+    "incrementalCloudCost": 0
+  },
+  "additionalSyntheticCleanup": {
+    "containerId": "fdc6881959aaff2a945252feb08d1d7ffd596122a855d2937658ab9955c13f64",
+    "volume": "ab86f8071d6ad7cca842840304cb581abb5b76f984e564dde742a431db82c815",
+    "containerAbsent": true,
+    "volumeAbsent": true,
+    "databaseDeleted": true,
+    "syntheticOnly": true,
+    "network": "none",
+    "publishedPorts": [],
+    "purpose": "Final sealed-destination assertion in existing mixed-history test",
+    "cleanupUtc": "2026-10-17T03:16:49.3088652+00:00",
     "incrementalCloudCost": 0
   }
 }
