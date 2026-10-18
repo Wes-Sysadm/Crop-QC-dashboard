@@ -27,12 +27,19 @@ internal static class CanonicalTreatmentSelections
             var s = group.First();
             if (!byPosition.TryGetValue((s.RoomId, Identity(s).Key), out var r)) return (IReadOnlyList<TreatmentSegmentSelection>)[];
             if (!r.IsOperable) return [new(r.Identity.Key, "", "Unknown", 0, "Needs Review", IsAvailable: false,
-                UnavailableReason: CanonicalInventoryMessages.Blocker(r), CanonicalFingerprint: r.Watermark.Fingerprint)];
-            return (IReadOnlyList<TreatmentSegmentSelection>)MovementSlices(r).Select(slice => new TreatmentSegmentSelection(
+                UnavailableReason: CanonicalInventoryMessages.Blocker(r), CanonicalFingerprint: r.Watermark.Fingerprint,
+                AuthoritativeBins: r.AuthoritativeQuantity)];
+            var selections = MovementSlices(r).Select(slice => new TreatmentSegmentSelection(
                 r.Identity.Key, slice.Signature, slice.State, slice.Quantity,
                 slice.State == "Untreated" ? "Untreated" : "Confirmed treatment",
                 r.ReceiptProvenance.Confidence == InventoryConfidence.Proven && r.ReceiptProvenance.ReceiptIds.Length == 1 ? r.ReceiptProvenance.ReceiptIds[0] : null,
-                null, slice.Confidence == InventoryConfidence.Proven, CanonicalFingerprint: r.Watermark.Fingerprint)).ToArray();
+                null, slice.Confidence == InventoryConfidence.Proven, CanonicalFingerprint: r.Watermark.Fingerprint,
+                AuthoritativeBins: r.AuthoritativeQuantity)).ToList();
+            var unresolved = r.AuthoritativeQuantity - selections.Where(x => x.IsAvailable).Sum(x => x.CurrentBins);
+            if (unresolved > 0) selections.Add(new(r.Identity.Key, "", "Unknown", 0, $"Needs Review ({unresolved} bins)",
+                IsAvailable: false, UnavailableReason: "Treatment allocation for the remaining bins is unresolved. An administrator must review the recorded arrivals, departures and treatment applications.",
+                CanonicalFingerprint: r.Watermark.Fingerprint, AuthoritativeBins: r.AuthoritativeQuantity));
+            return (IReadOnlyList<TreatmentSegmentSelection>)selections;
         });
     }
 }

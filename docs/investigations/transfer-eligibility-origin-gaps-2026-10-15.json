@@ -1,0 +1,1448 @@
+[
+  {
+    "failure": "Ledger 143: receipt 142's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 33,
+      "ids": [
+        "1:394:19"
+      ]
+    },
+    "ledgerId": 143,
+    "receiptId": 142,
+    "quantity": 64,
+    "fullRawPrior": 125,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 142,
+      "quantity": 64,
+      "growerLot": 474,
+      "profile": 19
+    }
+  },
+  {
+    "failure": "Ledger 151: receipt 147's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 64,
+      "ids": [
+        "1:474:19"
+      ]
+    },
+    "ledgerId": 151,
+    "receiptId": 147,
+    "quantity": 52,
+    "fullRawPrior": 64,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 147,
+      "quantity": 43,
+      "growerLot": null,
+      "profile": 19
+    }
+  },
+  {
+    "failure": "Ledger 277: receipt 232's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 28,
+      "ids": [
+        "65:415:17"
+      ]
+    },
+    "ledgerId": 277,
+    "receiptId": 232,
+    "quantity": 2,
+    "fullRawPrior": 0,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 232,
+      "quantity": 2,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 404: receipt 313's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 136,
+      "ids": [
+        "14:574:7"
+      ]
+    },
+    "ledgerId": 404,
+    "receiptId": 313,
+    "quantity": 35,
+    "fullRawPrior": 104,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 313,
+      "quantity": 32,
+      "growerLot": null,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 463: receipt 358's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 214,
+      "ids": [
+        "11:581:2"
+      ]
+    },
+    "ledgerId": 463,
+    "receiptId": 358,
+    "quantity": 40,
+    "fullRawPrior": 96,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 358,
+      "quantity": 36,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 478: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 262,
+      "ids": [
+        "67:453:19"
+      ]
+    },
+    "ledgerId": 478,
+    "receiptId": 219,
+    "quantity": -64,
+    "fullRawPrior": 64,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 219,
+      "quantity": 64,
+      "growerLot": null,
+      "profile": 19
+    }
+  },
+  {
+    "failure": "Ledger 521: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 536,
+      "ids": [
+        "65:495:17"
+      ]
+    },
+    "ledgerId": 521,
+    "receiptId": null,
+    "quantity": -124,
+    "fullRawPrior": 124,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 543: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 153,
+      "ids": [
+        "11:642:2"
+      ]
+    },
+    "ledgerId": 543,
+    "receiptId": 240,
+    "quantity": -20,
+    "fullRawPrior": 20,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 240,
+      "quantity": 20,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 548: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 92,
+      "ids": [
+        "11:513:2"
+      ]
+    },
+    "ledgerId": 548,
+    "receiptId": 325,
+    "quantity": -52,
+    "fullRawPrior": 52,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 325,
+      "quantity": 40,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 566: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 103,
+      "ids": [
+        "11:511:2"
+      ]
+    },
+    "ledgerId": 566,
+    "receiptId": 335,
+    "quantity": -12,
+    "fullRawPrior": 12,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 335,
+      "quantity": 40,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 673: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 165,
+      "ids": [
+        "11:559:2"
+      ]
+    },
+    "ledgerId": 673,
+    "receiptId": 373,
+    "quantity": -115,
+    "fullRawPrior": 115,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 373,
+      "quantity": 52,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 681: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 241,
+      "ids": [
+        "11:579:2"
+      ]
+    },
+    "ledgerId": 681,
+    "receiptId": null,
+    "quantity": -158,
+    "fullRawPrior": 158,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 687: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 174,
+      "ids": [
+        "11:583:2"
+      ]
+    },
+    "ledgerId": 687,
+    "receiptId": 256,
+    "quantity": -95,
+    "fullRawPrior": 95,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 256,
+      "quantity": 30,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 689: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 1153,
+      "ids": [
+        "12:399:7"
+      ]
+    },
+    "ledgerId": 689,
+    "receiptId": 366,
+    "quantity": -330,
+    "fullRawPrior": 807,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 366,
+      "quantity": 40,
+      "growerLot": null,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 711: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 335,
+      "ids": [
+        "65:478:17"
+      ]
+    },
+    "ledgerId": 711,
+    "receiptId": 263,
+    "quantity": -159,
+    "fullRawPrior": 159,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 263,
+      "quantity": 45,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 737: receipt 481's original revision snapshot is missing or malformed.",
+    "classification": "Confirmed valid JSON null rejected by nonnullable original-snapshot reader; normalization proof still required",
+    "affected": {
+      "positions": 1,
+      "quantity": 350,
+      "ids": [
+        "15:399:7"
+      ]
+    },
+    "ledgerId": 737,
+    "receiptId": 481,
+    "quantity": 52,
+    "fullRawPrior": 208,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 481,
+      "quantity": 48,
+      "growerLot": null,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 747: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 44,
+      "ids": [
+        "67:470:19"
+      ]
+    },
+    "ledgerId": 747,
+    "receiptId": null,
+    "quantity": -28,
+    "fullRawPrior": 64,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 815: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 86,
+      "ids": [
+        "65:476:17"
+      ]
+    },
+    "ledgerId": 815,
+    "receiptId": 419,
+    "quantity": -86,
+    "fullRawPrior": 86,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 419,
+      "quantity": 56,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 868: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 1063,
+      "ids": [
+        "14:399:7"
+      ]
+    },
+    "ledgerId": 868,
+    "receiptId": 474,
+    "quantity": -256,
+    "fullRawPrior": 256,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 474,
+      "quantity": 52,
+      "growerLot": null,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 870: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 102,
+      "ids": [
+        "14:505:2"
+      ]
+    },
+    "ledgerId": 870,
+    "receiptId": 522,
+    "quantity": -60,
+    "fullRawPrior": 60,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 522,
+      "quantity": 32,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 882: custody parent receipt-change:716688d2-7231-4ec2-ad53-f9a2e570df38 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 280,
+      "ids": [
+        "57:57:7"
+      ]
+    },
+    "ledgerId": 882,
+    "receiptId": 561,
+    "quantity": 35,
+    "fullRawPrior": 88,
+    "receiptRevision": "716688d2-7231-4ec2-ad53-f9a2e570df38",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 881,
+        "growerLot": 57,
+        "profile": 19,
+        "quantity": -35
+      },
+      {
+        "id": 882,
+        "growerLot": 57,
+        "profile": 7,
+        "quantity": 35
+      }
+    ],
+    "currentReceipt": {
+      "id": 561,
+      "quantity": 35,
+      "growerLot": 57,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 952: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 106,
+      "ids": [
+        "65:448:17"
+      ]
+    },
+    "ledgerId": 952,
+    "receiptId": 493,
+    "quantity": -106,
+    "fullRawPrior": 196,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 493,
+      "quantity": 64,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 981: receipt 610 differs from its origin without a recorded revision.",
+    "classification": "Specific event unresolved; not certified as corruption",
+    "affected": {
+      "positions": 2,
+      "quantity": 219,
+      "ids": [
+        "17:648:2",
+        "18:648:2"
+      ]
+    },
+    "ledgerId": 981,
+    "receiptId": 610,
+    "quantity": 36,
+    "fullRawPrior": 0,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 610,
+      "quantity": 37,
+      "growerLot": 648,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 987: receipt 616 differs from its origin without a recorded revision.",
+    "classification": "Specific event unresolved; not certified as corruption",
+    "affected": {
+      "positions": 3,
+      "quantity": 370,
+      "ids": [
+        "15:585:2",
+        "17:585:2",
+        "18:585:2"
+      ]
+    },
+    "ledgerId": 987,
+    "receiptId": 616,
+    "quantity": 12,
+    "fullRawPrior": 84,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 616,
+      "quantity": 16,
+      "growerLot": 585,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 1053: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 387,
+      "ids": [
+        "17:642:2"
+      ]
+    },
+    "ledgerId": 1053,
+    "receiptId": 536,
+    "quantity": -52,
+    "fullRawPrior": 96,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 536,
+      "quantity": 44,
+      "growerLot": null,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 1084: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 306,
+      "ids": [
+        "68:502:17"
+      ]
+    },
+    "ledgerId": 1084,
+    "receiptId": 500,
+    "quantity": -110,
+    "fullRawPrior": 110,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 500,
+      "quantity": 64,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 1094: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 894,
+      "ids": [
+        "68:448:17"
+      ]
+    },
+    "ledgerId": 1094,
+    "receiptId": 534,
+    "quantity": -256,
+    "fullRawPrior": 256,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 534,
+      "quantity": 68,
+      "growerLot": null,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 1120: custody parent receipt-change:a90eeabd-fdc6-4310-b8e6-1041fb1fb6ce credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 69,
+      "ids": [
+        "57:184:7"
+      ]
+    },
+    "ledgerId": 1120,
+    "receiptId": 656,
+    "quantity": 27,
+    "fullRawPrior": 0,
+    "receiptRevision": "a90eeabd-fdc6-4310-b8e6-1041fb1fb6ce",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1119,
+        "growerLot": 448,
+        "profile": 7,
+        "quantity": -27
+      },
+      {
+        "id": 1120,
+        "growerLot": 184,
+        "profile": 7,
+        "quantity": 27
+      }
+    ],
+    "currentReceipt": {
+      "id": 656,
+      "quantity": 27,
+      "growerLot": 184,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 1187: custody parent receipt-change:45678062-5b38-470b-ab7e-58f1db8e0415 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 501,
+      "ids": [
+        "4:448:17"
+      ]
+    },
+    "ledgerId": 1187,
+    "receiptId": 720,
+    "quantity": 56,
+    "fullRawPrior": 128,
+    "receiptRevision": "45678062-5b38-470b-ab7e-58f1db8e0415",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1186,
+        "growerLot": 448,
+        "profile": 7,
+        "quantity": -56
+      },
+      {
+        "id": 1187,
+        "growerLot": 448,
+        "profile": 17,
+        "quantity": 56
+      }
+    ],
+    "currentReceipt": {
+      "id": 720,
+      "quantity": 56,
+      "growerLot": 448,
+      "profile": 17
+    }
+  },
+  {
+    "failure": "Ledger 1254: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Specific event unresolved; not certified as corruption",
+    "affected": {
+      "positions": 1,
+      "quantity": 113,
+      "ids": [
+        "17:505:2"
+      ]
+    },
+    "ledgerId": 1254,
+    "receiptId": 605,
+    "quantity": -45,
+    "fullRawPrior": 17,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 605,
+      "quantity": 25,
+      "growerLot": 505,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 1282: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Specific event unresolved; not certified as corruption",
+    "affected": {
+      "positions": 1,
+      "quantity": 136,
+      "ids": [
+        "15:583:2"
+      ]
+    },
+    "ledgerId": 1282,
+    "receiptId": 670,
+    "quantity": -1,
+    "fullRawPrior": 0,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 670,
+      "quantity": 40,
+      "growerLot": 583,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 1284: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Specific event unresolved; not certified as corruption",
+    "affected": {
+      "positions": 1,
+      "quantity": 188,
+      "ids": [
+        "17:583:2"
+      ]
+    },
+    "ledgerId": 1284,
+    "receiptId": 670,
+    "quantity": -1,
+    "fullRawPrior": -1,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": {
+      "id": 670,
+      "quantity": 40,
+      "growerLot": 583,
+      "profile": 2
+    }
+  },
+  {
+    "failure": "Ledger 1306: custody parent receipt-change:f9a8726d-5e4d-4903-8f6f-d4c80d6045b8 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 180,
+      "ids": [
+        "12:574:7"
+      ]
+    },
+    "ledgerId": 1306,
+    "receiptId": 679,
+    "quantity": 52,
+    "fullRawPrior": 128,
+    "receiptRevision": "f9a8726d-5e4d-4903-8f6f-d4c80d6045b8",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1305,
+        "growerLot": 574,
+        "profile": 2,
+        "quantity": -52
+      },
+      {
+        "id": 1306,
+        "growerLot": 574,
+        "profile": 7,
+        "quantity": 52
+      }
+    ],
+    "currentReceipt": {
+      "id": 679,
+      "quantity": 52,
+      "growerLot": 574,
+      "profile": 7
+    }
+  },
+  {
+    "failure": "Ledger 1329: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 5,
+      "ids": [
+        "68:445:17"
+      ]
+    },
+    "ledgerId": 1329,
+    "receiptId": null,
+    "quantity": -5,
+    "fullRawPrior": 5,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 1331: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 15,
+      "ids": [
+        "68:476:17"
+      ]
+    },
+    "ledgerId": 1331,
+    "receiptId": null,
+    "quantity": -15,
+    "fullRawPrior": 15,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 1333: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 16,
+      "ids": [
+        "68:478:17"
+      ]
+    },
+    "ledgerId": 1333,
+    "receiptId": null,
+    "quantity": -16,
+    "fullRawPrior": 16,
+    "receiptRevision": null,
+    "identityCorrection": null,
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 1506: custody parent receipt-change:ad44cd1f-d7b1-4914-abef-57b119240a46 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 187,
+      "ids": [
+        "16:591:10"
+      ]
+    },
+    "ledgerId": 1506,
+    "receiptId": 888,
+    "quantity": 52,
+    "fullRawPrior": 0,
+    "receiptRevision": "ad44cd1f-d7b1-4914-abef-57b119240a46",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1505,
+        "growerLot": 591,
+        "profile": 7,
+        "quantity": -52
+      },
+      {
+        "id": 1506,
+        "growerLot": 591,
+        "profile": 10,
+        "quantity": 52
+      }
+    ],
+    "currentReceipt": {
+      "id": 888,
+      "quantity": 52,
+      "growerLot": 591,
+      "profile": 10
+    }
+  },
+  {
+    "failure": "Ledger 1633: custody parent receipt-change:29a0d782-d1e3-450e-8544-156037d4f105 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "58:141:21"
+      ]
+    },
+    "ledgerId": 1633,
+    "receiptId": 971,
+    "quantity": 40,
+    "fullRawPrior": 0,
+    "receiptRevision": "29a0d782-d1e3-450e-8544-156037d4f105",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1632,
+        "growerLot": 141,
+        "profile": 19,
+        "quantity": -40
+      },
+      {
+        "id": 1633,
+        "growerLot": 141,
+        "profile": 21,
+        "quantity": 40
+      }
+    ],
+    "currentReceipt": {
+      "id": 971,
+      "quantity": 40,
+      "growerLot": 141,
+      "profile": 26
+    }
+  },
+  {
+    "failure": "Ledger 1648: custody parent receipt-change:4098ecf8-2f7c-48ef-b6ac-2c6d1a9f8cfd credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 14,
+      "ids": [
+        "59:433:29"
+      ]
+    },
+    "ledgerId": 1648,
+    "receiptId": 974,
+    "quantity": 14,
+    "fullRawPrior": 0,
+    "receiptRevision": "4098ecf8-2f7c-48ef-b6ac-2c6d1a9f8cfd",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1647,
+        "growerLot": 433,
+        "profile": 18,
+        "quantity": -14
+      },
+      {
+        "id": 1648,
+        "growerLot": 433,
+        "profile": 29,
+        "quantity": 14
+      }
+    ],
+    "currentReceipt": {
+      "id": 974,
+      "quantity": 14,
+      "growerLot": 433,
+      "profile": 29
+    }
+  },
+  {
+    "failure": "Ledger 1710: custody parent receipt-change:9b4b4d0f-5c4e-4090-833b-987aad2ac0ae credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 537,
+      "ids": [
+        "58:14:21"
+      ]
+    },
+    "ledgerId": 1710,
+    "receiptId": 994,
+    "quantity": 64,
+    "fullRawPrior": 133,
+    "receiptRevision": "9b4b4d0f-5c4e-4090-833b-987aad2ac0ae",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1709,
+        "growerLot": 14,
+        "profile": 19,
+        "quantity": -64
+      },
+      {
+        "id": 1710,
+        "growerLot": 14,
+        "profile": 21,
+        "quantity": 64
+      }
+    ],
+    "currentReceipt": {
+      "id": 994,
+      "quantity": 64,
+      "growerLot": 14,
+      "profile": 21
+    }
+  },
+  {
+    "failure": "Ledger 1884: custody parent receipt-change:4c793d5a-4345-453f-baf8-50e52f9ec8ca credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 133,
+      "ids": [
+        "58:486:21"
+      ]
+    },
+    "ledgerId": 1884,
+    "receiptId": 1074,
+    "quantity": 64,
+    "fullRawPrior": 0,
+    "receiptRevision": "4c793d5a-4345-453f-baf8-50e52f9ec8ca",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1883,
+        "growerLot": 486,
+        "profile": 26,
+        "quantity": -64
+      },
+      {
+        "id": 1884,
+        "growerLot": 486,
+        "profile": 21,
+        "quantity": 64
+      }
+    ],
+    "currentReceipt": {
+      "id": 1074,
+      "quantity": 64,
+      "growerLot": 486,
+      "profile": 21
+    }
+  },
+  {
+    "failure": "Ledger 1908: custody parent receipt-change:b73ee2c8-6689-40b4-80d6-7fbfb56e7bb0 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "62:141:26"
+      ]
+    },
+    "ledgerId": 1908,
+    "receiptId": 971,
+    "quantity": 40,
+    "fullRawPrior": 0,
+    "receiptRevision": "b73ee2c8-6689-40b4-80d6-7fbfb56e7bb0",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 1907,
+        "growerLot": 141,
+        "profile": 21,
+        "quantity": -40
+      },
+      {
+        "id": 1908,
+        "growerLot": 141,
+        "profile": 26,
+        "quantity": 40
+      }
+    ],
+    "currentReceipt": {
+      "id": 971,
+      "quantity": 40,
+      "growerLot": 141,
+      "profile": 26
+    }
+  },
+  {
+    "failure": "Ledger 2081: custody parent receipt-change:67901fe5-2467-48ec-8beb-3c3272f0e227 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 71,
+      "ids": [
+        "59:478:29"
+      ]
+    },
+    "ledgerId": 2081,
+    "receiptId": 1213,
+    "quantity": 44,
+    "fullRawPrior": 0,
+    "receiptRevision": "67901fe5-2467-48ec-8beb-3c3272f0e227",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2080,
+        "growerLot": 478,
+        "profile": 18,
+        "quantity": -44
+      },
+      {
+        "id": 2081,
+        "growerLot": 478,
+        "profile": 29,
+        "quantity": 44
+      }
+    ],
+    "currentReceipt": {
+      "id": 1213,
+      "quantity": 44,
+      "growerLot": 478,
+      "profile": 29
+    }
+  },
+  {
+    "failure": "Ledger 2083: custody parent receipt-change:362183af-d6f9-44a6-ac2b-4c3397e06a4d credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 63,
+      "ids": [
+        "59:476:29"
+      ]
+    },
+    "ledgerId": 2083,
+    "receiptId": 1214,
+    "quantity": 20,
+    "fullRawPrior": 0,
+    "receiptRevision": "362183af-d6f9-44a6-ac2b-4c3397e06a4d",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2082,
+        "growerLot": 476,
+        "profile": 18,
+        "quantity": -20
+      },
+      {
+        "id": 2083,
+        "growerLot": 476,
+        "profile": 29,
+        "quantity": 20
+      }
+    ],
+    "currentReceipt": {
+      "id": 1214,
+      "quantity": 20,
+      "growerLot": 476,
+      "profile": 29
+    }
+  },
+  {
+    "failure": "Ledger 2214: custody parent receipt-change:0a94d451-b4f3-4097-9907-de3697b8f1f9 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "62:538:26"
+      ]
+    },
+    "ledgerId": 2214,
+    "receiptId": 1229,
+    "quantity": 40,
+    "fullRawPrior": 0,
+    "receiptRevision": "0a94d451-b4f3-4097-9907-de3697b8f1f9",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2213,
+        "growerLot": 538,
+        "profile": 18,
+        "quantity": -40
+      },
+      {
+        "id": 2214,
+        "growerLot": 538,
+        "profile": 26,
+        "quantity": 40
+      }
+    ],
+    "currentReceipt": {
+      "id": 1229,
+      "quantity": 40,
+      "growerLot": 538,
+      "profile": 26
+    }
+  },
+  {
+    "failure": "Ledger 2216: custody parent receipt-change:58567761-9f34-4bee-b5ca-8cc00ce8c387 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 64,
+      "ids": [
+        "62:14:21"
+      ]
+    },
+    "ledgerId": 2216,
+    "receiptId": 899,
+    "quantity": 64,
+    "fullRawPrior": 0,
+    "receiptRevision": "58567761-9f34-4bee-b5ca-8cc00ce8c387",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2215,
+        "growerLot": 14,
+        "profile": 18,
+        "quantity": -64
+      },
+      {
+        "id": 2216,
+        "growerLot": 14,
+        "profile": 21,
+        "quantity": 64
+      }
+    ],
+    "currentReceipt": {
+      "id": 899,
+      "quantity": 64,
+      "growerLot": 14,
+      "profile": 21
+    }
+  },
+  {
+    "failure": "Ledger 2221: custody parent receipt-change:a9f1f295-b3f5-408b-b449-5f9e1d919879 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 50,
+      "ids": [
+        "62:477:21"
+      ]
+    },
+    "ledgerId": 2221,
+    "receiptId": 915,
+    "quantity": 50,
+    "fullRawPrior": 0,
+    "receiptRevision": "a9f1f295-b3f5-408b-b449-5f9e1d919879",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2220,
+        "growerLot": 477,
+        "profile": 18,
+        "quantity": -50
+      },
+      {
+        "id": 2221,
+        "growerLot": 477,
+        "profile": 21,
+        "quantity": 50
+      }
+    ],
+    "currentReceipt": {
+      "id": 915,
+      "quantity": 50,
+      "growerLot": 477,
+      "profile": 21
+    }
+  },
+  {
+    "failure": "Ledger 2225: custody parent receipt-change:6e8c8162-a4d3-4d6a-b03e-54ec72b49e21 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 14,
+      "ids": [
+        "62:480:21"
+      ]
+    },
+    "ledgerId": 2225,
+    "receiptId": 917,
+    "quantity": 14,
+    "fullRawPrior": 0,
+    "receiptRevision": "6e8c8162-a4d3-4d6a-b03e-54ec72b49e21",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2224,
+        "growerLot": 480,
+        "profile": 18,
+        "quantity": -14
+      },
+      {
+        "id": 2225,
+        "growerLot": 480,
+        "profile": 21,
+        "quantity": 14
+      }
+    ],
+    "currentReceipt": {
+      "id": 917,
+      "quantity": 14,
+      "growerLot": 480,
+      "profile": 21
+    }
+  },
+  {
+    "failure": "Ledger 2296: custody parent receipt-change:6fa8836d-fd0d-4526-ae57-403c8bf21d83 credits more inventory than its recorded debits.",
+    "classification": "Balanced correction parent has different raw identities; guarded correction lineage must be validated before changing admission",
+    "affected": {
+      "positions": 1,
+      "quantity": 5,
+      "ids": [
+        "61:502:29"
+      ]
+    },
+    "ledgerId": 2296,
+    "receiptId": 1075,
+    "quantity": 5,
+    "fullRawPrior": 0,
+    "receiptRevision": "6fa8836d-fd0d-4526-ae57-403c8bf21d83",
+    "identityCorrection": null,
+    "siblings": [
+      {
+        "id": 2295,
+        "growerLot": 502,
+        "profile": 18,
+        "quantity": -5
+      },
+      {
+        "id": 2296,
+        "growerLot": 502,
+        "profile": 29,
+        "quantity": 5
+      }
+    ],
+    "currentReceipt": {
+      "id": 1075,
+      "quantity": 5,
+      "growerLot": 502,
+      "profile": 29
+    }
+  },
+  {
+    "failure": "Ledger 2671: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 38,
+      "ids": [
+        "4:470:19"
+      ]
+    },
+    "ledgerId": 2671,
+    "receiptId": null,
+    "quantity": -97,
+    "fullRawPrior": 97,
+    "receiptRevision": null,
+    "identityCorrection": "78fe36ef-f0b5-4358-8f43-e5fffbfeb4fe",
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 2726: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 16,
+      "ids": [
+        "4:538:19"
+      ]
+    },
+    "ledgerId": 2726,
+    "receiptId": null,
+    "quantity": -16,
+    "fullRawPrior": 16,
+    "receiptRevision": null,
+    "identityCorrection": "b13f9132-68e3-42f2-b902-dc38f0d5f83a",
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 2728: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 3,
+      "ids": [
+        "4:549:19"
+      ]
+    },
+    "ledgerId": 2728,
+    "receiptId": null,
+    "quantity": -3,
+    "fullRawPrior": 3,
+    "receiptRevision": null,
+    "identityCorrection": "68966725-d674-4657-8d37-9d095db2fe6d",
+    "siblings": null,
+    "currentReceipt": null
+  },
+  {
+    "failure": "Ledger 2730: withdrawal exceeds custody established by earlier committed events.",
+    "classification": "Confirmed incomplete scoped origin closure: full recorded same-position custody funds the debit; unrelated origins still need validation",
+    "affected": {
+      "positions": 1,
+      "quantity": 3,
+      "ids": [
+        "4:550:24"
+      ]
+    },
+    "ledgerId": 2730,
+    "receiptId": null,
+    "quantity": -3,
+    "fullRawPrior": 3,
+    "receiptRevision": null,
+    "identityCorrection": "aa19c419-02c8-44c9-87c0-c62f2e963535",
+    "siblings": null,
+    "currentReceipt": null
+  }
+]

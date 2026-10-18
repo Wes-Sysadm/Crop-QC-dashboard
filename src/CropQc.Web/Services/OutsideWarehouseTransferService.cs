@@ -437,7 +437,8 @@ public sealed partial class OutsideWarehouseTransferService(
         var canonical = dbContext.CanonicalInventoryEnabled ? await CanonicalTreatmentSelections.LoadAsync(dbContext, snapshots, cancellationToken) : null;
         foreach (var snapshot in snapshots)
         {
-            var selections = (canonical != null ? canonical[RoomTreatmentService.SelectionLookupKey(snapshot)] : await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken)).Where(x => x.CurrentBins > 0).ToList();
+            var selections = (canonical != null ? canonical[RoomTreatmentService.SelectionLookupKey(snapshot)] : await roomTreatments.GetSelectionsAsync(snapshot, cancellationToken))
+                .Where(x => x.CurrentBins > 0 || !x.IsAvailable && x.AuthoritativeBins > 0).ToList();
             foreach (var selectionGroup in selections.GroupBy(x => x.TreatmentSignature, StringComparer.Ordinal))
             {
                 var grouped = selectionGroup.OrderBy(x => x.ReceiptId ?? long.MaxValue).ThenBy(x => x.SegmentId ?? long.MaxValue).ToList();
@@ -476,7 +477,7 @@ public sealed partial class OutsideWarehouseTransferService(
                     sealedRoomIds.Contains(snapshot.RoomId),
                     segmentId,
                     grouped.All(x => x.IsAvailable),
-                    grouped.FirstOrDefault(x => !x.IsAvailable)?.UnavailableReason));
+                    grouped.FirstOrDefault(x => !x.IsAvailable)?.UnavailableReason, selection.AuthoritativeBins));
             }
         }
         return result.OrderBy(x => x.Facility).ThenBy(x => x.Room).ThenBy(x => x.GrowerNumber).ThenBy(x => x.VarietyName).ThenBy(x => x.TreatmentSummary).ToList();

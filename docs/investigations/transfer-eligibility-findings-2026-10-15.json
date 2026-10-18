@@ -1,0 +1,939 @@
+{
+  "EBS": {
+    "authoritative": 33298,
+    "before_resolver_available": 30430,
+    "after_resolver_available": 30794,
+    "before_selectable": 30430,
+    "after_selectable": 30794,
+    "source_guard_upper_bound": 26864,
+    "positions": 141,
+    "rooms": 25,
+    "grower_lots": 68,
+    "profiles": 14,
+    "hidden_before": 10,
+    "hidden_after": 0,
+    "origin_failures": 23
+  },
+  "DH": {
+    "authoritative": 16930,
+    "before_resolver_available": 16274,
+    "after_resolver_available": 16274,
+    "before_selectable": 977,
+    "after_selectable": 977,
+    "source_guard_upper_bound": 977,
+    "positions": 127,
+    "rooms": 21,
+    "grower_lots": 55,
+    "profiles": 14,
+    "hidden_before": 2,
+    "hidden_after": 0,
+    "origin_failures": 0
+  },
+  "McDougall": {
+    "authoritative": 21505,
+    "before_resolver_available": 19055,
+    "after_resolver_available": 20619,
+    "before_selectable": 11222,
+    "after_selectable": 12037,
+    "source_guard_upper_bound": 11518,
+    "positions": 123,
+    "rooms": 15,
+    "grower_lots": 50,
+    "profiles": 15,
+    "hidden_before": 8,
+    "hidden_after": 0,
+    "origin_failures": 26
+  },
+  "WP": {
+    "authoritative": 6036,
+    "before_resolver_available": 6036,
+    "after_resolver_available": 6036,
+    "before_selectable": 6036,
+    "after_selectable": 6036,
+    "source_guard_upper_bound": 5378,
+    "positions": 61,
+    "rooms": 5,
+    "grower_lots": 40,
+    "profiles": 19,
+    "hidden_before": 0,
+    "hidden_after": 0,
+    "origin_failures": 7
+  },
+  "improvements": [
+    {
+      "facility": "EBS",
+      "room": "Evans-01",
+      "room_id": 11,
+      "lot": "1565",
+      "profile_id": 2,
+      "variety": "GALA",
+      "authoritative": 140,
+      "before_resolver_available": 0,
+      "after_resolver_available": 140,
+      "source_guard_upper_bound": 140
+    },
+    {
+      "facility": "EBS",
+      "room": "Evans-01",
+      "room_id": 11,
+      "lot": "9380",
+      "profile_id": 2,
+      "variety": "GALA",
+      "authoritative": 147,
+      "before_resolver_available": 0,
+      "after_resolver_available": 147,
+      "source_guard_upper_bound": 147
+    },
+    {
+      "facility": "EBS",
+      "room": "Evans-5",
+      "room_id": 15,
+      "lot": "9342",
+      "profile_id": 2,
+      "variety": "GALA",
+      "authoritative": 77,
+      "before_resolver_available": 0,
+      "after_resolver_available": 77,
+      "source_guard_upper_bound": 77
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-05",
+      "room_id": 57,
+      "lot": "2710",
+      "profile_id": 7,
+      "variety": "ORGA",
+      "authoritative": 323,
+      "before_resolver_available": 0,
+      "after_resolver_available": 323,
+      "source_guard_upper_bound": 0
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-11",
+      "room_id": 63,
+      "lot": "2710",
+      "profile_id": 7,
+      "variety": "ORGA",
+      "authoritative": 426,
+      "before_resolver_available": 0,
+      "after_resolver_available": 426,
+      "source_guard_upper_bound": 0
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-15",
+      "room_id": 67,
+      "lot": "1110",
+      "profile_id": 19,
+      "variety": "ORBA",
+      "authoritative": 286,
+      "before_resolver_available": 0,
+      "after_resolver_available": 286,
+      "source_guard_upper_bound": 286
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-15",
+      "room_id": 67,
+      "lot": "1290",
+      "profile_id": 19,
+      "variety": "ORBA",
+      "authoritative": 5,
+      "before_resolver_available": 0,
+      "after_resolver_available": 5,
+      "source_guard_upper_bound": 5
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-15",
+      "room_id": 67,
+      "lot": "2825",
+      "profile_id": 19,
+      "variety": "ORBA",
+      "authoritative": 524,
+      "before_resolver_available": 0,
+      "after_resolver_available": 524,
+      "source_guard_upper_bound": 524
+    }
+  ],
+  "primary_blocks": {
+    "MixedTreatmentAmbiguity": {
+      "positions": 1,
+      "ledger_quantity": 275,
+      "remaining": 275
+    },
+    "Origin/custody guard": {
+      "positions": 38,
+      "ledger_quantity": 6903,
+      "remaining": 6903
+    },
+    "Proven source": {
+      "positions": 232,
+      "ledger_quantity": 44737,
+      "remaining": 0
+    },
+    "Sealed source": {
+      "positions": 179,
+      "ledger_quantity": 25421,
+      "remaining": 25421
+    },
+    "UnknownTreatment": {
+      "positions": 2,
+      "ledger_quantity": 433,
+      "remaining": 433
+    }
+  },
+  "origin_errors": {
+    "Ledger 1053: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 387,
+      "ids": [
+        "17:642:2"
+      ]
+    },
+    "Ledger 1084: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 306,
+      "ids": [
+        "68:502:17"
+      ]
+    },
+    "Ledger 1094: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 894,
+      "ids": [
+        "68:448:17"
+      ]
+    },
+    "Ledger 1120: custody parent receipt-change:a90eeabd-fdc6-4310-b8e6-1041fb1fb6ce credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 69,
+      "ids": [
+        "57:184:7"
+      ]
+    },
+    "Ledger 1187: custody parent receipt-change:45678062-5b38-470b-ab7e-58f1db8e0415 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 501,
+      "ids": [
+        "4:448:17"
+      ]
+    },
+    "Ledger 1254: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 113,
+      "ids": [
+        "17:505:2"
+      ]
+    },
+    "Ledger 1282: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 136,
+      "ids": [
+        "15:583:2"
+      ]
+    },
+    "Ledger 1284: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 188,
+      "ids": [
+        "17:583:2"
+      ]
+    },
+    "Ledger 1306: custody parent receipt-change:f9a8726d-5e4d-4903-8f6f-d4c80d6045b8 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 180,
+      "ids": [
+        "12:574:7"
+      ]
+    },
+    "Ledger 1329: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 5,
+      "ids": [
+        "68:445:17"
+      ]
+    },
+    "Ledger 1331: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 15,
+      "ids": [
+        "68:476:17"
+      ]
+    },
+    "Ledger 1333: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 16,
+      "ids": [
+        "68:478:17"
+      ]
+    },
+    "Ledger 143: receipt 142's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 33,
+      "ids": [
+        "1:394:19"
+      ]
+    },
+    "Ledger 1506: custody parent receipt-change:ad44cd1f-d7b1-4914-abef-57b119240a46 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 187,
+      "ids": [
+        "16:591:10"
+      ]
+    },
+    "Ledger 151: receipt 147's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 64,
+      "ids": [
+        "1:474:19"
+      ]
+    },
+    "Ledger 1633: custody parent receipt-change:29a0d782-d1e3-450e-8544-156037d4f105 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "58:141:21"
+      ]
+    },
+    "Ledger 1648: custody parent receipt-change:4098ecf8-2f7c-48ef-b6ac-2c6d1a9f8cfd credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 14,
+      "ids": [
+        "59:433:29"
+      ]
+    },
+    "Ledger 1710: custody parent receipt-change:9b4b4d0f-5c4e-4090-833b-987aad2ac0ae credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 537,
+      "ids": [
+        "58:14:21"
+      ]
+    },
+    "Ledger 1884: custody parent receipt-change:4c793d5a-4345-453f-baf8-50e52f9ec8ca credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 133,
+      "ids": [
+        "58:486:21"
+      ]
+    },
+    "Ledger 1908: custody parent receipt-change:b73ee2c8-6689-40b4-80d6-7fbfb56e7bb0 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "62:141:26"
+      ]
+    },
+    "Ledger 2081: custody parent receipt-change:67901fe5-2467-48ec-8beb-3c3272f0e227 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 71,
+      "ids": [
+        "59:478:29"
+      ]
+    },
+    "Ledger 2083: custody parent receipt-change:362183af-d6f9-44a6-ac2b-4c3397e06a4d credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 63,
+      "ids": [
+        "59:476:29"
+      ]
+    },
+    "Ledger 2214: custody parent receipt-change:0a94d451-b4f3-4097-9907-de3697b8f1f9 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 40,
+      "ids": [
+        "62:538:26"
+      ]
+    },
+    "Ledger 2216: custody parent receipt-change:58567761-9f34-4bee-b5ca-8cc00ce8c387 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 64,
+      "ids": [
+        "62:14:21"
+      ]
+    },
+    "Ledger 2221: custody parent receipt-change:a9f1f295-b3f5-408b-b449-5f9e1d919879 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 50,
+      "ids": [
+        "62:477:21"
+      ]
+    },
+    "Ledger 2225: custody parent receipt-change:6e8c8162-a4d3-4d6a-b03e-54ec72b49e21 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 14,
+      "ids": [
+        "62:480:21"
+      ]
+    },
+    "Ledger 2296: custody parent receipt-change:6fa8836d-fd0d-4526-ae57-403c8bf21d83 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 5,
+      "ids": [
+        "61:502:29"
+      ]
+    },
+    "Ledger 2671: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 38,
+      "ids": [
+        "4:470:19"
+      ]
+    },
+    "Ledger 2726: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 16,
+      "ids": [
+        "4:538:19"
+      ]
+    },
+    "Ledger 2728: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 3,
+      "ids": [
+        "4:549:19"
+      ]
+    },
+    "Ledger 2730: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 3,
+      "ids": [
+        "4:550:24"
+      ]
+    },
+    "Ledger 277: receipt 232's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 28,
+      "ids": [
+        "65:415:17"
+      ]
+    },
+    "Ledger 404: receipt 313's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 136,
+      "ids": [
+        "14:574:7"
+      ]
+    },
+    "Ledger 463: receipt 358's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 214,
+      "ids": [
+        "11:581:2"
+      ]
+    },
+    "Ledger 478: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 262,
+      "ids": [
+        "67:453:19"
+      ]
+    },
+    "Ledger 521: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 536,
+      "ids": [
+        "65:495:17"
+      ]
+    },
+    "Ledger 543: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 153,
+      "ids": [
+        "11:642:2"
+      ]
+    },
+    "Ledger 548: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 92,
+      "ids": [
+        "11:513:2"
+      ]
+    },
+    "Ledger 566: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 103,
+      "ids": [
+        "11:511:2"
+      ]
+    },
+    "Ledger 673: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 165,
+      "ids": [
+        "11:559:2"
+      ]
+    },
+    "Ledger 681: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 241,
+      "ids": [
+        "11:579:2"
+      ]
+    },
+    "Ledger 687: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 174,
+      "ids": [
+        "11:583:2"
+      ]
+    },
+    "Ledger 689: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 1153,
+      "ids": [
+        "12:399:7"
+      ]
+    },
+    "Ledger 711: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 335,
+      "ids": [
+        "65:478:17"
+      ]
+    },
+    "Ledger 737: receipt 481's original revision snapshot is missing or malformed.": {
+      "positions": 1,
+      "quantity": 350,
+      "ids": [
+        "15:399:7"
+      ]
+    },
+    "Ledger 747: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 44,
+      "ids": [
+        "67:470:19"
+      ]
+    },
+    "Ledger 815: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 86,
+      "ids": [
+        "65:476:17"
+      ]
+    },
+    "Ledger 868: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 1063,
+      "ids": [
+        "14:399:7"
+      ]
+    },
+    "Ledger 870: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 102,
+      "ids": [
+        "14:505:2"
+      ]
+    },
+    "Ledger 882: custody parent receipt-change:716688d2-7231-4ec2-ad53-f9a2e570df38 credits more inventory than its recorded debits.": {
+      "positions": 1,
+      "quantity": 280,
+      "ids": [
+        "57:57:7"
+      ]
+    },
+    "Ledger 952: withdrawal exceeds custody established by earlier committed events.": {
+      "positions": 1,
+      "quantity": 106,
+      "ids": [
+        "65:448:17"
+      ]
+    },
+    "Ledger 981: receipt 610 differs from its origin without a recorded revision.": {
+      "positions": 2,
+      "quantity": 219,
+      "ids": [
+        "17:648:2",
+        "18:648:2"
+      ]
+    },
+    "Ledger 987: receipt 616 differs from its origin without a recorded revision.": {
+      "positions": 3,
+      "quantity": 370,
+      "ids": [
+        "15:585:2",
+        "17:585:2",
+        "18:585:2"
+      ]
+    }
+  },
+  "remaining_resolver_blocks": [
+    {
+      "facility": "EBS",
+      "room": "EVANS-2",
+      "room_id": 12,
+      "lot": "1011",
+      "profile_id": 7,
+      "authoritative": 1153,
+      "sealed": false,
+      "origin_failure": "Ledger 689: withdrawal exceeds custody established by earlier committed events.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 690: recorded identity does not match this position.; Ledger 690 (TransferIn): missing supported origin or exact incoming custody allocation.; Ledger 866: recorded identity does not match this position."
+    },
+    {
+      "facility": "EBS",
+      "room": "EVANS-2",
+      "room_id": 12,
+      "lot": "9332",
+      "profile_id": 7,
+      "authoritative": 180,
+      "sealed": false,
+      "origin_failure": "Ledger 1306: custody parent receipt-change:f9a8726d-5e4d-4903-8f6f-d4c80d6045b8 credits more inventory than its recorded debits.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 1306 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "EBS",
+      "room": "Evans-5",
+      "room_id": 15,
+      "lot": "1011",
+      "profile_id": 7,
+      "authoritative": 350,
+      "sealed": false,
+      "origin_failure": "Ledger 737: receipt 481's original revision snapshot is missing or malformed.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 726: recorded identity does not match this position.; Ledger 726 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 727: recorded identity does not match this position.; Ledger 727 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 735: recorded identity does not match this position.; Ledger 735 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 736: recorded identity does not match this position.; Ledger 736 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 737: recorded identity does not match this position.; Ledger 737 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 753: recorded identity does not match this position.; Ledger 868: recorded identity does not match this position."
+    },
+    {
+      "facility": "EBS",
+      "room": "EVANS-7",
+      "room_id": 17,
+      "lot": "3032",
+      "profile_id": 2,
+      "authoritative": 113,
+      "sealed": false,
+      "origin_failure": "Ledger 1254: withdrawal exceeds custody established by earlier committed events.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 826: recorded identity does not match this position.; Ledger 826 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 834: recorded identity does not match this position.; Ledger 834 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 870: recorded identity does not match this position.; Ledger 1035 (TransferIn): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "EBS",
+      "room": "EVANS-8",
+      "room_id": 18,
+      "lot": "3032",
+      "profile_id": 2,
+      "authoritative": 55,
+      "sealed": false,
+      "origin_failure": "",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 845: recorded identity does not match this position.; Ledger 845 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 872: recorded identity does not match this position."
+    },
+    {
+      "facility": "EBS",
+      "room": "EVANS-8",
+      "room_id": 18,
+      "lot": "3050",
+      "profile_id": 2,
+      "authoritative": 275,
+      "sealed": false,
+      "origin_failure": "",
+      "blockers": "MixedTreatmentAmbiguity: Overlapping or incomplete projections do not prove the surviving quantities of each treatment.",
+      "replay_gaps": "Ledger 1170 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation.; RoomInventoryAdjustment 1274: withdrawal treatment/receipt allocation cannot be reconciled."
+    },
+    {
+      "facility": "EBS",
+      "room": "EVANS-11",
+      "room_id": 21,
+      "lot": "9541",
+      "profile_id": 10,
+      "authoritative": 378,
+      "sealed": false,
+      "origin_failure": "",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 2852 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "DH",
+      "room": "DH-19",
+      "room_id": 51,
+      "lot": "1451",
+      "profile_id": 7,
+      "authoritative": 253,
+      "sealed": true,
+      "origin_failure": "",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 763: recorded identity does not match this position.; Ledger 763 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 830: recorded identity does not match this position.; Ledger 830 (ReceiptAdd): missing supported origin or exact incoming custody allocation.; Ledger 2665: recorded identity does not match this position.; RoomInventoryAdjustment 2665: withdrawal treatment/receipt allocation cannot be reconciled.; RoomInventoryAdjustment 2665: surviving treatment quantities remain shared/unresolved."
+    },
+    {
+      "facility": "DH",
+      "room": "DH-22",
+      "room_id": 54,
+      "lot": "1081",
+      "profile_id": 9,
+      "authoritative": 403,
+      "sealed": true,
+      "origin_failure": "",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 3234 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-05",
+      "room_id": 57,
+      "lot": "2200",
+      "profile_id": 7,
+      "authoritative": 280,
+      "sealed": true,
+      "origin_failure": "Ledger 882: custody parent receipt-change:716688d2-7231-4ec2-ad53-f9a2e570df38 credits more inventory than its recorded debits.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 882 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-05",
+      "room_id": 57,
+      "lot": "2910",
+      "profile_id": 7,
+      "authoritative": 69,
+      "sealed": true,
+      "origin_failure": "Ledger 1120: custody parent receipt-change:a90eeabd-fdc6-4310-b8e6-1041fb1fb6ce credits more inventory than its recorded debits.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 1120 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    },
+    {
+      "facility": "McDougall",
+      "room": "MCD-06",
+      "room_id": 58,
+      "lot": "2825",
+      "profile_id": 21,
+      "authoritative": 537,
+      "sealed": true,
+      "origin_failure": "Ledger 1710: custody parent receipt-change:9b4b4d0f-5c4e-4090-833b-987aad2ac0ae credits more inventory than its recorded debits.",
+      "blockers": "UnknownTreatment: Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated.",
+      "replay_gaps": "Ledger 1710 (ReceiptAdminOverride): missing supported origin or exact incoming custody allocation."
+    }
+  ],
+  "coverage": {
+    "all_positions": 1066,
+    "positive": 452,
+    "rooms_total": 70,
+    "rooms_active": 70,
+    "grower_lots": 152,
+    "profiles": 31,
+    "varieties": [
+      "AMBR",
+      "ATGL",
+      "BART",
+      "BOSC",
+      "CONC",
+      "CSMC",
+      "DANJ",
+      "FUJI",
+      "GALA",
+      "GOLD",
+      "GSMT",
+      "HONY",
+      "MDGS",
+      "ORAS",
+      "ORBA",
+      "ORBO",
+      "ORBR",
+      "ORCC",
+      "ORDA",
+      "ORDR",
+      "ORFU",
+      "ORGA",
+      "ORGS",
+      "ORHC",
+      "ORMS",
+      "ORRB",
+      "ORRD",
+      "PINK",
+      "RBAR",
+      "RDAN",
+      "RED"
+    ],
+    "years": [
+      2026
+    ],
+    "treatment_states": [
+      "Confirmed",
+      "Untreated"
+    ]
+  },
+  "negative": [
+    {
+      "positionKey": "Room:3:60::2026|141|21|1270|1270|ORDA|ORGANIC|True|",
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 141,
+        "fruitProfileId": 21,
+        "lot": "1270",
+        "growerNumber": "1270",
+        "variety": "ORDA",
+        "productionType": "Organic",
+        "isOrganic": true,
+        "status": "Organic",
+        "key": "2026|141|21|1270|1270|ORDA|ORGANIC|True|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 60,
+        "facility": "McDougall",
+        "name": "MCD-08",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": -40,
+      "rawProjectionQuantity": 0,
+      "blockers": [
+        {
+          "code": "NegativeAuthoritativeBalance",
+          "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+        },
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ]
+    },
+    {
+      "positionKey": "Room:3:60::2026|477|29|1538|1538|RDAN|CONVENTIONAL|False|",
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 477,
+        "fruitProfileId": 29,
+        "lot": "1538",
+        "growerNumber": "1538",
+        "variety": "RDAN",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|477|29|1538|1538|RDAN|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 60,
+        "facility": "McDougall",
+        "name": "MCD-08",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": -18,
+      "rawProjectionQuantity": 0,
+      "blockers": [
+        {
+          "code": "NegativeAuthoritativeBalance",
+          "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+        },
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ]
+    },
+    {
+      "positionKey": "Room:3:60::2026|502|18|2822|2822|DANJ|CONVENTIONAL|False|",
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 502,
+        "fruitProfileId": 18,
+        "lot": "2822",
+        "growerNumber": "2822",
+        "variety": "DANJ",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|502|18|2822|2822|DANJ|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 60,
+        "facility": "McDougall",
+        "name": "MCD-08",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": -5,
+      "rawProjectionQuantity": 0,
+      "blockers": [
+        {
+          "code": "NegativeAuthoritativeBalance",
+          "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+        },
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ]
+    },
+    {
+      "positionKey": "Room:3:61::2026|476|18|1537|1537|DANJ|CONVENTIONAL|False|",
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 476,
+        "fruitProfileId": 18,
+        "lot": "1537",
+        "growerNumber": "1537",
+        "variety": "DANJ",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|476|18|1537|1537|DANJ|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 61,
+        "facility": "McDougall",
+        "name": "MCD-09",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": -20,
+      "rawProjectionQuantity": 0,
+      "blockers": [
+        {
+          "code": "NegativeAuthoritativeBalance",
+          "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+        },
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ]
+    },
+    {
+      "positionKey": "Room:3:61::2026|478|18|1539|1539|DANJ|CONVENTIONAL|False|",
+      "identity": {
+        "cropYear": 2026,
+        "growerLotId": 478,
+        "fruitProfileId": 18,
+        "lot": "1539",
+        "growerNumber": "1539",
+        "variety": "DANJ",
+        "productionType": "Conventional",
+        "isOrganic": false,
+        "status": "Conventional",
+        "key": "2026|478|18|1539|1539|DANJ|CONVENTIONAL|False|",
+        "isComplete": true
+      },
+      "location": {
+        "custody": "Room",
+        "warehouseId": 3,
+        "roomId": 61,
+        "facility": "McDougall",
+        "name": "MCD-09",
+        "custodyRecordId": null
+      },
+      "authoritativeQuantity": -44,
+      "rawProjectionQuantity": 0,
+      "blockers": [
+        {
+          "code": "NegativeAuthoritativeBalance",
+          "detail": "Legacy authoritative ledger is negative; it has not been clamped or repaired."
+        },
+        {
+          "code": "UnsupportedHistoricalEvidence",
+          "detail": "Arrival, treatment or consumption evidence does not prove a current treatment pool. A quantity gap is not proof of Untreated."
+        }
+      ]
+    }
+  ]
+}

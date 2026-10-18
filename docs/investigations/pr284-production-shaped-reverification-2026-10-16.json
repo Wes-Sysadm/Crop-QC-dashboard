@@ -1,0 +1,3819 @@
+{
+  "scope": "One owner-approved read-only restore of local verified backup #204; no production access, workflow mutations, migrations or rollback/handback writes",
+  "authority": {
+    "owner": "Wes",
+    "reply": "Approve one read-only #204 restore",
+    "date": "2026-10-16",
+    "request": "PR #284 \u2014 Production-Shaped Performance Reverification",
+    "source": "512940de3714eb4dec7eb26dcab282d1d6289acc",
+    "scope": "One local isolated read-only restore; no workflow writes, migrations, corrections, production access or rollback/handback writes; delete database/container/volume/expanded SQL on completion or failed safeguard."
+  },
+  "source": {
+    "baseline": "df977d041dae2d449cf6fe5f8581e1f5cae41947",
+    "before": "efe895913bc54080a52746897a9dea19e12bcf52",
+    "after": "512940de3714eb4dec7eb26dcab282d1d6289acc"
+  },
+  "backup": {
+    "backup": 204,
+    "recheckedUtc": "2026-10-16T18:06:13.804273+00:00",
+    "packageSha256": "7030fed357e9166ac0da8747cad2c77800950d0d7a2bd71e3a82390646f3b4c2",
+    "packageBytes": 20177849,
+    "archiveCrcPassed": true,
+    "manifestSha256": "b54a5ce92245bbcc2970f4c2273bd9ff747147f69d735143deee3ef591c734a0",
+    "manifestMatchesExtracted": true,
+    "components": [
+      {
+        "name": "cropqc-prod-db-20261016-033344.sql.gz",
+        "bytes": 19929864,
+        "sha256": "c62e035f97b2b330921272342a9d23bae4803e56d681025df4adca0040ba997a"
+      },
+      {
+        "name": "cropqc-prod-config-20261016-033344.json",
+        "bytes": 818,
+        "sha256": "0af5c5a114caadf419400b69adc05cef5ccac7e05163467da2f02874c7297e64"
+      },
+      {
+        "name": "cropqc-prod-schema-20261016-033344.json",
+        "bytes": 3417,
+        "sha256": "fb3ba36d37f23970a55726b2e3a560eed557deeb9f5b552ddd039cc14ec57459"
+      },
+      {
+        "name": "cropqc-prod-photo-manifest-20261016-033344.json",
+        "bytes": 11717908,
+        "sha256": "6aa8bffd08f5258af7bf8d5158b645f0812e8a867e3d1452244a795d48c9b24e"
+      }
+    ],
+    "dumpUncompressedBytes": 345808559,
+    "dumpUncompressedSha256": "c2f8b08833420c257c75b3c18984e2e908057d494b99c6fd5bdf08b8195d5300",
+    "remoteReadback": "Previously verified; no new network access",
+    "restored": false
+  },
+  "frozenIdentities": {
+    "baseline": {
+      "image": "sha256:598c26de196ebc3ecfb160fa07534de7d2400ba57c2376e74457b10aa2c028ec",
+      "archiveSha256": "78a4576fa9b014bde5bc4eade343a7e9196463a30f78b0fbb71ab7009f714f55",
+      "assemblies": {
+        "CropQc.Web.dll": "009d4125c8405e565e90b3ad7ea7742294e1b8f7452933e3860eac8b9e99d5d2",
+        "CropQc.Data.dll": "594a1bcb0d9263ad75097f817cbd3320530bf6b0b7f7a78499ceef743fc5153e",
+        "CropQc.Shared.dll": "627cd2ced0250c4d2a9cd513f04b03afe8752f81f0fef881fde8f63a9edb98e4"
+      },
+      "runtime": [
+        "x86_64",
+        "Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+        "Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]"
+      ]
+    },
+    "before": {
+      "image": "sha256:e0ff5814d3ff0fc7dcd5fd7c4b23911f697f558ebb2027719a595bba9c366e97",
+      "archiveSha256": "1a6833c0355db2b6e673b115abe9d172330248f4aec03bc7846d6de4edb53ae3",
+      "assemblies": {
+        "CropQc.Web.dll": "59b9f1493cd923fb2dc1ff210743003899d636072ebe0b30d5515611945dd356",
+        "CropQc.Data.dll": "27165441559771f70328b68fc65c5db6b61054e87cfb33b69c28db435133278f",
+        "CropQc.Shared.dll": "e45767523a88d1b4a52d381a66afe20fcd51eb8d8ccae8e768b0be9133eeab21"
+      },
+      "runtime": [
+        "x86_64",
+        "Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+        "Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]"
+      ]
+    },
+    "after": {
+      "image": "sha256:b77fa7cd22791b965368a4b9dc6aec3580f826484ab69b6de9e4324ef86a2f9e",
+      "archiveSha256": "f78a72de8c6d9199b616d77c514e19fc8ccc82cc89ebd6e27976549461399fad",
+      "assemblies": {
+        "CropQc.Web.dll": "dd1177320187a04fb6ee972e39222da46e351937ad1a38db9e98d3ab418fa2cc",
+        "CropQc.Data.dll": "9e8b6a9708d13a6dea9493598862bf23e03a43e8dafc2dd560d610aabfdcf293",
+        "CropQc.Shared.dll": "e45767523a88d1b4a52d381a66afe20fcd51eb8d8ccae8e768b0be9133eeab21"
+      },
+      "runtime": [
+        "x86_64",
+        "Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+        "Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]"
+      ]
+    }
+  },
+  "candidateManifest": {
+    "source": "512940de3714eb4dec7eb26dcab282d1d6289acc",
+    "sourceArchiveSha256": "4268b823eadb033fe3038a2550072cc4778228965d1d059e5f1fbd6d030d25c7",
+    "imageIndexDigest": "sha256:b77fa7cd22791b965368a4b9dc6aec3580f826484ab69b6de9e4324ef86a2f9e",
+    "archiveSha256": "f78a72de8c6d9199b616d77c514e19fc8ccc82cc89ebd6e27976549461399fad",
+    "archiveBytes": 150427136,
+    "os": "linux",
+    "architecture": "amd64",
+    "runtime": [
+      "x86_64",
+      "Microsoft.AspNetCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]",
+      "Microsoft.NETCore.App 9.0.21 [/usr/share/dotnet/shared/Microsoft.NETCore.App]"
+    ],
+    "assemblies": {
+      "CropQc.Web.dll": "dd1177320187a04fb6ee972e39222da46e351937ad1a38db9e98d3ab418fa2cc",
+      "CropQc.Data.dll": "9e8b6a9708d13a6dea9493598862bf23e03a43e8dafc2dd560d610aabfdcf293",
+      "CropQc.Shared.dll": "e45767523a88d1b4a52d381a66afe20fcd51eb8d8ccae8e768b0be9133eeab21"
+    },
+    "dockerfileSha256": "6e30a4ef4afc48234f715823090e8454b1f8b22ec2b5dd92a8793c1b1b18dfab",
+    "pinnedDockerfileSha256": "f67b15a5de7520a157e5d83ea5a48f298ecaca3f1fa7a7ad1c7bfa1390ee9544"
+  },
+  "isolation": {
+    "containerId": "eee3ca7a993f51f55db1b3c16a034f015a9d6f4bcb94659d0d2c377fc7bdd54f",
+    "network": "none",
+    "ports": [],
+    "volumes": [
+      "94b2860f543dd58866faa8c71c6b461659f8c35b56dfd9d358c987dba5fa787d"
+    ],
+    "database": "pr284_reverification_test",
+    "productionCredentials": false,
+    "productionConnection": false
+  },
+  "databaseSettings": {
+    "engine": {
+      "jit": "on",
+      "jit_above_cost": "100000",
+      "jit_inline_above_cost": "500000",
+      "jit_optimize_above_cost": "500000",
+      "server_version": "18.4 (Debian 18.4-1.pgdg13+1)"
+    },
+    "identicalReaderSessionOptions": {
+      "default_transaction_read_only": "on",
+      "random_page_cost": "1.1",
+      "work_mem": "26468kB",
+      "max_parallel_workers_per_gather": "1"
+    },
+    "productionConfigurationChanged": false
+  },
+  "limits": {
+    "appCpu": 2,
+    "appMemoryGiB": 2,
+    "databaseCpu": 2,
+    "databaseMemoryGiB": 3
+  },
+  "samples": {
+    "baseline": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 10154.0599,
+        "cpuMs": 3395.39,
+        "allocatedBytes": 328409192,
+        "workingSet": 189227008,
+        "peakWorkingSet": 189227008,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 7888.3133,
+        "cpuMs": 1086.763,
+        "allocatedBytes": 66453488,
+        "workingSet": 206409728,
+        "peakWorkingSet": 206409728,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 83.6851,
+        "cpuMs": 55.008,
+        "allocatedBytes": 8471096,
+        "workingSet": 207282176,
+        "peakWorkingSet": 207282176,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 7731.4123,
+        "cpuMs": 907.644,
+        "allocatedBytes": 65684176,
+        "workingSet": 232587264,
+        "peakWorkingSet": 232587264,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 39.2391,
+        "cpuMs": 17.791,
+        "allocatedBytes": 2326688,
+        "workingSet": 233377792,
+        "peakWorkingSet": 233377792,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19,
+        "treatmentSlices": 6,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 0,
+        "elapsedMs": 4176.9427,
+        "cpuMs": 588.945,
+        "allocatedBytes": 91436952,
+        "workingSet": 256163840,
+        "peakWorkingSet": 256163840,
+        "queryCount": 12,
+        "rowsRead": 12595,
+        "evidenceRows": 9938,
+        "outputRows": 1066,
+        "treatmentSlices": 644,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 8521.6372,
+        "cpuMs": 199.708,
+        "allocatedBytes": 66120112,
+        "workingSet": 256528384,
+        "peakWorkingSet": 256528384,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 8043.725,
+        "cpuMs": 192.729,
+        "allocatedBytes": 66427424,
+        "workingSet": 250241024,
+        "peakWorkingSet": 258867200,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 43.2859,
+        "cpuMs": 52.247,
+        "allocatedBytes": 2222448,
+        "workingSet": 249909248,
+        "peakWorkingSet": 258867200,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 8255.4083,
+        "cpuMs": 207.438,
+        "allocatedBytes": 65039784,
+        "workingSet": 256196608,
+        "peakWorkingSet": 261451776,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 25.857,
+        "cpuMs": 21.047,
+        "allocatedBytes": 1857448,
+        "workingSet": 256487424,
+        "peakWorkingSet": 261451776,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19,
+        "treatmentSlices": 6,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 1,
+        "elapsedMs": 4240.1767,
+        "cpuMs": 156.676,
+        "allocatedBytes": 74515000,
+        "workingSet": 268255232,
+        "peakWorkingSet": 269017088,
+        "queryCount": 12,
+        "rowsRead": 12595,
+        "evidenceRows": 9938,
+        "outputRows": 1066,
+        "treatmentSlices": 644,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 8114.3531,
+        "cpuMs": 216.273,
+        "allocatedBytes": 66031168,
+        "workingSet": 259219456,
+        "peakWorkingSet": 269017088,
+        "queryCount": 31,
+        "rowsRead": 15381,
+        "evidenceRows": null,
+        "outputRows": 6,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 7891.4666,
+        "cpuMs": 139.267,
+        "allocatedBytes": 66447600,
+        "workingSet": 259579904,
+        "peakWorkingSet": 269017088,
+        "queryCount": 15,
+        "rowsRead": 15100,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 47.1901,
+        "cpuMs": 9.829,
+        "allocatedBytes": 2202808,
+        "workingSet": 268439552,
+        "peakWorkingSet": 269017088,
+        "queryCount": 13,
+        "rowsRead": 178,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 8292.1559,
+        "cpuMs": 196.144,
+        "allocatedBytes": 66130136,
+        "workingSet": 267595776,
+        "peakWorkingSet": 272629760,
+        "queryCount": 17,
+        "rowsRead": 15556,
+        "evidenceRows": null,
+        "outputRows": 439,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 27.3042,
+        "cpuMs": 13.935,
+        "allocatedBytes": 1924992,
+        "workingSet": 267624448,
+        "peakWorkingSet": 272629760,
+        "queryCount": 10,
+        "rowsRead": 137,
+        "evidenceRows": 89,
+        "outputRows": 19,
+        "treatmentSlices": 6,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 2,
+        "elapsedMs": 4164.1384,
+        "cpuMs": 177.06,
+        "allocatedBytes": 87071448,
+        "workingSet": 277164032,
+        "peakWorkingSet": 279339008,
+        "queryCount": 12,
+        "rowsRead": 12595,
+        "evidenceRows": 9938,
+        "outputRows": 1066,
+        "treatmentSlices": 644,
+        "aggregateCount": 1,
+        "reuseLookupMs": []
+      }
+    ],
+    "before": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 14116.4813,
+        "cpuMs": 4436.672,
+        "allocatedBytes": 380369888,
+        "workingSet": 204349440,
+        "peakWorkingSet": 204988416,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 11419.0841,
+        "cpuMs": 852.285,
+        "allocatedBytes": 108934232,
+        "workingSet": 222908416,
+        "peakWorkingSet": 222908416,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 116.7527,
+        "cpuMs": 59.522,
+        "allocatedBytes": 13754280,
+        "workingSet": 223780864,
+        "peakWorkingSet": 223780864,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 11658.8886,
+        "cpuMs": 709.699,
+        "allocatedBytes": 108129168,
+        "workingSet": 239493120,
+        "peakWorkingSet": 239927296,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 72.8123,
+        "cpuMs": 30.259,
+        "allocatedBytes": 6668480,
+        "workingSet": 239628288,
+        "peakWorkingSet": 239927296,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 0,
+        "elapsedMs": 7955.2221,
+        "cpuMs": 412.026,
+        "allocatedBytes": 134210416,
+        "workingSet": 273571840,
+        "peakWorkingSet": 273805312,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 11795.2265,
+        "cpuMs": 297.872,
+        "allocatedBytes": 108454048,
+        "workingSet": 272351232,
+        "peakWorkingSet": 281903104,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 11897.3424,
+        "cpuMs": 225.432,
+        "allocatedBytes": 107791872,
+        "workingSet": 280109056,
+        "peakWorkingSet": 281903104,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 85.0221,
+        "cpuMs": 32.569,
+        "allocatedBytes": 6528128,
+        "workingSet": 280186880,
+        "peakWorkingSet": 281903104,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 11996.0819,
+        "cpuMs": 217.589,
+        "allocatedBytes": 108553632,
+        "workingSet": 288780288,
+        "peakWorkingSet": 288780288,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 64.9217,
+        "cpuMs": 18.855,
+        "allocatedBytes": 6146096,
+        "workingSet": 288968704,
+        "peakWorkingSet": 288968704,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 1,
+        "elapsedMs": 8370.3167,
+        "cpuMs": 339.499,
+        "allocatedBytes": 134350168,
+        "workingSet": 286543872,
+        "peakWorkingSet": 299487232,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 12452.0712,
+        "cpuMs": 277.987,
+        "allocatedBytes": 108453920,
+        "workingSet": 281739264,
+        "peakWorkingSet": 300236800,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 12455.8044,
+        "cpuMs": 254.631,
+        "allocatedBytes": 108793416,
+        "workingSet": 288284672,
+        "peakWorkingSet": 300236800,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 88.5987,
+        "cpuMs": 21.811,
+        "allocatedBytes": 6453080,
+        "workingSet": 295227392,
+        "peakWorkingSet": 300236800,
+        "queryCount": 32,
+        "rowsRead": 2252,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 12569.36,
+        "cpuMs": 248.344,
+        "allocatedBytes": 108489384,
+        "workingSet": 291139584,
+        "peakWorkingSet": 300236800,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 66.1571,
+        "cpuMs": 27.849,
+        "allocatedBytes": 6151632,
+        "workingSet": 291196928,
+        "peakWorkingSet": 300236800,
+        "queryCount": 29,
+        "rowsRead": 2211,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 2,
+        "elapsedMs": 8584.9109,
+        "cpuMs": 247.866,
+        "allocatedBytes": 133320648,
+        "workingSet": 313643008,
+        "peakWorkingSet": 313643008,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 2,
+        "reuseLookupMs": []
+      }
+    ],
+    "after": [
+      {
+        "scenario": "intercrew",
+        "round": 0,
+        "elapsedMs": 11128.1871,
+        "cpuMs": 3519.001,
+        "allocatedBytes": 374376472,
+        "workingSet": 199254016,
+        "peakWorkingSet": 199254016,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.8823
+        ]
+      },
+      {
+        "scenario": "outside",
+        "round": 0,
+        "elapsedMs": 8347.2668,
+        "cpuMs": 1455.708,
+        "allocatedBytes": 108795520,
+        "workingSet": 209014784,
+        "peakWorkingSet": 209014784,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.4566
+        ]
+      },
+      {
+        "scenario": "roommove",
+        "round": 0,
+        "elapsedMs": 166.184,
+        "cpuMs": 101.884,
+        "allocatedBytes": 18805744,
+        "workingSet": 209035264,
+        "peakWorkingSet": 209035264,
+        "queryCount": 33,
+        "rowsRead": 2253,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": [
+          1.118
+        ]
+      },
+      {
+        "scenario": "processor",
+        "round": 0,
+        "elapsedMs": 7837.2431,
+        "cpuMs": 1038.406,
+        "allocatedBytes": 108690824,
+        "workingSet": 240717824,
+        "peakWorkingSet": 240717824,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2155
+        ]
+      },
+      {
+        "scenario": "single-room",
+        "round": 0,
+        "elapsedMs": 88.4456,
+        "cpuMs": 31.489,
+        "allocatedBytes": 6431432,
+        "workingSet": 241319936,
+        "peakWorkingSet": 241319936,
+        "queryCount": 30,
+        "rowsRead": 2212,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2234
+        ]
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 0,
+        "elapsedMs": 4163.0467,
+        "cpuMs": 506.719,
+        "allocatedBytes": 133183512,
+        "workingSet": 278917120,
+        "peakWorkingSet": 278917120,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 1,
+        "reuseLookupMs": [
+          1.1962
+        ]
+      },
+      {
+        "scenario": "intercrew",
+        "round": 1,
+        "elapsedMs": 7982.8808,
+        "cpuMs": 287.242,
+        "allocatedBytes": 108317624,
+        "workingSet": 271831040,
+        "peakWorkingSet": 290717696,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2394
+        ]
+      },
+      {
+        "scenario": "outside",
+        "round": 1,
+        "elapsedMs": 7937.2173,
+        "cpuMs": 206.273,
+        "allocatedBytes": 107626000,
+        "workingSet": 275996672,
+        "peakWorkingSet": 290717696,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.4238
+        ]
+      },
+      {
+        "scenario": "roommove",
+        "round": 1,
+        "elapsedMs": 89.6306,
+        "cpuMs": 37.396,
+        "allocatedBytes": 6545856,
+        "workingSet": 276086784,
+        "peakWorkingSet": 290717696,
+        "queryCount": 33,
+        "rowsRead": 2253,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": [
+          0.7489
+        ]
+      },
+      {
+        "scenario": "processor",
+        "round": 1,
+        "elapsedMs": 7971.8867,
+        "cpuMs": 220.698,
+        "allocatedBytes": 108287192,
+        "workingSet": 287432704,
+        "peakWorkingSet": 290717696,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2768
+        ]
+      },
+      {
+        "scenario": "single-room",
+        "round": 1,
+        "elapsedMs": 72.8683,
+        "cpuMs": 41.788,
+        "allocatedBytes": 6244272,
+        "workingSet": 287711232,
+        "peakWorkingSet": 290717696,
+        "queryCount": 30,
+        "rowsRead": 2212,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          0.7246
+        ]
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 1,
+        "elapsedMs": 4164.0398,
+        "cpuMs": 245.036,
+        "allocatedBytes": 133059824,
+        "workingSet": 309682176,
+        "peakWorkingSet": 310841344,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 1,
+        "reuseLookupMs": [
+          1.1952
+        ]
+      },
+      {
+        "scenario": "intercrew",
+        "round": 2,
+        "elapsedMs": 8113.8738,
+        "cpuMs": 250.652,
+        "allocatedBytes": 108279168,
+        "workingSet": 299696128,
+        "peakWorkingSet": 318603264,
+        "queryCount": 50,
+        "rowsRead": 25143,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.1829
+        ]
+      },
+      {
+        "scenario": "outside",
+        "round": 2,
+        "elapsedMs": 8084.0615,
+        "cpuMs": 240.494,
+        "allocatedBytes": 107585160,
+        "workingSet": 301043712,
+        "peakWorkingSet": 318603264,
+        "queryCount": 34,
+        "rowsRead": 24862,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2474
+        ]
+      },
+      {
+        "scenario": "roommove",
+        "round": 2,
+        "elapsedMs": 92.3676,
+        "cpuMs": 27.233,
+        "allocatedBytes": 6552216,
+        "workingSet": 296599552,
+        "peakWorkingSet": 318603264,
+        "queryCount": 33,
+        "rowsRead": 2253,
+        "evidenceRows": null,
+        "outputRows": 9,
+        "treatmentSlices": null,
+        "aggregateCount": 3,
+        "reuseLookupMs": [
+          0.9172
+        ]
+      },
+      {
+        "scenario": "processor",
+        "round": 2,
+        "elapsedMs": 8407.0921,
+        "cpuMs": 268.059,
+        "allocatedBytes": 107443696,
+        "workingSet": 294465536,
+        "peakWorkingSet": 318603264,
+        "queryCount": 36,
+        "rowsRead": 25318,
+        "evidenceRows": null,
+        "outputRows": 459,
+        "treatmentSlices": null,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          1.2642
+        ]
+      },
+      {
+        "scenario": "single-room",
+        "round": 2,
+        "elapsedMs": 75.3016,
+        "cpuMs": 25.14,
+        "allocatedBytes": 6250768,
+        "workingSet": 294477824,
+        "peakWorkingSet": 318603264,
+        "queryCount": 30,
+        "rowsRead": 2212,
+        "evidenceRows": 875,
+        "outputRows": 19,
+        "treatmentSlices": 17,
+        "aggregateCount": 2,
+        "reuseLookupMs": [
+          0.806
+        ]
+      },
+      {
+        "scenario": "all-evidence",
+        "round": 2,
+        "elapsedMs": 4250.8899,
+        "cpuMs": 231.274,
+        "allocatedBytes": 117473608,
+        "workingSet": 303890432,
+        "peakWorkingSet": 318603264,
+        "queryCount": 31,
+        "rowsRead": 22357,
+        "evidenceRows": 15618,
+        "outputRows": 1066,
+        "treatmentSlices": 677,
+        "aggregateCount": 1,
+        "reuseLookupMs": [
+          1.3361
+        ]
+      }
+    ]
+  },
+  "plans": {
+    "baseline-outside": [
+      {
+        "sqlSha256": "2d2042c0a49ea546858b0aa488a32952488304158e82b0ffd926da0998c5c1c3",
+        "parameters": [
+          {
+            "ParameterName": "@__p_0",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.125,
+        "executionMs": 3937.574,
+        "jit": {
+          "Functions": 624,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 14.836,
+              "Total": 28.965
+            },
+            "Inlining": 19.253,
+            "Optimization": 2178.218,
+            "Emission": 1508.959,
+            "Total": 3735.396
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1245247.7,
+          "Plan Rows": 2001,
+          "Actual Rows": 1068.0,
+          "Shared Hit Blocks": 302186,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "348b0cef0b4179f7f731e6e9c312777cfb5f856c86e87dbb82b29a011976bb9f",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 66
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.346,
+        "executionMs": 3893.646,
+        "jit": {
+          "Functions": 626,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 14.703,
+              "Total": 28.833
+            },
+            "Inlining": 19.394,
+            "Optimization": 2121.464,
+            "Emission": 1526.814,
+            "Total": 3696.505
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1379420.53,
+          "Plan Rows": 2001,
+          "Actual Rows": 1066.0,
+          "Shared Hit Blocks": 392588,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ],
+    "baseline-single-room": [
+      {
+        "sqlSha256": "348b0cef0b4179f7f731e6e9c312777cfb5f856c86e87dbb82b29a011976bb9f",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.195,
+        "executionMs": 6.986,
+        "jit": null,
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 15979.99,
+          "Plan Rows": 43,
+          "Actual Rows": 19.0,
+          "Shared Hit Blocks": 11795,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ],
+    "before-outside": [
+      {
+        "sqlSha256": "a4aa47561f87d451bdaa06a1fdc145095ffe3ba5eeea05c796bcaf133ae43494",
+        "parameters": [
+          {
+            "ParameterName": "@__p_0",
+            "count": 1
+          }
+        ],
+        "planningMs": 9.3,
+        "executionMs": 4028.587,
+        "jit": {
+          "Functions": 624,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 19.37,
+              "Total": 42.683
+            },
+            "Inlining": 21.819,
+            "Optimization": 2211.278,
+            "Emission": 1541.982,
+            "Total": 3817.762
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1245267.71,
+          "Plan Rows": 2001,
+          "Actual Rows": 1068.0,
+          "Shared Hit Blocks": 302186,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 66
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 10.059,
+        "executionMs": 4138.398,
+        "jit": {
+          "Functions": 626,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 17.33,
+              "Total": 33.641
+            },
+            "Inlining": 23.248,
+            "Optimization": 2266.504,
+            "Emission": 1619.103,
+            "Total": 3942.496
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1379440.54,
+          "Plan Rows": 2001,
+          "Actual Rows": 1066.0,
+          "Shared Hit Blocks": 392588,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "ed3a25cc5dbe4972451c77fd39d02710c113d9b53654642c9f721ca43bea6390",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 59
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__normalizedLots_2",
+            "count": 42
+          },
+          {
+            "ParameterName": "@__p_3",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.638,
+        "executionMs": 4014.419,
+        "jit": {
+          "Functions": 621,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 16.078,
+              "Total": 32.189
+            },
+            "Inlining": 22.507,
+            "Optimization": 2277.294,
+            "Emission": 1596.62,
+            "Total": 3928.61
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 583901.09,
+          "Plan Rows": 832,
+          "Actual Rows": 492.0,
+          "Shared Hit Blocks": 173409,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ],
+    "before-single-room": [
+      {
+        "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.227,
+        "executionMs": 7.208,
+        "jit": null,
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 15980.42,
+          "Plan Rows": 43,
+          "Actual Rows": 19.0,
+          "Shared Hit Blocks": 11795,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "ed3a25cc5dbe4972451c77fd39d02710c113d9b53654642c9f721ca43bea6390",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 25
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__normalizedLots_2",
+            "count": 9
+          },
+          {
+            "ParameterName": "@__p_3",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.817,
+        "executionMs": 16.331,
+        "jit": null,
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 45850.96,
+          "Plan Rows": 67,
+          "Actual Rows": 110.0,
+          "Shared Hit Blocks": 26138,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ],
+    "after-outside": [
+      {
+        "sqlSha256": "a4aa47561f87d451bdaa06a1fdc145095ffe3ba5eeea05c796bcaf133ae43494",
+        "parameters": [
+          {
+            "ParameterName": "@__p_0",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.695,
+        "executionMs": 4077.91,
+        "jit": {
+          "Functions": 624,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 15.975,
+              "Total": 31.166
+            },
+            "Inlining": 21.555,
+            "Optimization": 2295.767,
+            "Emission": 1527.432,
+            "Total": 3875.92
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1245267.71,
+          "Plan Rows": 2001,
+          "Actual Rows": 1068.0,
+          "Shared Hit Blocks": 302186,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 66
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.582,
+        "executionMs": 4041.223,
+        "jit": {
+          "Functions": 626,
+          "Options": {
+            "Inlining": true,
+            "Optimization": true,
+            "Expressions": true,
+            "Deforming": true
+          },
+          "Timing": {
+            "Generation": {
+              "Deform": 16.427,
+              "Total": 31.82
+            },
+            "Inlining": 20.915,
+            "Optimization": 2236.218,
+            "Emission": 1558.368,
+            "Total": 3847.321
+          }
+        },
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 1379440.54,
+          "Plan Rows": 2001,
+          "Actual Rows": 1066.0,
+          "Shared Hit Blocks": 392588,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ],
+    "after-single-room": [
+      {
+        "sqlSha256": "5fc6182d2ee097ec41453362a5776fa644e3774f679bcaa6a9e98c58a2bb2f58",
+        "parameters": [
+          {
+            "ParameterName": "@__roomIds_0",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__asOf_Value_1",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__p_2",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.441,
+        "executionMs": 7.623,
+        "jit": null,
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 15980.42,
+          "Plan Rows": 43,
+          "Actual Rows": 19.0,
+          "Shared Hit Blocks": 11795,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      },
+      {
+        "sqlSha256": "004c4f138e7eeb229125a838d669b9bf01892b23e9fc74a1a2d2a0494b595ee3",
+        "parameters": [
+          {
+            "ParameterName": "@__missingRooms_0",
+            "count": 24
+          },
+          {
+            "ParameterName": "@__roomIds_1",
+            "count": 25
+          },
+          {
+            "ParameterName": "@__asOf_Value_2",
+            "count": 1
+          },
+          {
+            "ParameterName": "@__normalizedLots_3",
+            "count": 9
+          },
+          {
+            "ParameterName": "@__p_4",
+            "count": 1
+          }
+        ],
+        "planningMs": 8.285,
+        "executionMs": 22.245,
+        "jit": null,
+        "root": {
+          "Node Type": "Limit",
+          "Total Cost": 12708.77,
+          "Plan Rows": 24,
+          "Actual Rows": 95.0,
+          "Shared Hit Blocks": 55522,
+          "Shared Read Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        }
+      }
+    ]
+  },
+  "resources": {
+    "baseline": {
+      "before": {
+        "cpu.stat": "usage_usec 47730154\nuser_usec 40508561\nsystem_usec 7221593\nnr_periods 1284\nnr_throttled 28\nthrottled_usec 3017695\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "690634752",
+        "memory.peak": "950779904",
+        "io.stat": "8:48 rbytes=101543936 wbytes=823103488 rios=1260 wios=4130 dbytes=0 dios=0"
+      },
+      "wallSeconds": 96.51600000000326,
+      "after": {
+        "cpu.stat": "usage_usec 138990628\nuser_usec 131657672\nsystem_usec 7332955\nnr_periods 2237\nnr_throttled 28\nthrottled_usec 3017695\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "690262016",
+        "memory.peak": "950779904",
+        "io.stat": "8:48 rbytes=101543936 wbytes=823496704 rios=1260 wios=4136 dbytes=0 dios=0"
+      },
+      "exitCode": 0
+    },
+    "before": {
+      "before": {
+        "cpu.stat": "usage_usec 147053543\nuser_usec 138356153\nsystem_usec 8697390\nnr_periods 2567\nnr_throttled 37\nthrottled_usec 4063435\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "695336960",
+        "memory.peak": "952860672",
+        "io.stat": "8:48 rbytes=101543936 wbytes=827727872 rios=1260 wios=4240 dbytes=0 dios=0"
+      },
+      "wallSeconds": 149.06299999999464,
+      "after": {
+        "cpu.stat": "usage_usec 290228252\nuser_usec 281234356\nsystem_usec 8993895\nnr_periods 4049\nnr_throttled 37\nthrottled_usec 4063435\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "716886016",
+        "memory.peak": "952860672",
+        "io.stat": "8:48 rbytes=101543936 wbytes=861806592 rios=1260 wios=4702 dbytes=0 dios=0"
+      },
+      "exitCode": 0
+    },
+    "after": {
+      "before": {
+        "cpu.stat": "usage_usec 294743242\nuser_usec 285314744\nsystem_usec 9428498\nnr_periods 4156\nnr_throttled 46\nthrottled_usec 5070120\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "720351232",
+        "memory.peak": "1016033280",
+        "io.stat": "8:48 rbytes=101543936 wbytes=868622336 rios=1260 wios=4835 dbytes=0 dios=0"
+      },
+      "wallSeconds": 98.09399999998277,
+      "after": {
+        "cpu.stat": "usage_usec 386922424\nuser_usec 377153889\nsystem_usec 9768534\nnr_periods 5128\nnr_throttled 46\nthrottled_usec 5070120\nnr_bursts 0\nburst_usec 0",
+        "memory.current": "735358976",
+        "memory.peak": "1016033280",
+        "io.stat": "8:48 rbytes=101543936 wbytes=884916224 rios=1260 wios=6272 dbytes=0 dios=0"
+      },
+      "exitCode": 0
+    }
+  },
+  "readiness": {
+    "baseline": {
+      "release": {
+        "success": true,
+        "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+        "expectedSchemaObjects": 1007,
+        "schemaReady": true,
+        "inventory": {
+          "isReady": true,
+          "negativeAdjustmentCount": 1139,
+          "historicalNegativeCount": 93,
+          "newFormatNegativeCount": 1046,
+          "blockingIssues": []
+        },
+        "treatment": {
+          "success": true,
+          "currentIdentityCount": 452,
+          "blockingIssueCount": 0,
+          "blockingIssues": [],
+          "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+        },
+        "topology": {
+          "success": true,
+          "missingWarehouseCodes": [],
+          "custodyRulesReady": true,
+          "invalidOutsideWarehouseMasterRows": 0,
+          "duplicateOutsideWarehouseCodes": 0,
+          "invalidInterCrew": 0,
+          "interCrew": {
+            "issues": [],
+            "custody": []
+          },
+          "invalidOutside": 0
+        }
+      },
+      "exitCodes": [
+        {
+          "exitCode": 0
+        },
+        {
+          "exitCode": 0
+        }
+      ],
+      "conservation": {
+        "global": {
+          "facility": "GLOBAL",
+          "categories": {
+            "Internal transfers": 0,
+            "Receiving / quantity corrections / voids": 110085,
+            "Opening inventory": 6143,
+            "Runs (net of reversals)": -36315,
+            "Identity/location corrections": 0,
+            "Depletions / losses (net)": -18,
+            "Outside warehouse custody (net room removal)": -1409,
+            "Inter-crew custody (net room movement)": -844
+          },
+          "authoritativeCurrentBins": 77642,
+          "accountedBins": 77642,
+          "difference": 0
+        },
+        "unclassifiedTypes": [],
+        "unbalancedRoomTransfers": [],
+        "unbalancedIdentityCorrections": [],
+        "treatmentIdentityDebit": 6088,
+        "treatmentIdentityCredit": 6088,
+        "invalidTreatmentIdentityMovements": 0,
+        "otherHistoricalTreatmentCorrections": {
+          "IdentityReclassificationUntreatedBackfill": 426,
+          "IdentityReclassificationRetirement": 535,
+          "InventoryIdentityCorrectionOut": 64,
+          "InventoryIdentityCorrectionIn": 64
+        },
+        "interCrewTransitBins": 844,
+        "outsideWarehouseCustodyBins": 1409,
+        "receiptHeldBins": 0,
+        "treatmentIdentityDifference": 0,
+        "isReady": true,
+        "receiving": {
+          "cropYear": 2026,
+          "receiptCount": 2627,
+          "receiptTotal": 109559,
+          "ledgerTotal": 109559,
+          "netDifference": 0,
+          "mismatchReceiptIds": [],
+          "mismatchCount": 0
+        }
+      }
+    },
+    "after": {
+      "release": {
+        "success": true,
+        "expectedMigration": "20260906025535_AddHarvestWatchDeployments",
+        "expectedSchemaObjects": 1007,
+        "schemaReady": true,
+        "inventory": {
+          "isReady": true,
+          "negativeAdjustmentCount": 1139,
+          "historicalNegativeCount": 93,
+          "newFormatNegativeCount": 1046,
+          "blockingIssues": []
+        },
+        "treatment": {
+          "success": true,
+          "currentIdentityCount": 452,
+          "blockingIssueCount": 0,
+          "blockingIssues": [],
+          "message": "Treatment-lineage readiness passed for 452 current inventory identities; no explicit lineage exceeds authoritative inventory."
+        },
+        "topology": {
+          "success": true,
+          "missingWarehouseCodes": [],
+          "custodyRulesReady": true,
+          "invalidOutsideWarehouseMasterRows": 0,
+          "duplicateOutsideWarehouseCodes": 0,
+          "invalidInterCrew": 0,
+          "interCrew": {
+            "issues": [],
+            "custody": []
+          },
+          "invalidOutside": 0
+        }
+      },
+      "exitCodes": [
+        {
+          "exitCode": 0
+        },
+        {
+          "exitCode": 0
+        }
+      ],
+      "conservation": {
+        "global": {
+          "facility": "GLOBAL",
+          "categories": {
+            "Internal transfers": 0,
+            "Receiving / quantity corrections / voids": 110085,
+            "Opening inventory": 6143,
+            "Runs (net of reversals)": -36315,
+            "Identity/location corrections": 0,
+            "Depletions / losses (net)": -18,
+            "Outside warehouse custody (net room removal)": -1409,
+            "Inter-crew custody (net room movement)": -844
+          },
+          "authoritativeCurrentBins": 77642,
+          "accountedBins": 77642,
+          "difference": 0
+        },
+        "unclassifiedTypes": [],
+        "unbalancedRoomTransfers": [],
+        "unbalancedIdentityCorrections": [],
+        "treatmentIdentityDebit": 6088,
+        "treatmentIdentityCredit": 6088,
+        "invalidTreatmentIdentityMovements": 0,
+        "otherHistoricalTreatmentCorrections": {
+          "IdentityReclassificationUntreatedBackfill": 426,
+          "IdentityReclassificationRetirement": 535,
+          "InventoryIdentityCorrectionOut": 64,
+          "InventoryIdentityCorrectionIn": 64
+        },
+        "interCrewTransitBins": 844,
+        "outsideWarehouseCustodyBins": 1409,
+        "receiptHeldBins": 0,
+        "treatmentIdentityDifference": 0,
+        "isReady": true,
+        "receiving": {
+          "cropYear": 2026,
+          "receiptCount": 2627,
+          "receiptTotal": 109559,
+          "ledgerTotal": 109559,
+          "netDifference": 0,
+          "mismatchReceiptIds": [],
+          "mismatchCount": 0
+        }
+      }
+    }
+  },
+  "historicalIntegrity": {
+    "allTablesUnchanged": true,
+    "tables": 113,
+    "originalRows": 269834,
+    "differences": [],
+    "sha256OfTableManifest": "1e90aa5ab248e18b83b34ff7023ebfeafc4ad560949f138e58d765deb89a73a5",
+    "checkedUtc": "2026-10-16T18:22:47.662704+00:00"
+  },
+  "tables": {
+    "ActualRunDetailCorrections": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ActualRunOverrideRequestLines": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ActualRunOverrideRequests": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ActualRunRevisions": {
+      "rows": 181,
+      "sha256": "ab574bf35cc6c24f2fd4fc6cb5266d2eb10f51fda6fbf1b08cfe58864df30dcf"
+    },
+    "ActualRunSalesDeskCorrections": {
+      "rows": 26,
+      "sha256": "9865280eddd6b0912460ca8e6b029549fb445667d0ed402317b068eed07a3fcc"
+    },
+    "ActualRuns": {
+      "rows": 173,
+      "sha256": "4715c83227195099c0161c198030088909d4daa1111a871122ab46d27edd3f97"
+    },
+    "AuditLogs": {
+      "rows": 188841,
+      "sha256": "50b2f978973f742775026acd9aa242fbaa66542b189833fb9fb66201caec63bc"
+    },
+    "BackupNightlyRunGuards": {
+      "rows": 84,
+      "sha256": "ce58cfa94c56baa177091d46466572c58e878017bf40209e5c742dbfb07e9d6f"
+    },
+    "BackupNotificationRecords": {
+      "rows": 196,
+      "sha256": "82ca6df498de83c5c0627fc057116bf188afd973b954c96a07d153497592cf95"
+    },
+    "BackupOperationLeases": {
+      "rows": 1,
+      "sha256": "498e7eeb43976588500eca703365ca0819225ff793344de019d5c6a53efca9dd"
+    },
+    "BackupRunRecords": {
+      "rows": 204,
+      "sha256": "33bcbbfb502fea4663d59c31a4e890cd086768df55af47c8956710fa9abfe931"
+    },
+    "BinsRunEntries": {
+      "rows": 484,
+      "sha256": "1543d5c3be3449fd7010f4c1b80d765138a0760319a32bd10baf9c9b94cb5daf"
+    },
+    "CanonicalGrowerAliases": {
+      "rows": 1032,
+      "sha256": "6f50f2e33fdcbe57d8916d710d1024b1a29f7585395819d59263f52a7775622b"
+    },
+    "CanonicalGrowerNumbers": {
+      "rows": 653,
+      "sha256": "64eb8ead9f35747369455172b9c1185b0da3f08fa56d1b752b2ea67540c44eaa"
+    },
+    "CanonicalGrowers": {
+      "rows": 655,
+      "sha256": "1393201adac1f0270bcb5ff82f9e25b7f5d2ad8bd71684041f359daa1ee83444"
+    },
+    "CanonicalOrchardAliases": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "CanonicalOrchardBlocks": {
+      "rows": 26,
+      "sha256": "f622cdc8017d55bba42b85c668e1258c811d313ab00af9e132338fcb39ffa113"
+    },
+    "CanonicalOrchards": {
+      "rows": 11,
+      "sha256": "56a5fcad7a7aa1283ad20a155c33c5768a5639b0ddf82588daa8d0bd0ac3ee68"
+    },
+    "CommercialPackDefinitions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "CommercialPackEligibleSizes": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "CommercialPackFruitProfileRestrictions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "CommercialPackPlanItems": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "CommercialPackPlans": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "DashboardConfigurations": {
+      "rows": 39,
+      "sha256": "c954310751efdbec63efbfe499aedf50b3fde0d92a45545c57b8388587ac867f"
+    },
+    "DefectTypes": {
+      "rows": 19,
+      "sha256": "d729577cd60da64228b20ac4d588d79ae0720e51c4f16b5f957b17e337965c45"
+    },
+    "EndOfDayFillReportGroups": {
+      "rows": 4,
+      "sha256": "2e8e31bff36ed831770abb7e70645aeadbf24c595d548fbe86a09cbc0d1682ab"
+    },
+    "EndOfDayFillReportRecipients": {
+      "rows": 3,
+      "sha256": "0983775a4ca40f2c25658721b25888dad2c4875714c11f998847245e79e7771e"
+    },
+    "EndOfDayFillReportSends": {
+      "rows": 16,
+      "sha256": "8827c2d50a8956e27597bb5988e182dc631b42c01f4873150ec6883e1078f0de"
+    },
+    "EndOfDayFillSendReservations": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "EndOfDayFillUserGroupAssignments": {
+      "rows": 8,
+      "sha256": "39d20c0fd0206d5e6c5c8fba42a58ad1905fde058b0e5cef3c4e86f6a1bb1589"
+    },
+    "FieldSampleDeletionAudits": {
+      "rows": 4,
+      "sha256": "274ef18706c4f8d03e2b69b6fd7115378781b97ab399d70edf548106af288e67"
+    },
+    "FruitProfiles": {
+      "rows": 35,
+      "sha256": "9d6ec29c25dce0a0590e094bcff4ef50b3294aa735c7b6f6db1118befc6bb10c"
+    },
+    "FruitSizeConversionThresholds": {
+      "rows": 30,
+      "sha256": "723c1f5c94542ccd3f6f076749c8cf6a13a5c98cba241e9c45b9bae55decb4d0"
+    },
+    "Grades": {
+      "rows": 11,
+      "sha256": "a2ebc77fff813c8db25b1728b41d1f0f24225b7097afc199f278a725a795b02b"
+    },
+    "GrowerLots": {
+      "rows": 661,
+      "sha256": "5ca9e7ab6a34c1131a8d02510bff2e455a390bfa5653a921b25907aa845c72fc"
+    },
+    "GrowerReportRecipients": {
+      "rows": 19,
+      "sha256": "3d2c39eb50ef9063c0c49c79385978fd812331ad6142b7e23fabfae85344e44c"
+    },
+    "HarvestWatchDeployments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "HarvestWatchInboundMessages": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "HarvestWatchMailboxCursors": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "HarvestWatchStatusHistories": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "InterCrewTransfers": {
+      "rows": 42,
+      "sha256": "2c155077b61f3efa3840e18fa52a37cc8a25f497e1c7d3be857ff49ab69eb4ba"
+    },
+    "InventoryCommands": {
+      "rows": 330,
+      "sha256": "c35b0e142a95bb0462c0e633965bb6d1e81dadf6f6ab406bf128e58ba2d7c86b"
+    },
+    "InventoryDiagnosticAcknowledgments": {
+      "rows": 18,
+      "sha256": "47719ff93cf4cd9147e33d30d1b107e6384877b819b09507915e40360bb2eccc"
+    },
+    "InventoryIdentityCorrections": {
+      "rows": 71,
+      "sha256": "78be58bb3d8081608aa0bd7e4dd51edb1fc7fd54c58fd74fd3d18e30fed28921"
+    },
+    "OfflineSyncItems": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "OrchardBlockAliases": {
+      "rows": 2,
+      "sha256": "41d5bb6094985be41ca17b13eee99cba4a5a46a655bb692a254a44369b407a12"
+    },
+    "OrchardContactImportBatches": {
+      "rows": 1,
+      "sha256": "86bd884d921321c978bc1ee00b4ebb0136c46635d8d2bf61775761020aaf8261"
+    },
+    "OrchardContactImportRows": {
+      "rows": 54,
+      "sha256": "e32f72e1f406f5027d42a5ad405d9915b53ebb2124e9bb5a52bf1e06e79f4e7b"
+    },
+    "OrchardManagerAssignments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "OrchardManagerContacts": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "OrchardReportRecipients": {
+      "rows": 5,
+      "sha256": "a22d2a3adc9f4cca229a477b7bfb3bfd818d34d73e947d013d6e644be5c832c8"
+    },
+    "OutsideWarehouseTransfers": {
+      "rows": 47,
+      "sha256": "fd0da9c698daf60b3b074b3e6bed0c93fddf9243d83395eb0045a606fbcd31a7"
+    },
+    "OutsideWarehouses": {
+      "rows": 7,
+      "sha256": "52fff0772343a0c3d2458de11933794c8863f2e4a9ad00c00edd01b4339201c3"
+    },
+    "PackCodeDefinitions": {
+      "rows": 1,
+      "sha256": "2c9d141170f226e237fc4423a5d9b2e53c4202481376aac80acc49e94c592935"
+    },
+    "PackoutAnalysisConfigurations": {
+      "rows": 1,
+      "sha256": "bfb51fc458c8e336d1f8c92a867423452fc371c963737cdacea4cdb23f7a41b5"
+    },
+    "PackoutEmailAttempts": {
+      "rows": 1,
+      "sha256": "11ce6de4fa11b6bee673166ca915726e316086d35eea34ba82011ce6d2ff54d6"
+    },
+    "PackoutReportLines": {
+      "rows": 28,
+      "sha256": "9d77d0479b1911f8ac2154af7206c16af402b5d6dd3e4008f653fe83865f9bbb"
+    },
+    "PackoutReportSources": {
+      "rows": 5,
+      "sha256": "73cfe461e6abbfd97fad58af4de88aef12c44a67e9da9b8b0a22d3f3a12755c3"
+    },
+    "PackoutRuns": {
+      "rows": 5,
+      "sha256": "e3183e032b39c472e81503390da936a47105f1c6e4a9990aa7bd7816a13b370f"
+    },
+    "PackoutSourceAllocations": {
+      "rows": 6,
+      "sha256": "7e3c78bd9452ac32eca6b397d3c6d90d8c5ea530caef0cc2f30c366af522c332"
+    },
+    "PasswordPolicies": {
+      "rows": 1,
+      "sha256": "8a20d7de6f88b294e5cd5cebd84091220ebdc804edd2a51458923c5c32ca12bf"
+    },
+    "ProcessorShipmentLines": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ProcessorShipmentPriceCorrections": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ProcessorShipments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "Processors": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "QcFruitDefects": {
+      "rows": 15383,
+      "sha256": "114d55450f23b9181d9c74c3e670b1a8f8577ae111449628ebb14e1b53ae293d"
+    },
+    "QcFruitReadings": {
+      "rows": 30615,
+      "sha256": "667039bdafa51a6328c97210c4c7510dc22704d016af25b1ba2da3234a065f0d"
+    },
+    "QcPhotos": {
+      "rows": 12928,
+      "sha256": "74f80b3d243a1a48cb5b9476282f7b751ead2f1f1462c31849273c6b836ca496"
+    },
+    "QcSamples": {
+      "rows": 2715,
+      "sha256": "8c7bba7b6282cc54d96dda5158117892ad8cfd3cd69442df66dc46272f00ead4"
+    },
+    "QcStations": {
+      "rows": 7,
+      "sha256": "b06bc41f2d4fd419da713c8d77f231a69b5783c0d42478cc8c7e2e6790b6dfff"
+    },
+    "QcSummaryEmailLogs": {
+      "rows": 2369,
+      "sha256": "dfd41cc8ac9a5d917abc0b8bdfe0535dd0ba5a3292b7e844dea9daf1d8c0ade4"
+    },
+    "ReceiptCustodyAcknowledgments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ReceiptCustodyPlacements": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ReceiptCustodyReversals": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ReceiptDeletionAudits": {
+      "rows": 18,
+      "sha256": "02f5edb784b5d2b0fa5b2f5194cd133d684b184b12d370ea75d9d400e83b2e4b"
+    },
+    "ReceiptInventoryOverrides": {
+      "rows": 124,
+      "sha256": "11f0512ce0a7a37df28db081be22abe64f8c231d172b783dc6ffd99e6c6e7794"
+    },
+    "ReceiptPurgeOperations": {
+      "rows": 1,
+      "sha256": "b78509f126a3718c81f5938fea7c57492e81bcfbf1d2fc347fb9cbacc8a3de85"
+    },
+    "ReceiptVarietyLines": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "Receipts": {
+      "rows": 2733,
+      "sha256": "434a3a5fe938d4300383135488139df4a8f81bf9d4bb70de2ad8a29011e2588d"
+    },
+    "RolePageAccesses": {
+      "rows": 240,
+      "sha256": "b728217f150e1ee47453df913a8f56a55f94d394c3dbe1417ebf6f174d11638f"
+    },
+    "RolePermissions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "Roles": {
+      "rows": 6,
+      "sha256": "8b157b2e68ef0134c121fa54502ab50b62862dcaa0086694ecb1f63898b25471"
+    },
+    "RoomDepletions": {
+      "rows": 6,
+      "sha256": "47aeea2e1597774c7633a64b6194dcc0169307c5f0faa64165194884cbba2cfe"
+    },
+    "RoomInventoryAdjustments": {
+      "rows": 4427,
+      "sha256": "6c09a6879f4a5da52e5c9d6a3d52c5af4ded7a9017be30094f8eaa94c7be42b3"
+    },
+    "RoomInventoryLosses": {
+      "rows": 8,
+      "sha256": "62fb799ca5bb4e225e72ba20922f370f3944af45b9cfa1d3db0391b8f5fbb45b"
+    },
+    "RoomSealEvents": {
+      "rows": 34,
+      "sha256": "b6335afaa7c58a5a6c25aeb37e506abc8e772a2c8ab705a31b80b54a8582a0d9"
+    },
+    "RoomTransfers": {
+      "rows": 413,
+      "sha256": "4c6ca663bbdccf4d8c996fdddede44031c5121d07f81f8d21d04777fa12c8c64"
+    },
+    "RoomTreatmentApplicationAttachments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "RoomTreatmentApplicationSources": {
+      "rows": 37,
+      "sha256": "7ba87a55be5bfab80d74422d30f97bb4d5f73675734e730b18d07804948788a3"
+    },
+    "RoomTreatmentApplications": {
+      "rows": 26,
+      "sha256": "01617203e9938225d25fec63e5795217fbf7e0a80108e61d5f7e811552c2e612"
+    },
+    "Rooms": {
+      "rows": 70,
+      "sha256": "3d394af7d838c357073e5dadd62cdd416c7e593c2a679b7d257e09e13638d9a0"
+    },
+    "RunExpectationSources": {
+      "rows": 434,
+      "sha256": "0af3fa3e4b7615f822b7d059d42e05c2f419cdd9963ae894b1a9383e7490e12e"
+    },
+    "RunExpectations": {
+      "rows": 173,
+      "sha256": "7bab3f4b2bbce2e54f0841922179c6779fdbd4789af97bfbe7e6b1415caa49db"
+    },
+    "RunProjectionGradeResults": {
+      "rows": 25,
+      "sha256": "ad723c32797115839429ca3231a19aadeefb747209d126565537341af8daa839"
+    },
+    "RunProjectionSizeResults": {
+      "rows": 80,
+      "sha256": "958afb3170466d85ab32d36d62f0e9f69da4c07eb50cc7abc512bc228b6a2dab"
+    },
+    "RunProjectionSources": {
+      "rows": 9,
+      "sha256": "4e05239e9d96f4a53a1506c68801e97ecda2720b05507ce56cbb2e3dd7e8bd36"
+    },
+    "RunProjections": {
+      "rows": 18,
+      "sha256": "9e31418c78ce5496429786bb2bc4abf96a8fdfcd8f168388453e9fcc8c049a28"
+    },
+    "SalesDesks": {
+      "rows": 3,
+      "sha256": "3d61e487db50521e76a0ee5902c4a7bda00522eb168af2ff146fb504e9358132"
+    },
+    "SampleTypes": {
+      "rows": 5,
+      "sha256": "ef939a469ec98202fc0042da220c72e5fa42f845e72a1e2e9265e3fe2de11847"
+    },
+    "StarchScaleValues": {
+      "rows": 12,
+      "sha256": "b5a610ff8686b0ef34c41b37c6b942c8e4859353538e48e9ad17502993f45592"
+    },
+    "StarchScales": {
+      "rows": 1,
+      "sha256": "ccfc32e5fe35100f9ea11d2e500c1235668e835b1dcae1f631dabee99c1a605e"
+    },
+    "TreatmentChemicals": {
+      "rows": 12,
+      "sha256": "5a141c793b81be3a77660c2d719981dbbf3a0758f19454158c1abeb7eb66cb26"
+    },
+    "TreatmentLineageMovements": {
+      "rows": 1164,
+      "sha256": "27c3cd855f2ecfda2dae3ce44eea9d83713f1a07a52c75eaa616b2030832e46f"
+    },
+    "TreatmentLineageSegmentApplications": {
+      "rows": 57,
+      "sha256": "00faf7712e05a3e28e05ef2629edb9a95a2a0022926d4c9743c5f2a5a6746264"
+    },
+    "TreatmentLineageSegments": {
+      "rows": 1045,
+      "sha256": "c31d74fc74dcb03ecb25f3f03be47d3636f42940a0e0aa6c1dd8ee3be84be945"
+    },
+    "UserEmploymentHistory": {
+      "rows": 8,
+      "sha256": "a337e3d71efea58d1c7261a58fe6c7cdb081588df7becc01cf3b73d83b9cda0e"
+    },
+    "UserGoogleCredentials": {
+      "rows": 17,
+      "sha256": "d60949479a5dd8fd05cc3e35c06b8c4e17c3c8a744c278e0de3f80a96cc7c117"
+    },
+    "UserPageAccesses": {
+      "rows": 480,
+      "sha256": "0d320c8861cdc2f856a3b8362e35e60ed7b0f86cf8a489c8df80959fa657a7b9"
+    },
+    "UserRoles": {
+      "rows": 16,
+      "sha256": "7ec70c9cb2716b79a6000ac6bf8b831eabfc1efdbffea5c6554c5f28a3db9ec6"
+    },
+    "Users": {
+      "rows": 16,
+      "sha256": "e805a346d1b28252123cbb80653d3660305f2fe60c731c7d3181da200c7b1618"
+    },
+    "VarietyColorConfigurations": {
+      "rows": 20,
+      "sha256": "4e924b51747678ee5dd00da1d9df8a55f4bb136d636756abf7668a801ec76fbd"
+    },
+    "Warehouses": {
+      "rows": 4,
+      "sha256": "282b48e1fc81019aa807e1cfc5cc524c107773906a29af599c151128448815ef"
+    },
+    "__EFMigrationsHistory": {
+      "rows": 34,
+      "sha256": "9b787aacd663669adc066d8575537a99107bb22f00d528cece40ceff939ee3d2"
+    }
+  },
+  "schema": {
+    "version": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "migrations": [
+      "20260521173857_InitialMvp1ReceivingQcModel",
+      "20260521220136_AddQcSummaryOverrideFields",
+      "20260529210944_AddDashboardConfiguration",
+      "20260529212812_AddUserAccessFields",
+      "20260529230504_AddGoogleDrivePhotoMetadata",
+      "20260530010358_AddQcStationEnrollmentFields",
+      "20260711195500_LinkVarietyColorsToFruitProfiles",
+      "20260711213000_AddCanonicalGrowers",
+      "20260717213000_AddFieldSamplesAndOrchardBlocks",
+      "20260721233604_AddOrchardReportRecipients",
+      "20260722233135_AddFieldSampleEmailHistory",
+      "20260723011519_AddFieldSampleAutosaveDefectInspection",
+      "20260723024710_AddProductionBackupHistory",
+      "20260723055241_AddBackupNotificationsAndReceiptPurgeAudit",
+      "20260723142741_AddFieldSampleDeletionAudit",
+      "20260723163704_AddRunProjections",
+      "20260723230325_AddRunProjectionPackoutAndGradeSnapshots",
+      "20260724003812_AddPreharvestRunProjectionMode",
+      "20260724020525_AddRunProjectionFacilityAndSoftDelete",
+      "20260724053022_AddCommercialPackProjectionConfiguration",
+      "20260724074306_AddOrchardManagerContactImports",
+      "20260724150253_AddRunProjectionOutcomeTrendSnapshots",
+      "20260724194806_AddRunProjectionCullSnapshot",
+      "20260727003738_AddGrowerLotProjectionSnapshotsAndPermissionLevels",
+      "20260804052104_AddFacilityRunReporting",
+      "20260805014812_AddReceiptInventoryOverrides",
+      "20260923202144_AddTruckReceiptReconciliation",
+      "20261001144023_CanonicalInventoryCommands",
+      "20261001203105_CanonicalIdentityRestorationSides",
+      "20261002031709_BoundedBackupSnapshotProgress",
+      "20261007212154_ReceiptHeldTransferCustody",
+      "20261007235352_ReceiptCustodyCompensations",
+      "20261007235822_ReceiptCustodyGuardrails",
+      "20261009150448_IsolatedInventoryMovementCohorts"
+    ]
+  },
+  "positionProof": {
+    "canonicalPositions": 1066,
+    "positivePositions": 452,
+    "signedAuthoritativeBins": 77642,
+    "positiveBins": 77769,
+    "negativePositions": [
+      {
+        "roomId": 60,
+        "identity": "2026|141|21|1270|1270|ORDA|ORGANIC|True|",
+        "quantity": -40
+      },
+      {
+        "roomId": 60,
+        "identity": "2026|477|29|1538|1538|RDAN|CONVENTIONAL|False|",
+        "quantity": -18
+      },
+      {
+        "roomId": 60,
+        "identity": "2026|502|18|2822|2822|DANJ|CONVENTIONAL|False|",
+        "quantity": -5
+      },
+      {
+        "roomId": 61,
+        "identity": "2026|476|18|1537|1537|DANJ|CONVENTIONAL|False|",
+        "quantity": -20
+      },
+      {
+        "roomId": 61,
+        "identity": "2026|478|18|1539|1539|DANJ|CONVENTIONAL|False|",
+        "quantity": -44
+      }
+    ],
+    "canonicalQuantitiesIdenticalAcrossThreeVersions": true,
+    "completePreFixOptimizedOutputsEqual": true,
+    "originFindings": {
+      "baseline": {
+        "count": 56,
+        "bins": 10437,
+        "exactHistoricalFindingsEqual": true
+      },
+      "before": {
+        "count": 56,
+        "bins": 10437,
+        "exactHistoricalFindingsEqual": true
+      },
+      "after": {
+        "count": 56,
+        "bins": 10437,
+        "exactHistoricalFindingsEqual": true
+      }
+    },
+    "treatmentImprovements": [
+      {
+        "roomId": 11,
+        "lot": "1565",
+        "profileId": 2,
+        "quantity": 140,
+        "baselineAvailable": 0,
+        "candidateAvailable": 140,
+        "sealed": false,
+        "originFailure": null
+      },
+      {
+        "roomId": 11,
+        "lot": "9380",
+        "profileId": 2,
+        "quantity": 147,
+        "baselineAvailable": 0,
+        "candidateAvailable": 147,
+        "sealed": false,
+        "originFailure": null
+      },
+      {
+        "roomId": 15,
+        "lot": "9342",
+        "profileId": 2,
+        "quantity": 77,
+        "baselineAvailable": 0,
+        "candidateAvailable": 77,
+        "sealed": false,
+        "originFailure": null
+      },
+      {
+        "roomId": 57,
+        "lot": "2710",
+        "profileId": 7,
+        "quantity": 323,
+        "baselineAvailable": 0,
+        "candidateAvailable": 323,
+        "sealed": true,
+        "originFailure": null
+      },
+      {
+        "roomId": 63,
+        "lot": "2710",
+        "profileId": 7,
+        "quantity": 426,
+        "baselineAvailable": 0,
+        "candidateAvailable": 426,
+        "sealed": true,
+        "originFailure": null
+      },
+      {
+        "roomId": 67,
+        "lot": "1110",
+        "profileId": 19,
+        "quantity": 286,
+        "baselineAvailable": 0,
+        "candidateAvailable": 286,
+        "sealed": false,
+        "originFailure": null
+      },
+      {
+        "roomId": 67,
+        "lot": "1290",
+        "profileId": 19,
+        "quantity": 5,
+        "baselineAvailable": 0,
+        "candidateAvailable": 5,
+        "sealed": false,
+        "originFailure": null
+      },
+      {
+        "roomId": 67,
+        "lot": "2825",
+        "profileId": 19,
+        "quantity": 524,
+        "baselineAvailable": 0,
+        "candidateAvailable": 524,
+        "sealed": false,
+        "originFailure": null
+      }
+    ],
+    "unsealedGain": 1179,
+    "hiddenBaselineCount": 20,
+    "hiddenBaselineBins": 5974,
+    "candidateHiddenCount": 0,
+    "hiddenPositions": [
+      {
+        "roomId": 11,
+        "cropYear": 2026,
+        "growerLotId": 132,
+        "profileId": 2,
+        "lot": "1565",
+        "quantity": 140
+      },
+      {
+        "roomId": 11,
+        "cropYear": 2026,
+        "growerLotId": 331,
+        "profileId": 2,
+        "lot": "9380",
+        "quantity": 147
+      },
+      {
+        "roomId": 12,
+        "cropYear": 2026,
+        "growerLotId": 399,
+        "profileId": 7,
+        "lot": "1011",
+        "quantity": 1153
+      },
+      {
+        "roomId": 12,
+        "cropYear": 2026,
+        "growerLotId": 574,
+        "profileId": 7,
+        "lot": "9332",
+        "quantity": 180
+      },
+      {
+        "roomId": 15,
+        "cropYear": 2026,
+        "growerLotId": 399,
+        "profileId": 7,
+        "lot": "1011",
+        "quantity": 350
+      },
+      {
+        "roomId": 15,
+        "cropYear": 2026,
+        "growerLotId": 579,
+        "profileId": 2,
+        "lot": "9342",
+        "quantity": 77
+      },
+      {
+        "roomId": 17,
+        "cropYear": 2026,
+        "growerLotId": 505,
+        "profileId": 2,
+        "lot": "3032",
+        "quantity": 113
+      },
+      {
+        "roomId": 18,
+        "cropYear": 2026,
+        "growerLotId": 505,
+        "profileId": 2,
+        "lot": "3032",
+        "quantity": 55
+      },
+      {
+        "roomId": 18,
+        "cropYear": 2026,
+        "growerLotId": 336,
+        "profileId": 2,
+        "lot": "3050",
+        "quantity": 275
+      },
+      {
+        "roomId": 21,
+        "cropYear": 2026,
+        "growerLotId": 623,
+        "profileId": 10,
+        "lot": "9541",
+        "quantity": 378
+      },
+      {
+        "roomId": 51,
+        "cropYear": 2026,
+        "growerLotId": 468,
+        "profileId": 7,
+        "lot": "1451",
+        "quantity": 253
+      },
+      {
+        "roomId": 54,
+        "cropYear": 2026,
+        "growerLotId": 395,
+        "profileId": 9,
+        "lot": "1081",
+        "quantity": 403
+      },
+      {
+        "roomId": 57,
+        "cropYear": 2026,
+        "growerLotId": 57,
+        "profileId": 7,
+        "lot": "2200",
+        "quantity": 280
+      },
+      {
+        "roomId": 57,
+        "cropYear": 2026,
+        "growerLotId": 186,
+        "profileId": 7,
+        "lot": "2710",
+        "quantity": 323
+      },
+      {
+        "roomId": 57,
+        "cropYear": 2026,
+        "growerLotId": 184,
+        "profileId": 7,
+        "lot": "2910",
+        "quantity": 69
+      },
+      {
+        "roomId": 58,
+        "cropYear": 2026,
+        "growerLotId": 14,
+        "profileId": 21,
+        "lot": "2825",
+        "quantity": 537
+      },
+      {
+        "roomId": 63,
+        "cropYear": 2026,
+        "growerLotId": 186,
+        "profileId": 7,
+        "lot": "2710",
+        "quantity": 426
+      },
+      {
+        "roomId": 67,
+        "cropYear": 2026,
+        "growerLotId": 126,
+        "profileId": 19,
+        "lot": "1110",
+        "quantity": 286
+      },
+      {
+        "roomId": 67,
+        "cropYear": 2026,
+        "growerLotId": 272,
+        "profileId": 19,
+        "lot": "1290",
+        "quantity": 5
+      },
+      {
+        "roomId": 67,
+        "cropYear": 2026,
+        "growerLotId": 14,
+        "profileId": 19,
+        "lot": "2825",
+        "quantity": 524
+      }
+    ],
+    "sealedTreatmentSelectionBinsRemainZero": true,
+    "warehouseFreshVersusBroadPositiveProof": {
+      "checkedPositions": 422,
+      "matched": 421,
+      "failed": 1,
+      "notReached": 30,
+      "passed": false,
+      "stopAt": {
+        "RoomId": 4,
+        "Key": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+        "exactResolvedProofEqual": false,
+        "quantityEqual": true,
+        "fingerprintEqual": false
+      }
+    },
+    "sourceFingerprintChangesFromBaseline": 55,
+    "unknownAncestryPreservedByExactPreFixOptimizedEquality": true
+  },
+  "selectorProof": {
+    "allSelectorOptionsMatchCanonicalPosition": true,
+    "counts": {
+      "outside": 459,
+      "intercrew": 9,
+      "processor": 459,
+      "roommove": 9
+    },
+    "positionsReplayed": 1066,
+    "authoritativeQuantity": 77642
+  },
+  "fingerprintDifferencesFromBaseline": [
+    {
+      "room": 7,
+      "identity": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 7,
+      "identity": "2026|583|2|9372|9372|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 7,
+      "identity": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 9,
+      "identity": "2026|623|10|9541|9541|ORHC|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 10,
+      "identity": "2026|626|14|9552|9552|RED|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 11,
+      "identity": "2026|132|2|1565|1565|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 11,
+      "identity": "2026|331|2|9380|9380|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 13,
+      "identity": "2026|648|2|9722|9722|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 15,
+      "identity": "2026|399|7|1011|1011|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 15,
+      "identity": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 15,
+      "identity": "2026|513|2|3162|3162|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 15,
+      "identity": "2026|559|2|9092|9092|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 15,
+      "identity": "2026|579|2|9342|9342|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 15,
+      "identity": "2026|581|2|9362|9362|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 15,
+      "identity": "2026|583|2|9372|9372|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 15,
+      "identity": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 17,
+      "identity": "2026|505|2|3032|3032|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 17,
+      "identity": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 3
+    },
+    {
+      "room": 17,
+      "identity": "2026|513|2|3162|3162|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 3
+    },
+    {
+      "room": 17,
+      "identity": "2026|581|2|9362|9362|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 17,
+      "identity": "2026|583|2|9372|9372|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 17,
+      "identity": "2026|642|2|9682|9682|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 18,
+      "identity": "2026|505|2|3032|3032|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 18,
+      "identity": "2026|336|2|3050|3050|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 4
+    },
+    {
+      "room": 18,
+      "identity": "2026|559|2|9092|9092|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 18,
+      "identity": "2026|574|7|9332|9332|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 18,
+      "identity": "2026|581|2|9362|9362|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 18,
+      "identity": "2026|331|2|9380|9380|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 18,
+      "identity": "2026|648|2|9722|9722|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 19,
+      "identity": "2026|648|2|9722|9722|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 20,
+      "identity": "2026|336|2|3050|3050|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 21,
+      "identity": "2026|336|2|3050|3050|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 21,
+      "identity": "2026|511|2|3152|3152|GALA|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 57,
+      "identity": "2026|186|7|2710|2710|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 57,
+      "identity": "2026|184|7|2910|2910|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 58,
+      "identity": "2026|14|21|2825|2825|ORDA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 61,
+      "identity": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 63,
+      "identity": "2026|57|7|2200|2200|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 4
+    },
+    {
+      "room": 63,
+      "identity": "2026|186|7|2710|2710|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 4
+    },
+    {
+      "room": 63,
+      "identity": "2026|184|7|2910|2910|ORGA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 64,
+      "identity": "2026|126|19|1110|1110|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 64,
+      "identity": "2026|268|17|1520|1520|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 64,
+      "identity": "2026|14|19|2825|2825|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 4
+    },
+    {
+      "room": 64,
+      "identity": "2026|116|17|3805|3805|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 65,
+      "identity": "2026|268|17|1520|1520|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 65,
+      "identity": "2026|116|17|3805|3805|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 2
+    },
+    {
+      "room": 66,
+      "identity": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 66,
+      "identity": "2026|502|17|2822|2822|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 67,
+      "identity": "2026|126|19|1110|1110|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 5
+    },
+    {
+      "room": 67,
+      "identity": "2026|272|19|1290|1290|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 67,
+      "identity": "2026|14|19|2825|2825|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 4
+    },
+    {
+      "room": 68,
+      "identity": "2026|126|19|1110|1110|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 68,
+      "identity": "2026|502|17|2822|2822|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 3,
+      "identity": "2026|126|19|1110|1110|ORBA|ORGANIC|True|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    },
+    {
+      "room": 3,
+      "identity": "2026|448|17|1372|1372|BART|CONVENTIONAL|False|",
+      "fields": [
+        "Watermark",
+        "RecordedArrivals"
+      ],
+      "recordedArrivalCount": 1
+    }
+  ],
+  "artifacts": {
+    "baseline-outside-plans.json": "e62fa7fb97ed3aec8d268c41e953f4260b6a617374d786066052751b91c2750f",
+    "baseline-single-room-plans.json": "f5f9d586a3ec0565acfa478856841f082266bfb797fba87066470a58b569f006",
+    "before-outside-plans.json": "0d8d710697eec86c69ff7a272a6e4c30ffe4eed8fbe461080d2f25286704ef8e",
+    "before-single-room-plans.json": "fa116470c30dab29de5bfc3542be196d19b1f20730807abe8d0e1caadcfe7454",
+    "after-outside-plans.json": "725b0a97758187586255f9ce6cec8198f5a3dae777d6f3d3c23f72cadb0a7bf4",
+    "after-single-room-plans.json": "b954a5722e8f083f095f2ee295965edae6aadd92506629352ea9fd6f89673604",
+    "after-all-evidence-evidence.json": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be",
+    "after-all-evidence-output.json": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be",
+    "after-audit.json": "11c7dcf432cfdcaa50b7c76beacf7aa291b79f747299cd73571f001e7b70e4e8",
+    "after-failure.json": "dcb00d6fddc19e07a89c935fd6ab8dd2ae9fb966fc3787a3f0299ce0a78fcce6",
+    "after-intercrew-output.json": "fd412913faa1f83d6c07816c4f786ecb250258c25e61a96ba454d6cb4c3998e2",
+    "after-outside-output.json": "a64ee21e40c44551e192a64851346f75b472370064d238187ca1e05990193819",
+    "after-processor-output.json": "2afb5adf3fa1e92a08c96acaac2f90341e588adf1444eb9c42d9f299115643aa",
+    "after-resolved.json": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240",
+    "after-roommove-output.json": "6718f5f64aff364166756e63f0b8e2933ac657ed0c79193a49537fc7d91c12d8",
+    "after-single-room-evidence.json": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab",
+    "after-single-room-output.json": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab",
+    "after.json": "1454296009668108fbfcbbc6a9f4a7f31fe0cc45fd63ddb11cade3d83059f4b5",
+    "baseline-all-evidence-evidence.json": "872399a36e2084e0ddeba608c3ab6a50bb8b4c548082a67831e650a7a7b45b89",
+    "baseline-all-evidence-output.json": "872399a36e2084e0ddeba608c3ab6a50bb8b4c548082a67831e650a7a7b45b89",
+    "baseline-audit.json": "3cf670c7fb57ce5d104d6d3b495936e20772f0994b5f69601c817da9a5603993",
+    "baseline-failure.json": "f79a6b3982660dd41d0527cbbbf43833869f4ba35537cae63c251a7e259bf831",
+    "baseline-intercrew-output.json": "f7db1f9a8bfe46a0a8490ea5baf17986a97b1dbf3727a34358edec55d0f2ac6d",
+    "baseline-outside-output.json": "e485877e23fa8afbcacec099679e1f250a34d55db507e96997f96e68e1d6b3c7",
+    "baseline-processor-output.json": "5d34bdf0cc4aaa4100b7fc35f14bd6e80380cb90fc9127903b53287114ea308f",
+    "baseline-resolved.json": "a607bc04082c240514e9483797a197b241e467df6e26a358fe5d8ecca73ea7b4",
+    "baseline-roommove-output.json": "fe3598b0dc4971547b82821d8f72fea01be2bf42a0476449ea183732083cbf48",
+    "baseline-single-room-evidence.json": "6e1d868b1a8a360f7f22222fa1f1773ca1c525038892a945691d8eb2b1517ed5",
+    "baseline-single-room-output.json": "6e1d868b1a8a360f7f22222fa1f1773ca1c525038892a945691d8eb2b1517ed5",
+    "baseline.json": "c0a6f4dde5876f0d927d925c4b3f0665add2d44a5aaa7a9568a21f1344ea663d",
+    "before-all-evidence-evidence.json": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be",
+    "before-all-evidence-output.json": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be",
+    "before-audit.json": "11c7dcf432cfdcaa50b7c76beacf7aa291b79f747299cd73571f001e7b70e4e8",
+    "before-failure.json": "7c5d461948dbb275c0093c080442f8681860fe6880353efdd1e41f495c5dcecd",
+    "before-intercrew-output.json": "fd412913faa1f83d6c07816c4f786ecb250258c25e61a96ba454d6cb4c3998e2",
+    "before-outside-output.json": "a64ee21e40c44551e192a64851346f75b472370064d238187ca1e05990193819",
+    "before-processor-output.json": "2afb5adf3fa1e92a08c96acaac2f90341e588adf1444eb9c42d9f299115643aa",
+    "before-resolved.json": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240",
+    "before-roommove-output.json": "6718f5f64aff364166756e63f0b8e2933ac657ed0c79193a49537fc7d91c12d8",
+    "before-single-room-evidence.json": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab",
+    "before-single-room-output.json": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab",
+    "before.json": "788b1d56fb82299f671fb21bcf7569f585027648df8b9f6eb72f42ae5fd74f6e",
+    "resolved-positions.json": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240",
+    "scope-checks.json": "393c2ceef0850df6bf61b4497fce2bd694dc37e477f06ed91b0174bae39c3932",
+    "scope-mismatch.json": "b9beed2c572173661428b67a27813e61d651a9dcc4a46389f675697f4d91ab53",
+    "selector-integrity.json": "0675895aeb41a650110800554f66aa39e72649b3b3e5b671fc94a5799f3ff4c3"
+  },
+  "limitations": [
+    "First pass is not disk cold; local elapsed times are not a Render SLA.",
+    "Two warm samples per scenario; no concurrent test/build workload.",
+    "Existing approximately eight-second broad baseline cost remains.",
+    "Reader counts exclude transaction control; RowsRead includes terminal reads.",
+    "Evidence RowsLoaded excludes some light-index and aggregate rows.",
+    "Database resources include EXPLAIN, and memory peak is cumulative.",
+    "Inter-crew probe uses a no-access principal to isolate source reading; not authenticated HTTP proof.",
+    "Current production state was not accessed; backup #204 snapshot is the boundary.",
+    "No forward/rollback/handback operations; prior baseline artifact is not post-operation rollback acceptance."
+  ],
+  "releaseAuthorized": false,
+  "decision": "NO-GO: cross-scope fingerprint safeguard failed",
+  "failedSafeguard": {
+    "status": "NO-GO",
+    "reason": "Receipt original-snapshot loading is scope-dependent; same source has different fingerprint across broad and command-sized reads.",
+    "position": {
+      "roomId": 4,
+      "room": "WP-7",
+      "growerLotId": 448,
+      "lot": "1372",
+      "fruitProfileId": 17,
+      "bins": 501
+    },
+    "broadFingerprint": "8E86A6221D3FED98FCE03626390D38836303C981306F095B174068EE42AB9D1D",
+    "narrowFingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+    "versions": {
+      "baseline": {
+        "triggerReceiptAddRows": [
+          {
+            "Id": 997,
+            "ReceiptId": 626,
+            "WarehouseId": 3,
+            "RoomId": 59,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 17,
+            "AdjustmentAt": "2026-08-18T22:21:00+00:00",
+            "CreatedAt": "2026-08-18T22:21:57.753488+00:00"
+          },
+          {
+            "Id": 1185,
+            "ReceiptId": 720,
+            "WarehouseId": 3,
+            "RoomId": 58,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 7,
+            "AdjustmentAt": "2026-08-20T03:31:00+00:00",
+            "CreatedAt": "2026-08-20T03:35:27.306543+00:00"
+          }
+        ],
+        "narrowReads": [
+          {
+            "scope": "warehouse",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          },
+          {
+            "scope": "single-room",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "triggerReceiptAddRows": [
+          {
+            "Id": 997,
+            "ReceiptId": 626,
+            "WarehouseId": 3,
+            "RoomId": 59,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 17,
+            "AdjustmentAt": "2026-08-18T22:21:00+00:00",
+            "CreatedAt": "2026-08-18T22:21:57.753488+00:00"
+          },
+          {
+            "Id": 1185,
+            "ReceiptId": 720,
+            "WarehouseId": 3,
+            "RoomId": 58,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 7,
+            "AdjustmentAt": "2026-08-20T03:31:00+00:00",
+            "CreatedAt": "2026-08-20T03:35:27.306543+00:00"
+          }
+        ],
+        "narrowReads": [
+          {
+            "scope": "warehouse",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          },
+          {
+            "scope": "single-room",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          }
+        ]
+      },
+      "after": {
+        "triggerReceiptAddRows": [
+          {
+            "Id": 997,
+            "ReceiptId": 626,
+            "WarehouseId": 3,
+            "RoomId": 59,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 17,
+            "AdjustmentAt": "2026-08-18T22:21:00+00:00",
+            "CreatedAt": "2026-08-18T22:21:57.753488+00:00"
+          },
+          {
+            "Id": 1185,
+            "ReceiptId": 720,
+            "WarehouseId": 3,
+            "RoomId": 58,
+            "ChangeAmount": 56,
+            "CropYear": 2026,
+            "GrowerLotId": 448,
+            "FruitProfileId": 7,
+            "AdjustmentAt": "2026-08-20T03:31:00+00:00",
+            "CreatedAt": "2026-08-20T03:35:27.306543+00:00"
+          }
+        ],
+        "narrowReads": [
+          {
+            "scope": "warehouse",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          },
+          {
+            "scope": "single-room",
+            "fingerprint": "032D2821921684B4BADFB8150FE74529EF31A2B8DAF3B4702D8ACCE4392E9A72",
+            "quantity": 501,
+            "available": 501,
+            "receiptAncestry": {
+              "Confidence": "Ambiguous",
+              "ReceiptIds": [
+                626,
+                660,
+                720,
+                774
+              ],
+              "Explanation": "Receipt evidence is retained without inventing a surviving per-receipt allocation."
+            },
+            "receiptEvidence": [
+              {
+                "Id": 626,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T20:18:20.279796+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 660,
+                "Quantity": 54,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-19T05:12:08.019707+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 720,
+                "Quantity": 56,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-20T03:36:21.327219+00:00",
+                "Version": 1,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              },
+              {
+                "Id": 774,
+                "Quantity": 64,
+                "ExactIdentity": true,
+                "IsDeleted": false,
+                "IsTransferReceipt": false,
+                "UpdatedAt": "2026-08-21T04:46:00.218789+00:00",
+                "Version": 0,
+                "OriginalQuantity": null,
+                "OriginalIdentityVerified": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "guardStillBlocks": "Ledger 1187: custody parent receipt-change:45678062-5b38-470b-ab7e-58f1db8e0415 credits more inventory than its recorded debits.",
+    "implementationChanged": false
+  },
+  "cleanup": {
+    "utc": "2026-10-16T18:22:48.466432+00:00",
+    "containerId": "eee3ca7a993f51f55db1b3c16a034f015a9d6f4bcb94659d0d2c377fc7bdd54f",
+    "volumes": [
+      "94b2860f543dd58866faa8c71c6b461659f8c35b56dfd9d358c987dba5fa787d"
+    ],
+    "containerDeleted": true,
+    "volumesDeleted": true,
+    "expandedSqlAbsent": true,
+    "originalBackupPreserved": true,
+    "unrelatedContainersPreserved": true,
+    "reason": "Stopped at cross-scope receipt evidence/fingerprint mismatch",
+    "cloudResourcesCreated": 0,
+    "incrementalCloudCost": 0
+  },
+  "exportCleanup": {
+    "utc": "2026-10-16T18:27:09.663929+00:00",
+    "rawProtectedExportsDeleted": [
+      {
+        "relativePath": "after-verify-inventory-conservation.json",
+        "sha256": "6e2b7cb52de4950cea2abbd2e8f6b79a71f30630447a94eaca95a4e381e887a8"
+      },
+      {
+        "relativePath": "after-verify-inventory-conservation.log",
+        "sha256": "cfdc11959baa711e0413f5e435de0b4a5ebbc5f0ce494923c11249d20de1d7ca"
+      },
+      {
+        "relativePath": "baseline-verify-inventory-conservation.json",
+        "sha256": "6e2b7cb52de4950cea2abbd2e8f6b79a71f30630447a94eaca95a4e381e887a8"
+      },
+      {
+        "relativePath": "baseline-verify-inventory-conservation.log",
+        "sha256": "cfdc11959baa711e0413f5e435de0b4a5ebbc5f0ce494923c11249d20de1d7ca"
+      },
+      {
+        "relativePath": "bench/after-all-evidence-evidence.json",
+        "sha256": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be"
+      },
+      {
+        "relativePath": "bench/after-all-evidence-output.json",
+        "sha256": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be"
+      },
+      {
+        "relativePath": "bench/after-audit.json",
+        "sha256": "11c7dcf432cfdcaa50b7c76beacf7aa291b79f747299cd73571f001e7b70e4e8"
+      },
+      {
+        "relativePath": "bench/after-failure.json",
+        "sha256": "dcb00d6fddc19e07a89c935fd6ab8dd2ae9fb966fc3787a3f0299ce0a78fcce6"
+      },
+      {
+        "relativePath": "bench/after-intercrew-output.json",
+        "sha256": "fd412913faa1f83d6c07816c4f786ecb250258c25e61a96ba454d6cb4c3998e2"
+      },
+      {
+        "relativePath": "bench/after-outside-output.json",
+        "sha256": "a64ee21e40c44551e192a64851346f75b472370064d238187ca1e05990193819"
+      },
+      {
+        "relativePath": "bench/after-processor-output.json",
+        "sha256": "2afb5adf3fa1e92a08c96acaac2f90341e588adf1444eb9c42d9f299115643aa"
+      },
+      {
+        "relativePath": "bench/after-resolved.json",
+        "sha256": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240"
+      },
+      {
+        "relativePath": "bench/after-roommove-output.json",
+        "sha256": "6718f5f64aff364166756e63f0b8e2933ac657ed0c79193a49537fc7d91c12d8"
+      },
+      {
+        "relativePath": "bench/after-single-room-evidence.json",
+        "sha256": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab"
+      },
+      {
+        "relativePath": "bench/after-single-room-output.json",
+        "sha256": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab"
+      },
+      {
+        "relativePath": "bench/baseline-all-evidence-evidence.json",
+        "sha256": "872399a36e2084e0ddeba608c3ab6a50bb8b4c548082a67831e650a7a7b45b89"
+      },
+      {
+        "relativePath": "bench/baseline-all-evidence-output.json",
+        "sha256": "872399a36e2084e0ddeba608c3ab6a50bb8b4c548082a67831e650a7a7b45b89"
+      },
+      {
+        "relativePath": "bench/baseline-audit.json",
+        "sha256": "3cf670c7fb57ce5d104d6d3b495936e20772f0994b5f69601c817da9a5603993"
+      },
+      {
+        "relativePath": "bench/baseline-failure.json",
+        "sha256": "f79a6b3982660dd41d0527cbbbf43833869f4ba35537cae63c251a7e259bf831"
+      },
+      {
+        "relativePath": "bench/baseline-intercrew-output.json",
+        "sha256": "f7db1f9a8bfe46a0a8490ea5baf17986a97b1dbf3727a34358edec55d0f2ac6d"
+      },
+      {
+        "relativePath": "bench/baseline-outside-output.json",
+        "sha256": "e485877e23fa8afbcacec099679e1f250a34d55db507e96997f96e68e1d6b3c7"
+      },
+      {
+        "relativePath": "bench/baseline-processor-output.json",
+        "sha256": "5d34bdf0cc4aaa4100b7fc35f14bd6e80380cb90fc9127903b53287114ea308f"
+      },
+      {
+        "relativePath": "bench/baseline-resolved.json",
+        "sha256": "a607bc04082c240514e9483797a197b241e467df6e26a358fe5d8ecca73ea7b4"
+      },
+      {
+        "relativePath": "bench/baseline-roommove-output.json",
+        "sha256": "fe3598b0dc4971547b82821d8f72fea01be2bf42a0476449ea183732083cbf48"
+      },
+      {
+        "relativePath": "bench/baseline-single-room-evidence.json",
+        "sha256": "6e1d868b1a8a360f7f22222fa1f1773ca1c525038892a945691d8eb2b1517ed5"
+      },
+      {
+        "relativePath": "bench/baseline-single-room-output.json",
+        "sha256": "6e1d868b1a8a360f7f22222fa1f1773ca1c525038892a945691d8eb2b1517ed5"
+      },
+      {
+        "relativePath": "bench/before-all-evidence-evidence.json",
+        "sha256": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be"
+      },
+      {
+        "relativePath": "bench/before-all-evidence-output.json",
+        "sha256": "22f940c1e14e1d7a45f3b2d6bbc9d54001bbf4c6d10f9e6293be6b14819c28be"
+      },
+      {
+        "relativePath": "bench/before-audit.json",
+        "sha256": "11c7dcf432cfdcaa50b7c76beacf7aa291b79f747299cd73571f001e7b70e4e8"
+      },
+      {
+        "relativePath": "bench/before-failure.json",
+        "sha256": "7c5d461948dbb275c0093c080442f8681860fe6880353efdd1e41f495c5dcecd"
+      },
+      {
+        "relativePath": "bench/before-intercrew-output.json",
+        "sha256": "fd412913faa1f83d6c07816c4f786ecb250258c25e61a96ba454d6cb4c3998e2"
+      },
+      {
+        "relativePath": "bench/before-outside-output.json",
+        "sha256": "a64ee21e40c44551e192a64851346f75b472370064d238187ca1e05990193819"
+      },
+      {
+        "relativePath": "bench/before-processor-output.json",
+        "sha256": "2afb5adf3fa1e92a08c96acaac2f90341e588adf1444eb9c42d9f299115643aa"
+      },
+      {
+        "relativePath": "bench/before-resolved.json",
+        "sha256": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240"
+      },
+      {
+        "relativePath": "bench/before-roommove-output.json",
+        "sha256": "6718f5f64aff364166756e63f0b8e2933ac657ed0c79193a49537fc7d91c12d8"
+      },
+      {
+        "relativePath": "bench/before-single-room-evidence.json",
+        "sha256": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab"
+      },
+      {
+        "relativePath": "bench/before-single-room-output.json",
+        "sha256": "11d7503eedeba263bf19f26ff74e4ac40e178e7f50923245433c484d65dd29ab"
+      },
+      {
+        "relativePath": "bench/resolved-positions.json",
+        "sha256": "c0ffc84aa9c190d2ebd19acd6c97a05ab7f038632ab6b192538e0c53738a2240"
+      },
+      {
+        "relativePath": "bench/scope-mismatch.json",
+        "sha256": "b9beed2c572173661428b67a27813e61d651a9dcc4a46389f675697f4d91ab53"
+      }
+    ],
+    "retained": "Sanitized measurements, query plans, exact failure identifiers, aggregate integrity hashes, frozen local applications, original verified backup"
+  }
+}

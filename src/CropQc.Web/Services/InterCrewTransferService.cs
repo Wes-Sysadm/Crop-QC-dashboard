@@ -542,13 +542,8 @@ public sealed partial class InterCrewTransferService(
         return await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
     }
 
-    internal static IReadOnlyList<string> AllowedDestinationGroups(string? sourceWarehouse) => sourceWarehouse?.Trim().ToUpperInvariant() switch
-    {
-        "WP" or "DH" => [TransferCustodyGroups.Ebs],
-        "EBS" => [TransferCustodyGroups.WpDh],
-        "MCD" or "MCDOUGALL" => [TransferCustodyGroups.WpDh, TransferCustodyGroups.Ebs],
-        _ => []
-    };
+    internal static IReadOnlyList<string> AllowedDestinationGroups(string? sourceWarehouse) =>
+        TruckReceiptRoutes.InterCrewDestinations(sourceWarehouse);
 
     private const string SharedCustodyGroup = "SHARED";
 
