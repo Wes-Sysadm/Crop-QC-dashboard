@@ -1,2 +1,2 @@
-# PR284 compatible rollback source: 8bf615c41b265ecada8c7f0632f6e355cdc4b11f
-FROM ghcr.io/wes-sysadm/crop-qc-pr284-recovery@sha256:0143b389a6318d7de7295e048a9dfee5b18b163788bde3fc7028a02b9c2ee3e3
+# PR284 compatible rollback V4 source: d9b2546120c1d520dd41cbcc9a85bd7010a5c203
+FROM ghcr.io/wes-sysadm/crop-qc-pr284-recovery@sha256:16716c935188476db720858c06a6fa75e122352168cd3222cb38070994907604

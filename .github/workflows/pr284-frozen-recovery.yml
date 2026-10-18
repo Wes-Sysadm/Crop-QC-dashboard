@@ -16,17 +16,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download pr284-compatible-rollback-8bf615c --repo Wes-Sysadm/Crop-QC-dashboard --pattern cropqc-pr284-rollback-8bf615c-linux-amd64.tar
-          echo '053dfe366d28ad13faa818f388954171588bc8cf4b9014161adb10477e3d6a87  cropqc-pr284-rollback-8bf615c-linux-amd64.tar' | sha256sum -c -
+          gh release download pr284-compatible-rollback-d9b2546 --repo Wes-Sysadm/Crop-QC-dashboard --pattern cropqc-pr284-rollback-d9b2546-linux-amd64.tar
+          echo 'd37308e3a1ca7d8fe3c7c6e69d6b2f688d2ba287280b4a3d1329716eabe4ab32  cropqc-pr284-rollback-d9b2546-linux-amd64.tar' | sha256sum -c -
           python3 - <<'PY'
           import hashlib,json,pathlib,tarfile
           root=pathlib.Path('oci'); root.mkdir()
-          with tarfile.open('cropqc-pr284-rollback-8bf615c-linux-amd64.tar') as t:
+          with tarfile.open('cropqc-pr284-rollback-d9b2546-linux-amd64.tar') as t:
               for m in t:
                   if m.isfile() and m.name.startswith('blobs/sha256/'):
                       d=t.extractfile(m).read(); assert hashlib.sha256(d).hexdigest()==m.name.split('/')[-1]
                       p=root/m.name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(d)
-          digest='0143b389a6318d7de7295e048a9dfee5b18b163788bde3fc7028a02b9c2ee3e3'
+          digest='16716c935188476db720858c06a6fa75e122352168cd3222cb38070994907604'
           p=root/'blobs/sha256'/digest
           (root/'oci-layout').write_text('{"imageLayoutVersion":"1.0.0"}')
           (root/'index.json').write_text(json.dumps({'schemaVersion':2,'manifests':[{'mediaType':'application/vnd.oci.image.manifest.v1+json','digest':'sha256:'+digest,'size':p.stat().st_size,'annotations':{'org.opencontainers.image.ref.name':'rollback'}}]}))
@@ -40,11 +40,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq skopeo
           printf '%s' "$GH_TOKEN" | skopeo login ghcr.io --username "$GH_ACTOR" --password-stdin
-          skopeo copy --preserve-digests oci:oci:rollback docker://ghcr.io/wes-sysadm/crop-qc-pr284-recovery:8bf615c-runtime21
-          skopeo copy --preserve-digests docker://ghcr.io/wes-sysadm/crop-qc-pr284-recovery@sha256:0143b389a6318d7de7295e048a9dfee5b18b163788bde3fc7028a02b9c2ee3e3 oci:retrieved:rollback
+          skopeo copy --preserve-digests oci:oci:rollback docker://ghcr.io/wes-sysadm/crop-qc-pr284-recovery:d9b2546-runtime21
+          skopeo copy --preserve-digests docker://ghcr.io/wes-sysadm/crop-qc-pr284-recovery@sha256:16716c935188476db720858c06a6fa75e122352168cd3222cb38070994907604 oci:retrieved:rollback
           python3 - <<'PY'
           import pathlib,json,hashlib
-          digest='0143b389a6318d7de7295e048a9dfee5b18b163788bde3fc7028a02b9c2ee3e3'
+          digest='16716c935188476db720858c06a6fa75e122352168cd3222cb38070994907604'
           p=pathlib.Path('oci/blobs/sha256')
           m=json.loads((p/digest).read_bytes())
           all_digests=[digest,m['config']['digest'].split(':')[1]]+[x['digest'].split(':')[1] for x in m['layers']]
