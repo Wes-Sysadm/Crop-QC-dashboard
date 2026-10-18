@@ -119,6 +119,12 @@
           "member": "Concurrent_arrivals_into_depleted_alias_conserve_both_origins_and_replay_once",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedMixedDispatchTests",
+          "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Whole-production accounting requires a fresh read-only release report; no live quantities certified by CI."
@@ -439,6 +445,12 @@
           "member": "Incoming_treatment_from_another_room_does_not_reclassify_untreated_destination_stock",
           "kind": "unit",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedMixedDispatchTests",
+          "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "PR #271 now exercises immutable same-lot mixed transit/held cohorts; runtime rollback rehearsal remains a separate mandatory gate, not implied by these tests."
@@ -622,6 +634,12 @@
         {
           "type": "CropQc.Api.Tests.InterCrewRouteContractTests",
           "member": "Unsupported_routes_reject_at_the_canonical_writer_without_any_changes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.RecordedMixedDispatchTests",
+          "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
           "kind": "postgres",
           "required": true
         }

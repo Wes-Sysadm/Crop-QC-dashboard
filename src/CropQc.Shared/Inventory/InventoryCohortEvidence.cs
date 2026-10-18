@@ -101,6 +101,7 @@ public static class InventoryCohortEvidence
 
     public static bool Related(InventoryLedgerEvidence ledger, InventoryMovementEvidence movement) =>
         ledger.MovementParent != null && ledger.MovementParent == movement.Parent
+            && MatchesCanonicalCustodyLine(ledger, movement)
         || ledger.MovementParent == null && movement.Parent == null
             && ledger.InvariantVersion >= InventoryLedgerKinds.CanonicalCommandInvariantVersion
             && ledger.ReceiptId != null && ledger.ReceiptId == movement.ReceiptId
@@ -108,4 +109,23 @@ public static class InventoryCohortEvidence
             && !string.IsNullOrWhiteSpace(ledger.OperationKey) && !string.IsNullOrWhiteSpace(movement.OperationKey)
             && (ledger.Kind is "CorrectOriginalRoomIn" or "CorrectOriginalRoomOut" && movement.Kind == "ReceiptLocationCorrection"
                 || ledger.Kind is "ReceiptAdminOverride" or "ReceiptQuantityCorrection" && movement.Kind is "ReceiptQuantityCorrection" or "ReceiptVoid");
+
+    private static bool MatchesCanonicalCustodyLine(InventoryLedgerEvidence ledger, InventoryMovementEvidence movement)
+    {
+        // A load can contain several treatment lines of the SAME identity, and
+        // later commands can edit/receive/return that same parent. Parent equality
+        // alone associates every departure with each debit, losing its allocation.
+        // Canonical custody writers persist a line key on both sides. Legacy
+        // parents retain their existing proof contract; do not invent line keys.
+        if (ledger.InvariantVersion < InventoryLedgerKinds.CanonicalCommandInvariantVersion
+            || !ledger.MovementParent!.StartsWith("crew:", StringComparison.Ordinal)) return true;
+        if (string.IsNullOrWhiteSpace(ledger.OperationKey) || string.IsNullOrWhiteSpace(movement.OperationKey)
+            || ledger.RecordedAt != movement.CreatedAt) return false;
+        var line = ledger.OperationKey;
+        if (line.EndsWith(":out", StringComparison.Ordinal)) line = line[..^4];
+        else if (line.EndsWith(":in", StringComparison.Ordinal)) line = line[..^3];
+        // Include the delimiter: line 1 must never match line 10. The writer may
+        // add a reversal-movement suffix before its source-segment suffix.
+        return movement.OperationKey.StartsWith(line + ":", StringComparison.Ordinal);
+    }
 }

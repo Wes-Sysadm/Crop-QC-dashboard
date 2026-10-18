@@ -1,0 +1,193 @@
+{
+  "startingHead": "34963880cc3b02a7978c91cc74d54f0cfa3f67dd",
+  "main": "ea112eae6aca92778e9338e60c804ac9edd444fd",
+  "classification": "A: systemic canonical inter-crew line matching defect; reproduced on production-base and candidate managed binaries",
+  "protectedFinalPredicateCaptured": false,
+  "syntheticPostgreSQL": "18.4",
+  "comparison": [
+    {
+      "case": "baseline-final",
+      "assemblyHashes": {
+        "CropQc.Shared.dll": "627cd2ced0250c4d2a9cd513f04b03afe8752f81f0fef881fde8f63a9edb98e4",
+        "CropQc.Data.dll": "594a1bcb0d9263ad75097f817cbd3320530bf6b0b7f7a78499ceef743fc5153e"
+      },
+      "exitCode": 1
+    },
+    {
+      "case": "candidate-before-fix",
+      "assemblyHashes": {
+        "CropQc.Shared.dll": "e45767523a88d1b4a52d381a66afe20fcd51eb8d8ccae8e768b0be9133eeab21",
+        "CropQc.Data.dll": "ec2483e0a83a085527d11a06b0f10b898eec818d56496219bcb8cade4291d45f"
+      },
+      "exitCode": 1
+    }
+  ],
+  "predicates": [
+    {
+      "case": "baseline-final",
+      "outcome": "Failed",
+      "stages": [
+        {
+          "stage": "Normalized",
+          "AuthoritativeQuantity": 652,
+          "RawProjectionQuantity": 652,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource1",
+          "AuthoritativeQuantity": 650,
+          "RawProjectionQuantity": 650,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource2",
+          "AuthoritativeQuantity": 648,
+          "RawProjectionQuantity": 648,
+          "IsOperable": false,
+          "Blockers": [
+            {
+              "Code": "MixedTreatmentAmbiguity",
+              "Detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+            }
+          ],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        }
+      ]
+    },
+    {
+      "case": "candidate-before-fix",
+      "outcome": "Failed",
+      "stages": [
+        {
+          "stage": "Normalized",
+          "AuthoritativeQuantity": 652,
+          "RawProjectionQuantity": 652,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource1",
+          "AuthoritativeQuantity": 650,
+          "RawProjectionQuantity": 650,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource2",
+          "AuthoritativeQuantity": 648,
+          "RawProjectionQuantity": 648,
+          "IsOperable": false,
+          "Blockers": [
+            {
+              "Code": "MixedTreatmentAmbiguity",
+              "Detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+            }
+          ],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        }
+      ]
+    },
+    {
+      "case": "affected",
+      "outcome": "Passed",
+      "stages": [
+        {
+          "stage": "Normalized",
+          "AuthoritativeQuantity": 652,
+          "RawProjectionQuantity": 652,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource1",
+          "AuthoritativeQuantity": 650,
+          "RawProjectionQuantity": 650,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource2",
+          "AuthoritativeQuantity": 648,
+          "RawProjectionQuantity": 648,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "Normalized",
+          "AuthoritativeQuantity": 648,
+          "RawProjectionQuantity": 648,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        },
+        {
+          "stage": "PersistedSource1",
+          "AuthoritativeQuantity": 647,
+          "RawProjectionQuantity": 647,
+          "IsOperable": true,
+          "Blockers": [],
+          "UsesRecordedCohorts": false,
+          "UsesIndependentCohorts": false
+        }
+      ]
+    }
+  ],
+  "rollbackReader": {
+    "AuthoritativeQuantity": 648,
+    "RawProjectionQuantity": 648,
+    "IsOperable": false,
+    "Blockers": [
+      {
+        "Code": "MixedTreatmentAmbiguity",
+        "Detail": "Overlapping or incomplete projections do not prove the surviving quantities of each treatment."
+      }
+    ]
+  },
+  "validation": {
+    "newFocusedPassed": 5,
+    "affectedInitialPassed": 100,
+    "affectedInitialFailed": 1,
+    "failedHttpReason": "stale generated Linux web-assets manifest on Windows",
+    "httpRerunPassed": 1,
+    "mandatoryContractsPassed": 222,
+    "mandatoryContractsSkipped": 0,
+    "governancePassed": 29,
+    "restore": "PASS",
+    "releaseBuild": "PASS; 74 warnings, 0 errors",
+    "model": "no pending changes",
+    "format": "PASS",
+    "ci": "see final-head PR checks"
+  },
+  "cleanup": {
+    "utc": "2026-10-18T01:44:24.138275+00:00",
+    "container": "897f81d8f23ca20007ebb262fafaf36c02e56185e7c6d3ecb0a71c08b79fe3d6",
+    "volumes": [
+      "3475753f8a40f3a6161f0087b97419a381c89ecd4d25d69cd8d87a93912e9e52"
+    ],
+    "fixtureDatabasesDeleted": true,
+    "containerAndVolumesVerifiedAbsent": true,
+    "protectedBackupAccess": false,
+    "productionAccess": false,
+    "cloudCharges": 0,
+    "data": "synthetic only; local evidence retained"
+  }
+}
