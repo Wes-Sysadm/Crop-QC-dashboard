@@ -43,18 +43,20 @@ public sealed record InventoryConservationReport(
     long ReceiptHeldBins = 0)
 {
     public IReadOnlyList<InvalidLocationCorrection> InvalidLocationCorrections { get; init; } = [];
+    public IReadOnlyList<InvalidReceiptCompensation> InvalidReceiptCompensations { get; init; } = [];
     public long TreatmentIdentityDifference => TreatmentIdentityCredit - TreatmentIdentityDebit;
     public bool IsReady => Receiving.MismatchCount == 0 && Global.Difference == 0
         && Facilities.All(x => x.Difference == 0) && UnclassifiedTypes.Count == 0
         && UnbalancedRoomTransfers.Count == 0 && UnbalancedIdentityCorrections.Count == 0
         && InvalidTreatmentIdentityMovements == 0 && TreatmentIdentityDifference == 0
-        && InvalidLocationCorrections.Count == 0;
+        && InvalidLocationCorrections.Count == 0 && InvalidReceiptCompensations.Count == 0;
 }
 
 public sealed record InvalidLocationCorrection(Guid? CorrectionId, IReadOnlyList<long> AdjustmentIds);
+public sealed record InvalidReceiptCompensation(long? ReversalId, IReadOnlyList<long> AdjustmentIds, IReadOnlyList<long> MovementIds);
 
 /// <summary>Read-only quantity accounting. Unknown categories are reported and fail the release gate.</summary>
-public sealed class InventoryConservationReportService(CropQcDbContext db, IRoomInventoryLedgerQueryService ledger, int cropYear)
+public sealed partial class InventoryConservationReportService(CropQcDbContext db, IRoomInventoryLedgerQueryService ledger, int cropYear)
 {
     // This type-only predicate is also used by historical-only receipt editing.
     // Do not broaden that operation's proof: location types are recognized in the
@@ -121,8 +123,10 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
                 && x.MovementType != TreatmentLineageMovementTypes.IdentityReclassification)
             .Select(x => new { x.MovementType, x.BinCount }).ToListAsync(cancellationToken);
         var invalidLocations = await ValidateLocationCorrectionsAsync(allRows, cancellationToken);
+        var invalidCompensations = await ValidateReceiptCompensationsAsync(allRows, cancellationToken);
         return new(receiving, facilities, global,
-            effective.Where(x => !IsKnownMovement(x.AdjustmentType) && !IsLocationMovement(x.AdjustmentType)).Select(x => x.AdjustmentType).Distinct().Order().ToList(),
+            effective.Where(x => !IsKnownMovement(x.AdjustmentType) && !IsLocationMovement(x.AdjustmentType)
+                && x.AdjustmentType != "ReceiptPlacementReversal").Select(x => x.AdjustmentType).Distinct().Order().ToList(),
             pairs.Where(x => x.RoomTransferId != null).GroupBy(x => x.RoomTransferId!.Value)
                 .Where(x => x.Sum(y => (long)y.ChangeAmount) != 0).Select(x => x.Key).ToList(),
             pairs.Where(x => x.InventoryIdentityCorrectionId != null).GroupBy(x => x.InventoryIdentityCorrectionId!.Value)
@@ -139,7 +143,7 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
                 - (await db.ReceiptCustodyReversals.Where(x => x.PlacementId == null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 + (await db.ReceiptCustodyReversals.Where(x => x.PlacementId != null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0))
-        { InvalidLocationCorrections = invalidLocations };
+        { InvalidLocationCorrections = invalidLocations, InvalidReceiptCompensations = invalidCompensations };
     }
 
     private static bool IsLocationMovement(string type) => type is "CorrectOriginalRoomOut" or "CorrectOriginalRoomIn";
@@ -264,7 +268,7 @@ public sealed class InventoryConservationReportService(CropQcDbContext db, IRoom
             "OutsideWarehouseTransfer" or "OutsideWarehouseTransferReversal" => "Outside warehouse custody (net room removal)",
             "InterCrewTransferDispatch" or "InterCrewTransferReceive" or "InterCrewTransferReversalDestination"
                 or "InterCrewTransferReversalSource" or TruckReceiptReconciliationService.ReturnToSource
-                or TruckReceiptReconciliationService.ReopenDestination => "Inter-crew custody (net room movement)",
+                or TruckReceiptReconciliationService.ReopenDestination or "ReceiptPlacementReversal" => "Inter-crew custody (net room movement)",
             "TransferIn" or "TransferOut" => "Internal transfers",
             "InventoryIdentityCorrection" => "Identity/location corrections",
             _ => "UNCLASSIFIED: " + x.AdjustmentType

@@ -178,7 +178,7 @@ public sealed class ReceiptPlacementBaselineTests
         await ReceiptCustodyCorrectionTests.Prove(f, receiving, 4, 4);
     }
 
-    private static InventoryCommandLine Line(InventoryAvailabilityResult p, int n, string signature) =>
+    internal static InventoryCommandLine Line(InventoryAvailabilityResult p, int n, string signature) =>
         new(new(p.Identity, p.Location, p.Watermark.Fingerprint, p.Watermark.Versions), n, signature);
 
     private static string SegmentRows(CropQcDbContext db, IEnumerable<TreatmentLineageSegment> segments) => JsonSerializer.Serialize(segments.Select(s => new
@@ -187,10 +187,10 @@ public sealed class ReceiptPlacementBaselineTests
         Links = s.Applications.OrderBy(a => a.RoomTreatmentApplicationId).Select(a => db.Entry(a).CurrentValues.Properties.ToDictionary(p => p.Name, p => db.Entry(a).CurrentValues[p])).ToArray()
     }).ToArray());
 
-    private static async Task Commit(Fixture f, InventoryCommand command)
+    internal static async Task Commit(Fixture f, InventoryCommand command)
     { var result = await f.Execute(command); Assert.True(result.Status == InventoryCommandStatus.Committed, result.Detail); }
 
-    private static async Task<InventoryCommand> Command(Fixture f, long transfer, long receipt, InventoryCommandKind kind,
+    internal static async Task<InventoryCommand> Command(Fixture f, long transfer, long receipt, InventoryCommandKind kind,
         ImmutableArray<InventoryCustodyQuantity> quantities, int warehouse, int room)
     {
         await using var db = f.CreateDbContext(); var t = await db.InterCrewTransfers.AsNoTracking().SingleAsync(x => x.Id == transfer);
@@ -199,7 +199,7 @@ public sealed class ReceiptPlacementBaselineTests
             ReceiptCustody: new(t.Id, r.Id, t.ConcurrencyVersion, r.ConcurrencyVersion, quantities, kind == InventoryCommandKind.PlaceReceiptCustody ? new(warehouse, room) : null));
     }
 
-    private static async Task MixedProof(CropQcDbContext db, int held, int placed)
+    internal static async Task MixedProof(CropQcDbContext db, int held, int placed)
     {
         db.ChangeTracker.Clear(); var resolver = new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db));
         var all = new List<InventoryAvailabilityResult>();
@@ -220,7 +220,7 @@ public sealed class ReceiptPlacementBaselineTests
         Assert.True((await new TreatmentLineageReadinessService(new CropQc.Web.Services.RoomInventoryLedgerQueryService(db), db).VerifyAsync(default)).Success);
     }
 
-    private static async Task<string> History(CropQcDbContext db) => JsonSerializer.Serialize(new
+    internal static async Task<string> History(CropQcDbContext db) => JsonSerializer.Serialize(new
     {
         Receipts = await db.Receipts.AsNoTracking().Where(x => x.Id >= 100000).OrderBy(x => x.Id).ToArrayAsync(),
         Ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.Id >= 100000).OrderBy(x => x.Id).ToArrayAsync(),
