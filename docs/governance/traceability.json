@@ -6,9 +6,60 @@
       "id": "INV-001",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
-        "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs"
+        "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
+        "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
+        "src/CropQc.Data/Inventory/LegacyReceiptReclassificationOrigin.cs",
+        "src/CropQc.Data/Inventory/LegacyInitialReceiptIncrease.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Unsupported_initial_increase_blocks_the_run_without_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Same_identity_legacy_location_correction_keeps_existing_custody_validation",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Recorded_legacy_reclassification_proves_origin_without_rewriting_history",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Unsupported_reclassification_is_rejected_without_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "New_ActualRun_consumes_44_and_74_once_and_rolls_back_every_failure_boundary",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Independent_sessions_consume_corrected_stock_once",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Corrected_pool_moves_and_restores_with_original_history_and_treatment_intact",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
+          "member": "Stale_version_and_missing_correction_audit_block_before_any_run_write",
+          "kind": "postgres",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.HistoricalInterCrewDispatchTests",
           "member": "Qualified_selection_does_not_certify_origin_and_origin_rejection_has_no_writes",

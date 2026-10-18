@@ -48,6 +48,14 @@ internal static class InventoryOriginGuard
             .Concat(selected.SelectMany(x => x.Receipts).Select(x => x.Id)).Distinct().ToArray();
         var recordedReceipts = (await Read(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct)).ToDictionary(x => x.Id);
         var revisions = await Read(db.ReceiptInventoryOverrides.AsNoTracking().Where(x => receiptIds.Contains(x.ReceiptId)), ct);
+        var legacyKeys = revisions.Where(x => x.ActionType == ReceiptInventoryOverrideActionTypes.InventoryReclassification)
+            .Select(x => x.Id.ToString()).ToArray();
+        var legacyAudits = legacyKeys.Length == 0 ? [] : await Read(db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == nameof(ReceiptInventoryOverride) && legacyKeys.Contains(x.EntityKey)), ct);
+        var editedReceiptKeys = all.Values.Where(x => x.AdjustmentType == "ReceiptEdit" && x.ReceiptId != null)
+            .Select(x => x.ReceiptId!.Value.ToString()).Distinct().ToArray();
+        var receiptAudits = editedReceiptKeys.Length == 0 ? [] : await Read(db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == nameof(Receipt) && editedReceiptKeys.Contains(x.EntityKey)), ct);
         var ledgerIds = all.Keys.ToArray();
         var runEntries = await Read(db.BinsRunEntries.AsNoTracking().Where(x => ledgerIds.Contains(x.InventoryAdjustmentId)), ct);
         var identityMap = await CanonicalIdentityMap.LoadAsync(db, receiptIds, ct);
@@ -92,7 +100,7 @@ internal static class InventoryOriginGuard
                     return Fail(row, $"receipt {id} has duplicate inventory origins");
                 var first = revisions.Where(x => x.ReceiptId == id).OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).FirstOrDefault();
                 if (first == null)
-                    return row.CropYear == receipt.CropYear && row.GrowerLotId == receipt.GrowerLotId
+                    return InitialIncrease(receipt) || row.CropYear == receipt.CropYear && row.GrowerLotId == receipt.GrowerLotId
                         && row.FruitProfileId == receipt.FruitProfileId && row.LotNumber == receipt.LotCode
                         && row.ChangeAmount == receipt.BinCount || Fail(row, $"receipt {id} differs from its origin without a recorded revision");
                 try
@@ -122,9 +130,33 @@ internal static class InventoryOriginGuard
                 catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
                 { return Fail(row, $"receipt {id}'s original revision snapshot is missing or malformed"); }
             }
+            if (row.AdjustmentType == "ReceiptEdit")
+                return row.ReceiptId is long editedId && recordedReceipts.TryGetValue(editedId, out var editedReceipt)
+                    && InitialIncrease(editedReceipt)
+                    || Fail(row, "legacy receipt increase lacks a unique original arrival and matching initial-edit audit");
             if (row.ReceiptInventoryOverrideId is Guid changeId)
             {
                 var change = revisions.SingleOrDefault(x => x.Id == changeId);
+                // Before identity maps existed, Admin reclassification retained
+                // its authorization in the override, snapshots and atomic audit.
+                // A raw-identity filter would discard its legitimate debit.
+                if (change?.ActionType == ReceiptInventoryOverrideActionTypes.InventoryReclassification
+                    && row.InventoryIdentityCorrectionId == null && row.InventoryInvariantVersion == 1
+                    && all.Values.Any(x => x.ReceiptInventoryOverrideId == changeId && x.ChangeAmount < 0 && !SameIdentity(x, row)))
+                {
+                    var legs = all.Values.Where(x => x.ReceiptInventoryOverrideId == changeId).OrderBy(x => x.Id).ToArray();
+                    var origins = all.Values.Where(x => x.ReceiptId == change.ReceiptId && x.AdjustmentType == "ReceiptAdd").ToArray();
+                    return LegacyReceiptReclassificationOrigin.IsProven(change, legs,
+                            legacyAudits.Where(x => x.EntityKey == changeId.ToString()).ToArray(), asOf)
+                        && origins.Length == 1 && Earlier(origins[0], legs[0]) && SamePosition(origins[0], legs[0])
+                        && origins[0].ChangeAmount == change.OldReceiptBinCount && Validate(origins[0])
+                        // This bounded legacy shape reclassified the full arrival
+                        // before any intervening withdrawal could obscure ownership.
+                        && !all.Values.Any(x => x.ChangeAmount < 0 && SamePosition(x, legs[0])
+                            && Earlier(origins[0], x) && Earlier(x, legs[0]))
+                        && legs.Where(x => x.ChangeAmount < 0).All(Validate)
+                        || Fail(row, "legacy receipt reclassification lacks consistent parent, snapshot, ledger, audit or prior-origin evidence");
+                }
                 if (change is { IsComplete: true, InventoryDelta: > 0 }
                     && change.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection
                     && all.Values.Where(x => x.ReceiptInventoryOverrideId == changeId).Sum(x => x.ChangeAmount) == change.InventoryDelta)
@@ -183,6 +215,18 @@ internal static class InventoryOriginGuard
         {
             failure ??= $"Ledger {row.Id}: {detail}.";
             return false;
+        }
+
+        bool InitialIncrease(Receipt receipt)
+        {
+            if (revisions.Any(x => x.ReceiptId == receipt.Id)) return false;
+            var origins = all.Values.Where(x => x.ReceiptId == receipt.Id && x.AdjustmentType == "ReceiptAdd").ToArray();
+            var edits = all.Values.Where(x => x.ReceiptId == receipt.Id && x.AdjustmentType == "ReceiptEdit").ToArray();
+            if (origins.Length != 1 || edits.Length != 1) return false;
+            var audits = receiptAudits.Where(x => x.EntityKey == receipt.Id.ToString()).ToArray();
+            return LegacyInitialReceiptIncrease.IsProven(receipt, origins[0], edits[0], audits, asOf)
+                && !all.Values.Any(x => x.ChangeAmount < 0 && SamePosition(x, origins[0])
+                    && Earlier(origins[0], x) && x.CreatedAt <= audits[0].CreatedAt);
         }
 
         string? MovementParent(TreatmentLineageMovement move) => move.RoomTransferId is long room ? $"room:{room}"
