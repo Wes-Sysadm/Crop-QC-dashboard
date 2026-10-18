@@ -125,6 +125,12 @@
           "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptPlacementBaselineTests",
+          "member": "Empty_destination_mixed_allocations_use_one_zero_baseline",
+          "required": true,
+          "kind": "postgres"
         }
       ],
       "gap": "Whole-production accounting requires a fresh read-only release report; no live quantities certified by CI."
@@ -451,6 +457,12 @@
           "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptPlacementBaselineTests",
+          "member": "Repeated_same_cohort_credits_preserve_the_original_destination",
+          "required": true,
+          "kind": "postgres"
         }
       ],
       "gap": "PR #271 now exercises immutable same-lot mixed transit/held cohorts; runtime rollback rehearsal remains a separate mandatory gate, not implied by these tests."
@@ -564,6 +576,12 @@
           "member": "Release_readiness_has_one_compensation_aware_topology_decision",
           "kind": "structural",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptPlacementBaselineTests",
+          "member": "Invalid_multi_allocation_placement_preserves_every_table",
+          "required": true,
+          "kind": "postgres"
         }
       ],
       "gap": "Integrated partial custody and compensation contracts are mandatory. Release still requires a compatible rollback package and production-shaped verification."
@@ -642,6 +660,12 @@
           "member": "Recorded_mixed_dispatch_reconciles_each_debit_without_losing_treatment_membership",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptPlacementBaselineTests",
+          "member": "Concurrent_multi_allocation_placements_credit_once",
+          "required": true,
+          "kind": "postgres"
         }
       ],
       "gap": "Selected independent-session races are not exhaustive certification of all adapters."

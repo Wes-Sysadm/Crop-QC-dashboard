@@ -98,6 +98,23 @@ public sealed partial class InventoryCommandExecutor
                 && await db.Rooms.AnyAsync(x => x.Id == destination.RoomId && x.WarehouseId == destination.WarehouseId
                     && x.IsActive && x.Warehouse.IsActive && !x.IsSealed, ct), "Select the receipt's active unsealed destination room.");
             foreach (var item in intent.Allocations)
+                Require(acks.Any(x => x.Id == item.Id && item.Quantity <= x.HeldQuantity), "Placement exceeds receipt-held custody.");
+            // Freeze every destination before the first credit. A missing position
+            // is a zero pre-command observation, not inventory or receipt provenance.
+            // Reloading after the first allocation would mistake this command's
+            // newly created cohort for pre-existing history on later allocations.
+            var destinationBaseline = await new InventoryEvidenceLoader(db)
+                .LoadAsync(new(destination!.WarehouseId, [destination.RoomId]), now, ct);
+            foreach (var identity in intent.Allocations.Select(item => Identity(dispatch.Single(d =>
+                         d.Id == acks.Single(a => a.Id == item.Id).DispatchMovementId))).DistinctBy(x => x.Key))
+            {
+                var baseline = destinationBaseline.Positions.SingleOrDefault(x => x.Identity.Key == identity.Key)
+                    ?? new InventoryPositionEvidence(identity,
+                        new(InventoryCustody.Room, destination.WarehouseId, destination.RoomId, "", ""),
+                        0, 0, true, true, [], [], [], [], [], new("", "Serializable", []));
+                await PrepareDestinationAsync(db, factory, c, baseline, now, attempt, ct);
+            }
+            foreach (var item in intent.Allocations)
             {
                 var ack = acks.SingleOrDefault(x => x.Id == item.Id);
                 Require(ack != null && item.Quantity <= ack.HeldQuantity, "Placement exceeds receipt-held custody.");
@@ -112,10 +129,6 @@ public sealed partial class InventoryCommandExecutor
                 var evidence = (await new InventoryEvidenceLoader(db).LoadAsync(new(destination!.WarehouseId, [destination.RoomId]), now, ct))
                     .Positions.SingleOrDefault(x => x.Identity.Key == identity.Key);
                 var before = evidence?.AuthoritativeQuantity ?? 0;
-                if (evidence != null)
-                {
-                    await PrepareDestinationAsync(db, factory, c, evidence, now, attempt, ct);
-                }
                 var target = await factory.CurrentAsync(identity, destination.WarehouseId, destination.RoomId, treatment!.Signature,
                     treatment.State, original.ReceiptId, treatment.ApplicationIds, now, ct);
                 Credit(target, item.Quantity, now);

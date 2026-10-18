@@ -136,7 +136,7 @@ public sealed class RecordedMixedDispatchTests(ITestOutputHelper output)
         public CropQcDbContext CreateDbContext() => Current = new CanonicalActualRunWorkflowTests.EnabledFactory(connection).CreateDbContext();
     }
 
-    private static async Task<Fixture> History()
+    internal static async Task<Fixture> History(long applicationId = 800000)
     {
         var f = await Fixture.Create();
         await using var db = f.CreateDbContext();
@@ -147,11 +147,11 @@ public sealed class RecordedMixedDispatchTests(ITestOutputHelper output)
         origin.ChangeAmount = origin.NewBinCount = 70;
         var segment = await db.TreatmentLineageSegments.SingleAsync();
         segment.CurrentBins = 70; segment.ReceiptId = receipt.Id;
-        segment.TreatmentState = "Confirmed"; segment.TreatmentSignature = "u|a:800000";
+        segment.TreatmentState = "Confirmed"; segment.TreatmentSignature = "u|a:" + applicationId;
         var chemical = await db.TreatmentChemicals.FirstAsync(x => x.IsActive && x.ApplicationLevel == "Room");
         var application = new RoomTreatmentApplication
         {
-            Id = 800000,
+            Id = applicationId,
             OperationKey = "synthetic-application",
             TreatmentChemicalId = chemical.Id,
             WarehouseId = 9001,
@@ -180,10 +180,10 @@ public sealed class RecordedMixedDispatchTests(ITestOutputHelper output)
             ProductionTypeSnapshot = "Conventional",
             BinsTreated = 70,
             PriorTreatmentSignature = "u",
-            ResultTreatmentSignature = "u|a:800000"
+            ResultTreatmentSignature = segment.TreatmentSignature
         });
         db.RoomTreatmentApplications.Add(application);
-        segment.Applications.Add(new() { RoomTreatmentApplicationId = 800000 });
+        segment.Applications.Add(new() { RoomTreatmentApplicationId = applicationId });
         // Historical synthetic origin and exact transfer custody; null movement receipt
         // deliberately preserves shared ancestry. No production rows are copied.
         db.Receipts.Add(new()

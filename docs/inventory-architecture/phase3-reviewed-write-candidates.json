@@ -123,7 +123,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptCustody.cs",
     "Classification": "Canonical infrastructure",
     "Reason": "Executor-owned serializable acknowledgement and placement of immutable dispatch allocations; bounds, parent versions, journal replay and linked ledger/movement proof.",
-    "Sha256": "7852941B89E223A925B60AB699810B0D0F3300E92C7F095FB4AD487CBBFB6E19"
+    "Sha256": "EB1AF1E900101040BAFE65D820C0B4E566805352F1917B1DE6836514C11F4250"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandReceiptIdentity.cs",
