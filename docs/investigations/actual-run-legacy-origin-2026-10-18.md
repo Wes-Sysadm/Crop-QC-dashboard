@@ -1,8 +1,9 @@
-# Actual Run: two legacy origin formats and a remaining custody block
+# Actual Run: replaying complete legacy receipt and custody origins
 
-**The two evidenced format defects are addressed, but the production 118-bin run
-still has an origin/custody block at ledger 1413. This draft PR is reviewable,
-not a complete operational unblock or a release candidate.**
+**Three connected evidence-interpretation defects are addressed. The complete
+synthetic history records the requested 44+74 run atomically. Read-only validators
+also accept the retrieved historical formats, and the 95-event source dependency
+diagnostic completes. No production save or release readiness is claimed.**
 
 ## Governance and scope
 
@@ -17,9 +18,10 @@ Branch: `codex/actual-run-historical-origin`. Specification/register **1.2.0**;
 starting governance commit `31d593f7b239a12b1d76c5a9afbcca09ef374e9d`.
 Rules: INV-001–006, TRT-001/002, REC-001/002, MOV-001, ROOM-001, AUD-001,
 OPS-001, GOV-001. ADR-001–006 and compatible ADR-008 constraints apply; ADR-007
-does not grant release authority here. No rule changed. The remaining historical
-identity/chronology question is held for evidence review, not silently resolved
-by changing policy or inventing owner approval.
+does not grant release authority here. No rule changed and no unresolved policy
+conflict remains: original recorded arrivals, audited identity equivalence and
+strict chronological conservation establish the proof; later credits never fund
+earlier withdrawals. No owner approval is invented.
 
 Current main's AGENTS, governing documents and scoped-testing standard were read;
 no nested AGENTS exists. The parent folder is an unborn Git wrapper. The real
@@ -42,8 +44,9 @@ segments/application links, receipt/room/inter-crew histories and October 10 WP
 Actual Runs/journals. Later reads examined receipt 655 and the room-61 dependency.
 Each query has its own read-only transaction; these are not one atomic application
 snapshot. No credentials/raw exports are committed; no production data was used
-as mutation-test fixtures or restored locally. The modified application was not
-executed against production.
+as mutation-test fixtures or restored locally. A separate read-only diagnostic
+invoked the compiled pure validators on retrieved JSON without a database context
+or writes. The modified application was not connected to production.
 
 ### Receipt 720: authorized reclassification
 
@@ -102,8 +105,9 @@ Whitestone originates in receipts 632 and 690, 64 each. RoomTransfer 132 moved
 632 to room 61; RoomTransfer 197 moved 128 to room 66; InterCrewTransfer 35 moved
 128 to WP-7. Movements 73/706/707 carry u. Their receipt-690 labels do not make
 that 64-bin receipt a 128-bin origin. This supports shared quantity/treatment,
-not exact surviving receipt ownership. **Quantity and treatment cover 44+74, but
-the separate historical custody block below prevents final authorization.**
+not exact surviving receipt ownership. **The recorded quantity and treatment cover
+44+74. The source proof below supports the historical custody interpretation;
+the eventual save still needs fresh selections and every normal command guard.**
 
 No matching October 10 WP/Honey Bear/44+74 run, entries, revision or committed
 intent was found. The date query used America/Los_Angeles boundaries, October 10
@@ -127,8 +131,9 @@ this; the failure is not evidence of a Whitestone defect. A synthetic equivalent
 reproduced the exact custody-parent failure on unchanged main before the fix.
 
 Files: InventoryOriginGuard.cs, new LegacyReceiptReclassificationOrigin.cs and
-LegacyInitialReceiptIncrease.cs, LegacyReceiptReclassificationOriginTests.cs,
-governance traceability, reviewed-reader hash and this report.
+LegacyInitialReceiptIncrease.cs, LegacyGrowerReconciliationOrigin.cs, the two
+corresponding integration-test files, governance traceability, reviewed-reader
+hash and this report.
 
 - Reclassification proof requires a completed invariant-v1 parent, conserved full
   receipt/current quantities, exactly two ordered matching legs, operation
@@ -141,9 +146,15 @@ governance traceability, reviewed-reader hash and this report.
   raw identity/location/metadata, recorded chronology, one matching Update audit
   and actor, and no intervening source withdrawal. The same evidence proves both
   arrival and increase. Unsupported later or multiple edits remain blocked.
-- Neither helper writes, grants treatment, creates stock/maps, assigns ancestry,
+- No interpreter writes, grants treatment, creates stock/maps, assigns ancestry,
   backdates evidence or changes permissions. Incomplete/contradictory/duplicate
   evidence, invalid quantity/treatment, stale selection and custody still block.
+
+The third interpreter, described below, reads a recorded reconciliation of a
+missing GrowerLot key. The loader follows the complete original nullable-key
+position and custody dependencies. Original revision snapshots preserve a null
+GrowerLot value as null instead of throwing while trying to parse it as an integer;
+this matters for receipt 499's retained arrival and subsequent void.
 
 No schema/migration/UI/API/writer/QC Station/installer change. The reviewed-reader
 hash follows substantive review: no SaveChanges, SQL mutation, capability or
@@ -152,7 +163,7 @@ or changing specification policy. Retry behavior is unchanged: identical key and
 complete intent replays once; conflicting payload fails; stale new-key submission
 fails. A genuinely fresh new intent is a separate operation, not date/bin deduplication.
 
-## Remaining custody block and proposed resolution
+## Completing the nullable-key custody proof
 
 **RoomTransfer 218 / debit 1413** withdrew **280** from warehouse 3/room 61,
 GrowerLot 448/profile 17/lot 1372 on August 22 at 13:15:52.936981 UTC. Earlier
@@ -165,48 +176,73 @@ release241-serial-3-61-1372-17, audit 112714, was recorded September 6 at
 2723 adds 158 to GrowerLot 448, changing -158 to 0. Its snapshot names positive
 source adjustments 756/757/764/965/1010; their receipt/transfer records exist.
 
-The [identity architecture](../inventory-identity-provenance-audit.md#partial-consumption-and-historical-reporting-decision)
-limits correction to current remaining inventory. This current-state operation
-does not contain a retrospective authorization/allocation for transfer 218.
-Matching lot/profile and equal 158-bin amounts alone do not prove the earlier
-withdrawal. The PR preserves its withdrawal-exceeds-earlier-custody rejection;
-it does not backdate the September pair or broaden its identity map.
+An initial partial trace stopped here because it considered only GrowerLot 448.
+The follow-up read at **20:35:34 UTC** established **122 canonical-key + 158
+nullable-key bins already recorded before withdrawal 1413 = 280**. The original
+nullable-key receipts/transfers, including the separately voided duplicate receipt
+499, account for the 158 without borrowing the September credit. The correction's
+explicit positive source IDs, exact source/target location/crop/lot/profile,
+paired ledger and immutable audit establish the missing-key equivalence. Matching
+text or equal amounts by themselves are not accepted.
 
-A read-only dependency diagnostic of retrieved records shows baseline -> 1187;
-recognizing reclassification -> 1073; recognizing initial increase -> 1413.
-This is a diagnostic trace, not modified application execution against production.
-No complete production-origin PASS or successful production save is claimed.
+LegacyGrowerReconciliationOrigin proves the bounded recorded format: active complete
+parent, same crop/profile, nullable source key to one canonical key, exact ordered
+pair and operation suffixes/actor/timestamps, source/target balances matching the
+snapshots, one matching audit, all recorded positive source IDs present exactly
+once, and no competing mapping for that physical pool. This bounded shape requires
+zero expected and actual treatment movements; other shapes remain unsupported.
+Fresh production reads confirmed one mapping for room 61/lot 1372/profile 17 and
+zero treatment movements. It does not promote unrelated room-65/68 mappings.
 
-Next evidence review: trace the nullable-GrowerLot source receipts/custody and any
-already-authorized historical mapping, proving the 280-bin withdrawal without
-reusing stock. If existing authority proves that interpretation, implement and
-test it under current rules. Otherwise propose an established audited correction
-for owner review. Do not manufacture origins, backdate reconciliation, or turn a
-technical limitation into policy. Any necessary policy change follows the existing
-business-rule change procedure. No production correction is authorized here.
+The interpreter then checks the combined original pool in recorded chronological
+order: it must never become negative before the reconciliation. The actual debit
+guard recursively validates its original arrivals and custody. Later arrivals
+cannot cure earlier deficits; new missing-key arrivals after the reviewed mapping
+are not silently authorized by it. Compensating legs remain at their original
+September timestamps and net to zero. No new origin, stock, treatment or exact
+receipt allocation is created. The [identity architecture](../inventory-identity-provenance-audit.md#partial-consumption-and-historical-reporting-decision)
+still governs current writes and historical reversals; immutable historical rows
+and consumed reporting snapshots are not reclassified or rewritten.
+
+The investigation progressed through 1187, 1073 and 1413 as each dependency became
+visible. With all three independently verified formats, the read-only diagnostic
+visits **95 ledger events for all 15 selected source entries**, with no remaining
+origin/custody failure. The compiled pure validators returned true for receipt
+720 reclassification, receipt 655 initial increase and the room-61 reconciliation.
+The [read-only evidence summary](actual-run-legacy-origin-readonly-2026-10-18.json)
+lists the proof records and visited ledger IDs. These checks use retrieved records without writes; they are not a production
+application save or a substitute for exact-candidate release rehearsal.
 
 ## Verification
 
 Synthetic fixtures run on task-owned localhost PostgreSQL **18.4**. Final mandatory
-governance run: **301 passed, 0 failed, 0 skipped**, including **42 focused cases**.
-These cover 34 negative format variants, normal selector/service 44+74 save,
+governance: **322 passed, 0 failed, 0 skipped**. The
+**63 focused cases** cover 54 negative format variants, normal selector/service 44+74 save,
 all-table rollback at nine injected stages, quantity/treatment/stale checks,
 immutable history/audit, moves/restoration, independent-session concurrency,
 same-intent replay, key conflict and unchanged legacy location-only behavior.
 
-Synthetic totals are 130 -> 12, or 194 -> 76 with the initial increase: exactly
+Synthetic totals are 130 -> 12, or 474 -> 356 with all three recorded formats: exactly
 118 consumed. Correct 44/74 entries, untreated movements and one run/revision/
 journal/audit are asserted; shared entries have no invented ReceiptId. These are
 not the production balances. Before/after comparisons preserve original receipts,
 corrections, ledger and audits. Initial red/green iterations are retained as such.
 
-Additional shared-caller regression: **52 passed, 0 failed, 0 skipped**, excluding
-already-mandatory method selectors: **353 distinct local .NET cases overall**.
-Governance checker tests: **29 passed, 0 failed, 0 skipped**; metadata: 20 rules PASS.
-Solution restore PASS (existing ImageSharp advisory warnings); Release build PASS,
-0 errors and 16 warnings. EF reports no pending model changes. Scoped formatting
-verification and git diff --check PASS. CI status and final commit are recorded in
-the PR/completion report rather than assumed from local tests. Scope follows command sources
+Additional shared-caller regression: **84 passed, 0 failed, 0 skipped**, excluding
+mandatory method selectors: **406 distinct local .NET cases** overall. Its first
+run skipped the legacy normalization PostgreSQL theory because it uses a separate
+environment variable; the entire selected regression set was rerun with both
+disposable connection variables and all bodies passed. There are no unresolved skips.
+
+Solution restore passed with existing ImageSharp advisory warnings. Final Release
+build: **0 errors, 74 warnings** from existing source/analyzers/advisories. EF reports
+no pending model changes. Scoped format verification and git diff --check pass.
+Node governance tests: **29 passed, 0 failed/skipped**; metadata: 20 rules PASS.
+Committed-LF policy evolution and PR disclosures were separately checked because
+the Windows CRLF working copy produces a false policy-text difference in that
+preflight. No governance script or policy was changed to bypass it.
+CI status and final commit are recorded in the PR/completion report rather than
+assumed from local tests. Scope follows command sources
 and destinations, receipt changes/reversal, recorded cohorts, restoration, topology,
 treatment, concurrency and architecture. Unrelated application/hardware/browser/
 installer suites and production-shaped release rehearsal are not claimed.
@@ -215,8 +251,8 @@ installer suites and production-shaped release rehearsal are not claimed.
 
 Nothing merged or deployed. No production inventory, Actual Run, receipt, historical
 record, configuration, backup or rollback package changed; no production migration.
-The draft is ready to review the two bounded fixes, **not ready for release**.
-After the remaining block is resolved, release needs explicit authorization and
+The completed fix is for owner review, **not production release authorization**.
+Release needs explicit authorization and
 the established fresh source/failed-key checks, backup, exact-candidate rehearsal,
 strict readiness and compatible rollback procedure. An eventual operator save
 must obtain fresh fingerprints and pass every existing guard.

@@ -107,7 +107,11 @@ public sealed class LegacyReceiptReclassificationOriginTests
     public async Task New_ActualRun_consumes_44_and_74_once_and_rolls_back_every_failure_boundary(bool initialIncrease)
     {
         await using var f = await Seed();
-        if (initialIncrease) await SeedInitialIncrease(f);
+        if (initialIncrease)
+        {
+            await SeedInitialIncrease(f);
+            await LegacyGrowerReconciliationOriginTests.Seed(f);
+        }
         var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
         await using var db = factory.CreateDbContext();
         var principal = CanonicalReceivingWorkflowTests.Operator().HttpContext!.User;
@@ -142,7 +146,7 @@ public sealed class LegacyReceiptReclassificationOriginTests
         foreach (var failure in new[] { "quantity", "treatment", "fingerprint" })
         {
             var invalid = JsonSerializer.Deserialize<ActualRunForm>(JsonSerializer.Serialize(form))!;
-            if (failure == "quantity") invalid.Lines[0].BinsRun = initialIncrease ? 121 : 57;
+            if (failure == "quantity") invalid.Lines[0].BinsRun = initialIncrease ? 401 : 57;
             if (failure == "treatment") invalid.Lines[0].TreatmentSignature = "unknown";
             if (failure == "fingerprint") invalid.Lines[0].CanonicalFingerprint = "stale";
             Assert.NotNull(await service.CreateActualRunAsync(invalid, principal, default));
@@ -150,7 +154,7 @@ public sealed class LegacyReceiptReclassificationOriginTests
         }
         Assert.Null(await service.CreateActualRunAsync(form, principal, default));
         Assert.Equal(history, await HistoricalRows(db));
-        Assert.Equal(initialIncrease ? 76 : 12, await f.Physical());
+        Assert.Equal(initialIncrease ? 356 : 12, await f.Physical());
         var run = await db.ActualRuns.AsNoTracking().SingleAsync();
         Assert.Equal(form.RunAt, run.RunAt); Assert.Equal(form.SalesDeskId, run.SalesDeskId); Assert.Equal(9001, run.RunFacilityWarehouseId);
         var entries = await db.BinsRunEntries.AsNoTracking().OrderBy(x => x.LotNumber).ToArrayAsync();
@@ -374,8 +378,10 @@ public sealed class LegacyReceiptReclassificationOriginTests
     {
         receipts = await db.Receipts.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
         corrections = await db.ReceiptInventoryOverrides.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
-        ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.AdjustmentType == "ReceiptAdd" || x.ReceiptInventoryOverrideId != null).OrderBy(x => x.Id).ToArrayAsync(),
-        audits = await db.AuditLogs.AsNoTracking().Where(x => x.EntityName == nameof(ReceiptInventoryOverride) || x.EntityName == nameof(Receipt)).OrderBy(x => x.Id).ToArrayAsync()
+        identities = await db.InventoryIdentityCorrections.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
+        transfers = await db.RoomTransfers.AsNoTracking().Where(x => x.CreatedAt <= InventoryEvidenceCorpus.Start.AddMinutes(10)).OrderBy(x => x.Id).ToArrayAsync(),
+        ledger = await db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.CreatedAt <= InventoryEvidenceCorpus.Start.AddMinutes(10)).OrderBy(x => x.Id).ToArrayAsync(),
+        audits = await db.AuditLogs.AsNoTracking().Where(x => x.CreatedAt <= InventoryEvidenceCorpus.Start.AddMinutes(10)).OrderBy(x => x.Id).ToArrayAsync()
     });
 
     internal static async Task<string?> Origin(CropQcDbContext db)

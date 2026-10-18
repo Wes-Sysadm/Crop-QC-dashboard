@@ -9,9 +9,22 @@
         "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
         "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
         "src/CropQc.Data/Inventory/LegacyReceiptReclassificationOrigin.cs",
-        "src/CropQc.Data/Inventory/LegacyInitialReceiptIncrease.cs"
+        "src/CropQc.Data/Inventory/LegacyInitialReceiptIncrease.cs",
+        "src/CropQc.Data/Inventory/LegacyGrowerReconciliationOrigin.cs"
       ],
       "tests": [
+        {
+          "type": "CropQc.Api.Tests.LegacyGrowerReconciliationOriginTests",
+          "member": "Recorded_mapping_proves_earlier_shared_pool_from_original_arrivals_without_backdating",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyGrowerReconciliationOriginTests",
+          "member": "Incomplete_mapping_or_truly_unfunded_history_stays_blocked",
+          "kind": "postgres",
+          "required": true
+        },
         {
           "type": "CropQc.Api.Tests.LegacyReceiptReclassificationOriginTests",
           "member": "Unsupported_initial_increase_blocks_the_run_without_writes",
