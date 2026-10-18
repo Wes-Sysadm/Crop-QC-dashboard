@@ -87,7 +87,8 @@
       "id": "INV-003",
       "code": [
         "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
-        "src/CropQc.Web/Services/InventoryConservationReportService.cs"
+        "src/CropQc.Web/Services/InventoryConservationReportService.cs",
+        "src/CropQc.Web/Services/InventoryConservationReportService.Compensation.cs"
       ],
       "tests": [
         {
@@ -131,6 +132,18 @@
           "member": "Empty_destination_mixed_allocations_use_one_zero_baseline",
           "required": true,
           "kind": "postgres"
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCompensationConservationTests",
+          "member": "Recorded_compensation_passes_both_reports_without_writing",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCompensationConservationTests",
+          "member": "Malformed_compensation_fails_both_reports_without_writing",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Whole-production accounting requires a fresh read-only release report; no live quantities certified by CI."
@@ -343,7 +356,8 @@
         "src/CropQc.Data/Inventory/InventoryCommandReceiving.cs",
         "src/CropQc.Data/Inventory/InventoryCommandReceiptChanges.cs",
         "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
-        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",
+        "src/CropQc.Web/Services/InventoryConservationReportService.Compensation.cs"
       ],
       "tests": [
         {
@@ -409,6 +423,12 @@
         {
           "type": "CropQc.Api.Tests.LegacyTransferEligibilityTests",
           "member": "Legacy_parent_replay_moves_repeatedly_and_retries_without_changing_original_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.ReceiptCompensationConservationTests",
+          "member": "Mixed_compensation_preserves_treatment_unknown_ancestry_and_original_history",
           "kind": "postgres",
           "required": true
         }
