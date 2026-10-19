@@ -213,7 +213,7 @@
     "Path": "src/CropQc.Data/Inventory/InventoryOriginGuard.cs",
     "Classification": "Nonphysical or read-only",
     "Reason": "Read-only origin/custody validation or pure event replay; Add operates on local evidence collections, not persisted physical records.",
-    "Sha256": "06AE1F3FD5C122BF6F03A06036B9465EC044290A0F93B25B1F606FAA25BC80EA"
+    "Sha256": "E7D0126ED7BE28CE2324973EF5C4EF84E3785B544534037A150EB45E804FC902"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryReceiptAvailability.cs",

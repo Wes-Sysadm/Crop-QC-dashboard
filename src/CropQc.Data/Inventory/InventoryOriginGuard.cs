@@ -18,6 +18,10 @@ internal static class InventoryOriginGuard
         if (selected.Length == 0) return null;
         if (initialIds.Length == 0) return "No recorded origin/custody ledger events support the selected inventory.";
         var all = (await Read(db.RoomInventoryAdjustments.AsNoTracking().Where(x => initialIds.Contains(x.Id)), ct)).ToDictionary(x => x.Id);
+        var legacyReconciliations = await Read(db.InventoryIdentityCorrections.AsNoTracking().Where(x => x.IsActive && x.IsComplete
+            && x.SourceGrowerLotId == null && x.CorrectedReceiptId == null && x.CreatedAt <= asOf), ct);
+        var legacyScopes = legacyReconciliations.Select(x => (Change: x, Scope: LegacyGrowerReconciliationOrigin.Scope(x)))
+            .Where(x => x.Scope != null).ToArray();
         for (var depth = 0; ; depth++)
         {
             if (depth == 32) return "Inventory origin chain exceeds the supported 32-step evidence bound.";
@@ -32,13 +36,22 @@ internal static class InventoryOriginGuard
             var depletions = all.Values.Select(x => x.RoomDepletionId ?? -1).Where(x => x != -1).Distinct().ToArray();
             var overrides = all.Values.Select(x => x.ReceiptInventoryOverrideId ?? Guid.Empty).Where(x => x != Guid.Empty).Distinct().ToArray();
             var identities = all.Values.Select(x => x.InventoryIdentityCorrectionId ?? Guid.Empty).Where(x => x != Guid.Empty).Distinct().ToArray();
+            var missingPositions = legacyScopes.Where(x => growers.Contains(x.Change.TargetGrowerLotId)).Select(x => x.Scope!)
+                .Concat(all.Values.Where(x => x.GrowerLotId == null && x.CropYear != null && x.FruitProfileId != null)
+                    .Select(x => new LegacyGrowerReconciliationOrigin(x.WarehouseId, x.RoomId, x.CropYear!.Value, x.FruitProfileId!.Value, x.LotNumber, 0))).ToArray();
+            var legacyRooms = missingPositions.Select(x => x.RoomId).Distinct().ToArray();
+            var legacyCrops = missingPositions.Select(x => x.CropYear).Distinct().ToArray();
+            var legacyProfiles = missingPositions.Select(x => x.FruitProfileId).Distinct().ToArray();
+            var legacyLots = missingPositions.Select(x => x.Lot?.Trim().ToUpperInvariant() ?? "").Distinct().ToArray();
             var expanded = await Read(db.RoomInventoryAdjustments.AsNoTracking().Where(x => x.CreatedAt <= asOf &&
                 (growers.Contains(x.GrowerLotId ?? -1) || receipts.Contains(x.ReceiptId ?? -1)
                 || transfers.Contains(x.RoomTransferId ?? -1) || crews.Contains(x.InterCrewTransferId ?? -1)
                 || outsides.Contains(x.OutsideWarehouseTransferId ?? -1) || processors.Contains(x.ProcessorShipmentLineId ?? -1)
                 || runs.Contains(x.ActualRunId ?? -1) || losses.Contains(x.RoomInventoryLossId ?? -1)
                 || depletions.Contains(x.RoomDepletionId ?? -1) || overrides.Contains(x.ReceiptInventoryOverrideId ?? Guid.Empty)
-                || identities.Contains(x.InventoryIdentityCorrectionId ?? Guid.Empty))), ct);
+                || identities.Contains(x.InventoryIdentityCorrectionId ?? Guid.Empty)
+                || x.GrowerLotId == null && legacyRooms.Contains(x.RoomId) && legacyCrops.Contains(x.CropYear ?? -1)
+                    && legacyProfiles.Contains(x.FruitProfileId ?? -1) && legacyLots.Contains(x.LotNumber.Trim().ToUpper()))), ct);
             var changed = false;
             foreach (var row in expanded) changed |= all.TryAdd(row.Id, row);
             if (all.Count > InventoryEvidenceLoader.MaximumEvidenceRowsPerTable) return "Inventory origin evidence exceeds the safe row bound.";
@@ -48,6 +61,14 @@ internal static class InventoryOriginGuard
             .Concat(selected.SelectMany(x => x.Receipts).Select(x => x.Id)).Distinct().ToArray();
         var recordedReceipts = (await Read(db.Receipts.AsNoTracking().Where(x => receiptIds.Contains(x.Id)), ct)).ToDictionary(x => x.Id);
         var revisions = await Read(db.ReceiptInventoryOverrides.AsNoTracking().Where(x => receiptIds.Contains(x.ReceiptId)), ct);
+        var legacyKeys = revisions.Where(x => x.ActionType == ReceiptInventoryOverrideActionTypes.InventoryReclassification)
+            .Select(x => x.Id.ToString()).ToArray();
+        var legacyAudits = legacyKeys.Length == 0 ? [] : await Read(db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == nameof(ReceiptInventoryOverride) && legacyKeys.Contains(x.EntityKey)), ct);
+        var editedReceiptKeys = all.Values.Where(x => x.AdjustmentType == "ReceiptEdit" && x.ReceiptId != null)
+            .Select(x => x.ReceiptId!.Value.ToString()).Distinct().ToArray();
+        var receiptAudits = editedReceiptKeys.Length == 0 ? [] : await Read(db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == nameof(Receipt) && editedReceiptKeys.Contains(x.EntityKey)), ct);
         var ledgerIds = all.Keys.ToArray();
         var runEntries = await Read(db.BinsRunEntries.AsNoTracking().Where(x => ledgerIds.Contains(x.InventoryAdjustmentId)), ct);
         var identityMap = await CanonicalIdentityMap.LoadAsync(db, receiptIds, ct);
@@ -57,6 +78,19 @@ internal static class InventoryOriginGuard
         var operationKeys = all.Values.Where(x => x.ChangeAmount > 0 && x.AdjustmentType is "ManualTrueUp" or "StartingInventoryImport")
             .SelectMany(x => Prefixes(x.InventoryOperationKey)).Distinct().ToArray();
         var commands = await Read(db.InventoryCommands.AsNoTracking().Where(x => operationKeys.Contains(x.OperationKey)), ct);
+        var reconciliationKeys = legacyReconciliations.Select(x => x.Id.ToString()).ToArray();
+        var reconciliationAudits = reconciliationKeys.Length == 0 ? [] : await Read(db.AuditLogs.AsNoTracking()
+            .Where(x => x.EntityName == nameof(InventoryIdentityCorrection) && reconciliationKeys.Contains(x.EntityKey)), ct);
+        var reconciliationIds = legacyReconciliations.Select(x => x.Id).ToArray();
+        var reconciliationMovementParents = reconciliationIds.Length == 0 ? [] : await Read(db.TreatmentLineageMovements.AsNoTracking()
+            .Where(x => reconciliationIds.Contains(x.InventoryIdentityCorrectionId ?? Guid.Empty)).Select(x => x.InventoryIdentityCorrectionId).Distinct(), ct);
+        var reconciledPools = legacyScopes.Where(x => legacyScopes.Count(y => y.Scope!.WarehouseId == x.Scope!.WarehouseId
+                && y.Scope.RoomId == x.Scope.RoomId && y.Scope.CropYear == x.Scope.CropYear
+                && y.Scope.FruitProfileId == x.Scope.FruitProfileId
+                && string.Equals(y.Scope.Lot?.Trim(), x.Scope.Lot?.Trim(), StringComparison.OrdinalIgnoreCase)) == 1
+            && !reconciliationMovementParents.Contains(x.Change.Id)
+            && x.Scope!.IsProven(x.Change, all.Values.ToArray(), reconciliationAudits.Where(a => a.EntityKey == x.Change.Id.ToString()).ToArray(), asOf))
+            .Select(x => x.Scope!).ToArray();
         var memo = new Dictionary<long, bool>();
         var visiting = new HashSet<long>();
         string? failure = null;
@@ -76,7 +110,12 @@ internal static class InventoryOriginGuard
 
         bool Debit(RoomInventoryAdjustment row)
         {
-            var prior = all.Values.Where(x => SamePosition(x, row) && Earlier(x, row)).ToArray();
+            // A proven reconciliation settles its original source account, whose
+            // separate balance was checked against the recorded ledger/snapshot.
+            // Physical withdrawals still use the reconciled shared pool.
+            var reconcilesSourceAccount = reconciledPools.Any(pool => pool.CorrectionId == row.InventoryIdentityCorrectionId);
+            var prior = all.Values.Where(x => SamePosition(x, row) && Earlier(x, row)
+                && (!reconcilesSourceAccount || SameIdentity(x, row))).ToArray();
             if (prior.Sum(x => (long)x.ChangeAmount) < -(long)row.ChangeAmount)
                 return Fail(row, "withdrawal exceeds custody established by earlier committed events");
             return prior.Where(x => x.ChangeAmount > 0).All(Validate);
@@ -92,7 +131,7 @@ internal static class InventoryOriginGuard
                     return Fail(row, $"receipt {id} has duplicate inventory origins");
                 var first = revisions.Where(x => x.ReceiptId == id).OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).FirstOrDefault();
                 if (first == null)
-                    return row.CropYear == receipt.CropYear && row.GrowerLotId == receipt.GrowerLotId
+                    return InitialIncrease(receipt) || row.CropYear == receipt.CropYear && row.GrowerLotId == receipt.GrowerLotId
                         && row.FruitProfileId == receipt.FruitProfileId && row.LotNumber == receipt.LotCode
                         && row.ChangeAmount == receipt.BinCount || Fail(row, $"receipt {id} differs from its origin without a recorded revision");
                 try
@@ -115,16 +154,41 @@ internal static class InventoryOriginGuard
                     return first.IsComplete && original.GetProperty("id").GetInt64() == id
                         && original.GetProperty("binCount").GetInt32() == row.ChangeAmount
                         && original.GetProperty("cropYear").GetInt32() == row.CropYear
-                        && original.GetProperty("growerLotId").GetInt32() == row.GrowerLotId
+                        && (original.GetProperty("growerLotId").ValueKind == JsonValueKind.Null
+                            ? row.GrowerLotId == null : original.GetProperty("growerLotId").GetInt32() == row.GrowerLotId)
                         && original.GetProperty("fruitProfileId").GetInt32() == row.FruitProfileId
                         || Fail(row, $"receipt {id}'s original revision snapshot does not match its arrival");
                 }
                 catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
                 { return Fail(row, $"receipt {id}'s original revision snapshot is missing or malformed"); }
             }
+            if (row.AdjustmentType == "ReceiptEdit")
+                return row.ReceiptId is long editedId && recordedReceipts.TryGetValue(editedId, out var editedReceipt)
+                    && InitialIncrease(editedReceipt)
+                    || Fail(row, "legacy receipt increase lacks a unique original arrival and matching initial-edit audit");
             if (row.ReceiptInventoryOverrideId is Guid changeId)
             {
                 var change = revisions.SingleOrDefault(x => x.Id == changeId);
+                // Before identity maps existed, Admin reclassification retained
+                // its authorization in the override, snapshots and atomic audit.
+                // A raw-identity filter would discard its legitimate debit.
+                if (change?.ActionType == ReceiptInventoryOverrideActionTypes.InventoryReclassification
+                    && row.InventoryIdentityCorrectionId == null && row.InventoryInvariantVersion == 1
+                    && all.Values.Any(x => x.ReceiptInventoryOverrideId == changeId && x.ChangeAmount < 0 && !SameIdentity(x, row)))
+                {
+                    var legs = all.Values.Where(x => x.ReceiptInventoryOverrideId == changeId).OrderBy(x => x.Id).ToArray();
+                    var origins = all.Values.Where(x => x.ReceiptId == change.ReceiptId && x.AdjustmentType == "ReceiptAdd").ToArray();
+                    return LegacyReceiptReclassificationOrigin.IsProven(change, legs,
+                            legacyAudits.Where(x => x.EntityKey == changeId.ToString()).ToArray(), asOf)
+                        && origins.Length == 1 && Earlier(origins[0], legs[0]) && SamePosition(origins[0], legs[0])
+                        && origins[0].ChangeAmount == change.OldReceiptBinCount && Validate(origins[0])
+                        // This bounded legacy shape reclassified the full arrival
+                        // before any intervening withdrawal could obscure ownership.
+                        && !all.Values.Any(x => x.ChangeAmount < 0 && SamePosition(x, legs[0])
+                            && Earlier(origins[0], x) && Earlier(x, legs[0]))
+                        && legs.Where(x => x.ChangeAmount < 0).All(Validate)
+                        || Fail(row, "legacy receipt reclassification lacks consistent parent, snapshot, ledger, audit or prior-origin evidence");
+                }
                 if (change is { IsComplete: true, InventoryDelta: > 0 }
                     && change.ActionType == ReceiptInventoryOverrideActionTypes.QuantityCorrection
                     && all.Values.Where(x => x.ReceiptInventoryOverrideId == changeId).Sum(x => x.ChangeAmount) == change.InventoryDelta)
@@ -185,6 +249,22 @@ internal static class InventoryOriginGuard
             return false;
         }
 
+        bool InitialIncrease(Receipt receipt)
+        {
+            if (revisions.Any(x => x.ReceiptId == receipt.Id)) return false;
+            var origins = all.Values.Where(x => x.ReceiptId == receipt.Id && x.AdjustmentType == "ReceiptAdd").ToArray();
+            var edits = all.Values.Where(x => x.ReceiptId == receipt.Id && x.AdjustmentType == "ReceiptEdit").ToArray();
+            if (origins.Length != 1 || edits.Length != 1) return false;
+            var audits = receiptAudits.Where(x => x.EntityKey == receipt.Id.ToString()).ToArray();
+            return LegacyInitialReceiptIncrease.IsProven(receipt, origins[0], edits[0], audits, asOf)
+                && !all.Values.Any(x => x.ChangeAmount < 0 && SamePosition(x, origins[0])
+                    && Earlier(origins[0], x) && x.CreatedAt <= audits[0].CreatedAt);
+        }
+
+        bool SamePosition(RoomInventoryAdjustment a, RoomInventoryAdjustment b) =>
+            a.WarehouseId == b.WarehouseId && a.RoomId == b.RoomId
+            && (SameIdentity(a, b) || reconciledPools.Any(pool => pool.Authorizes(a) && pool.Authorizes(b)));
+
         string? MovementParent(TreatmentLineageMovement move) => move.RoomTransferId is long room ? $"room:{room}"
             : move.InterCrewTransferId is long crew ? $"crew:{crew}" : move.OutsideWarehouseTransferId is long outside ? $"outside:{outside}"
             : move.ProcessorShipmentLineId is long processor ? $"processor:{processor}" : move.RoomInventoryLossId is long loss ? $"loss:{loss}"
@@ -195,8 +275,6 @@ internal static class InventoryOriginGuard
 
     private static bool Earlier(RoomInventoryAdjustment a, RoomInventoryAdjustment b) =>
         a.CreatedAt < b.CreatedAt || a.CreatedAt == b.CreatedAt && a.Id < b.Id;
-    private static bool SamePosition(RoomInventoryAdjustment a, RoomInventoryAdjustment b) =>
-        a.WarehouseId == b.WarehouseId && a.RoomId == b.RoomId && SameIdentity(a, b);
     private static bool SameIdentity(RoomInventoryAdjustment a, RoomInventoryAdjustment b) =>
         a.CropYear == b.CropYear && a.GrowerLotId == b.GrowerLotId && a.FruitProfileId == b.FruitProfileId
         && string.Equals(a.LotNumber.Trim(), b.LotNumber.Trim(), StringComparison.OrdinalIgnoreCase);
