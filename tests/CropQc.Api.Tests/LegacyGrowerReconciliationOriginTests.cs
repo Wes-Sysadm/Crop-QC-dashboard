@@ -10,6 +10,65 @@ namespace CropQc.Api.Tests;
 public sealed class LegacyGrowerReconciliationOriginTests
 {
     [InventoryPostgresFact]
+    public async Task Complete_reconciliation_validates_its_source_debit_and_credit_when_corrected_room_is_active()
+    {
+        await using var f = await LegacyReceiptReclassificationOriginTests.Seed();
+        await Seed(f);
+        await using var db = f.CreateDbContext();
+        var history = await LegacyReceiptReclassificationOriginTests.HistoricalRows(db);
+        var correction = await db.InventoryIdentityCorrections.SingleAsync();
+        var prior = await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9003 && x.CreatedAt < correction.CreatedAt).ToArrayAsync();
+        Assert.Equal(158, prior.Where(x => x.GrowerLotId == null).Sum(x => x.ChangeAmount));
+        Assert.Equal(-158, prior.Where(x => x.GrowerLotId == 100000).Sum(x => x.ChangeAmount));
+        Assert.Equal(0, prior.Sum(x => x.ChangeAmount));
+        Assert.Equal(-280, Assert.Single(prior, x => x.Id == 400010).ChangeAmount);
+        Assert.Null(await LegacyReceiptReclassificationOriginTests.Origin(db));
+
+        // A normal movement makes the formerly empty corrected room an active
+        // source. Its credit must recursively validate the original account debit.
+        var arrival = await Move(9002, 9003, 10);
+        Assert.True(arrival.Status == InventoryCommandStatus.Committed, arrival.Detail);
+        Assert.Equal(400, await f.Physical());
+        Assert.Equal(10, await f.Physical(9003));
+        var evidence = await new InventoryEvidenceLoader(db).LoadAsync(new(9001, [9003]), DateTimeOffset.UtcNow, default);
+        var active = Assert.Single(evidence.Positions, x => x.AuthoritativeQuantity > 0);
+        Assert.Contains(active.Ledger, x => x.Id == 400013 && x.Quantity == 158);
+        var beforeValidation = await f.Snapshot();
+        Assert.Null(await LegacyReceiptReclassificationOriginTests.Origin(db, 9003));
+        Assert.Equal(beforeValidation, await f.Snapshot());
+
+        var source = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db))
+            .ResolveAsync(new(9001, [9003]), new(), DateTimeOffset.UtcNow)).Positions, x => x.AuthoritativeQuantity > 0);
+        var command = new InventoryCommand(Guid.NewGuid().ToString("N"), InventoryCommandKind.RoomMove, 8000,
+            DateTimeOffset.UtcNow, "Synthetic movement after reconciliation",
+            [new(new(source.Identity, source.Location, source.Watermark.Fingerprint, source.Watermark.Versions), 7, "u", new(9001, 9002))]);
+        var moved = await f.Execute(command);
+        Assert.True(moved.Status == InventoryCommandStatus.Committed, moved.Detail);
+        Assert.Equal(InventoryCommandStatus.Replayed, (await f.Execute(command)).Status);
+        Assert.Equal(407, await f.Physical());
+        Assert.Equal(3, await f.Physical(9003));
+        Assert.Null(await LegacyReceiptReclassificationOriginTests.Origin(db, 9003));
+        Assert.Null(await LegacyReceiptReclassificationOriginTests.Origin(db));
+        var beforeRejected = await f.Snapshot();
+        Assert.NotEqual(InventoryCommandStatus.Committed, (await Move(9003, 9002, 4)).Status);
+        Assert.Equal(beforeRejected, await f.Snapshot());
+        Assert.Equal(history, await LegacyReceiptReclassificationOriginTests.HistoricalRows(db));
+        Assert.Equal(410, await db.RoomInventoryAdjustments.SumAsync(x => x.ChangeAmount));
+        Assert.Equal(410, await db.TreatmentLineageSegments.SumAsync(x => x.CurrentBins));
+        Assert.All(await db.TreatmentLineageMovements.ToArrayAsync(), x => Assert.Equal("u", x.TreatmentSignatureSnapshot));
+
+        async Task<InventoryCommandResult> Move(int from, int to, int bins)
+        {
+            var position = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db))
+                .ResolveAsync(new(9001, [from]), new(), DateTimeOffset.UtcNow)).Positions,
+                x => x.Identity.GrowerLotId == 100000 && x.Identity.FruitProfileId == 9004 && x.AuthoritativeQuantity > 0);
+            return await f.Execute(new(Guid.NewGuid().ToString("N"), InventoryCommandKind.RoomMove, 8000,
+                DateTimeOffset.UtcNow, "Synthetic corrected-room arrival or withdrawal",
+                [new(new(position.Identity, position.Location, position.Watermark.Fingerprint, position.Watermark.Versions), bins, "u", new(9001, to))]));
+        }
+    }
+
+    [InventoryPostgresFact]
     public async Task Recorded_mapping_proves_earlier_shared_pool_from_original_arrivals_without_backdating()
     {
         await using var f = await LegacyReceiptReclassificationOriginTests.Seed();

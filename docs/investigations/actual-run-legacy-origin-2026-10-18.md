@@ -213,7 +213,7 @@ The [read-only evidence summary](actual-run-legacy-origin-readonly-2026-10-18.js
 lists the proof records and visited ledger IDs. These checks use retrieved records without writes; they are not a production
 application save or a substitute for exact-candidate release rehearsal.
 
-## Verification
+## Verification at reviewed head 68363666
 
 Synthetic fixtures run on task-owned localhost PostgreSQL **18.4**. Final mandatory
 governance: **322 passed, 0 failed, 0 skipped**. The
@@ -246,6 +246,77 @@ assumed from local tests. Scope follows command sources
 and destinations, receipt changes/reversal, recorded cohorts, restoration, topology,
 treatment, concurrency and architecture. Unrelated application/hardware/browser/
 installer suites and production-shaped release rehearsal are not claimed.
+
+## PR #286 review correction: the reconciliation's own debit
+
+The owner's follow-up review of `683636669de512221364c16f002444ef50cf3981`
+identified a distinct path absent from the original selected-source diagnostic:
+origin validation of room 61 after reconciliation. The earlier 95-event trace
+and tests followed the historical 280-bin transfer into another room. They did
+not select the now-empty corrected room or reach credit 2723 and its debit 2722.
+
+The new PostgreSQL regression uses the existing complete synthetic nullable-key
+history, including the 66-bin duplicate arrival and its void, original custody,
+280-bin withdrawal, complete correction and audit. It first proves the separate
+pre-correction balances, +158 nullable and -158 canonical, and accepts the earlier
+withdrawal. A normal canonical RoomMove then brings 10 bins into the corrected
+room, making its current canonical position a positive source. The test explicitly
+checks that selected evidence includes correction credit 400013 (the synthetic
+equivalent of 2723).
+
+**Reproduced before changing the guard:** the new test failed at origin validation
+with `Ledger 400012: withdrawal exceeds custody established by earlier committed
+events.` Credit validation recursively reaches correction debit 400012 (equivalent
+to 2722). `SamePosition` combined +158 and -158 into zero and compared that physical
+pool balance against the original-account correction debit of 158. The correction
+does not withdraw 158 additional physical bins; it settles those recorded accounts.
+The red execution is retained locally in `artifacts/origin/review-before.trx`.
+
+The correction changes only the debit's prior-event selection. If its exact parent
+belongs to an already proven reconciliation, the debit uses its original raw
+identity at the same location. The existing proof independently verifies both
+account balances, the exact debit/credit pair, snapshots, positive source IDs,
+audit, chronology and absence of unsupported treatment movements before this
+branch is available. Original positive arrivals still undergo recursive origin
+validation. Other physical withdrawals retain shared-pool funding, including
+the earlier 280 and subsequent movements. No credit is backdated, no origin is
+counted twice, and no receipt ownership, inventory or treatment is created.
+
+The regression also moves seven of the newly arrived ten bins out through the
+normal command, replays the same intent, and validates both rooms afterward.
+Source/destination totals are 410/0 -> 400/10 -> 407/3, always 410 globally;
+attempting to withdraw four from the remaining three is rejected with no writes.
+Ledger and treatment-segment totals reconcile, movement signatures stay untreated,
+and original receipts, corrections, transfers, ledger and audit snapshots remain
+unchanged. Validation itself is checked against an all-table snapshot. The new
+method is an additional mandatory INV-001 contract; all previous contracts remain.
+The guard's reviewed-source hash was refreshed after reviewing the read-only
+change, with no writer-capability or classification change.
+
+This follow-up preserves specification/register 1.2.0 and the same base/main and
+governance commits. Report-only synchronization found no incoming commits or
+policy differences; its reported knowledge differences were this PR's existing
+traceability, reviewed hash and investigation records. No new production queries,
+production mutations or production-data test fixtures were needed.
+
+Final local verification of the review correction, on disposable PostgreSQL 18.4:
+
+| Check | Result |
+|---|---|
+| Focused origin/Actual Run classes | 64 passed, zero failed/skipped; includes the previously failing regression and both 44+74 atomic save/rollback variants. |
+| Mandatory governance/architecture contracts | 323 passed, zero failed/skipped, including those 64 cases and the refreshed reviewed-source hash. |
+| Additional affected shared callers, excluding mandatory selectors | 84 passed, zero failed/skipped: receipt corrections, identity reconciliation, movement/destination, restoration, topology and independent-session concurrency. Total distinct local .NET cases: 407. |
+| Node governance tests / metadata | 29 passed, zero failed/skipped; all 20 catalog rules pass. |
+| Restore / Release solution build | Passed; build has zero errors and 74 existing warnings. |
+| EF model / scoped formatting / whitespace | No pending model changes; format verification and `git diff --check` pass. |
+
+Original negative format cases and unfunded historical withdrawals remain rejected.
+The Actual Run still consumes exactly 118, with atomic failures, preserved treatment
+and audit evidence, same-intent replay, conflicts and concurrent consumers covered.
+No unrelated full application suite was run. Local red/green TRX files are retained
+under `artifacts/origin`; mandatory TRX is
+`artifacts/governance/18905c0b5ecd47c19d1b3c80a4fe94cd/contracts.trx`.
+Final-head CI is reported in the PR/conversation after it completes.
 
 ## Production status
 

@@ -15,6 +15,12 @@
       "tests": [
         {
           "type": "CropQc.Api.Tests.LegacyGrowerReconciliationOriginTests",
+          "member": "Complete_reconciliation_validates_its_source_debit_and_credit_when_corrected_room_is_active",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.LegacyGrowerReconciliationOriginTests",
           "member": "Recorded_mapping_proves_earlier_shared_pool_from_original_arrivals_without_backdating",
           "kind": "postgres",
           "required": true

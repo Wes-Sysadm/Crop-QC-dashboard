@@ -110,7 +110,12 @@ internal static class InventoryOriginGuard
 
         bool Debit(RoomInventoryAdjustment row)
         {
-            var prior = all.Values.Where(x => SamePosition(x, row) && Earlier(x, row)).ToArray();
+            // A proven reconciliation settles its original source account, whose
+            // separate balance was checked against the recorded ledger/snapshot.
+            // Physical withdrawals still use the reconciled shared pool.
+            var reconcilesSourceAccount = reconciledPools.Any(pool => pool.CorrectionId == row.InventoryIdentityCorrectionId);
+            var prior = all.Values.Where(x => SamePosition(x, row) && Earlier(x, row)
+                && (!reconcilesSourceAccount || SameIdentity(x, row))).ToArray();
             if (prior.Sum(x => (long)x.ChangeAmount) < -(long)row.ChangeAmount)
                 return Fail(row, "withdrawal exceeds custody established by earlier committed events");
             return prior.Where(x => x.ChangeAmount > 0).All(Validate);

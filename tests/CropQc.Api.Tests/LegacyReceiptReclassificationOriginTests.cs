@@ -374,7 +374,7 @@ public sealed class LegacyReceiptReclassificationOriginTests
                 kind == InventoryCommandKind.RoomMove ? new(9001, 9003) : null)]);
     }
 
-    private static async Task<string> HistoricalRows(CropQcDbContext db) => JsonSerializer.Serialize(new
+    internal static async Task<string> HistoricalRows(CropQcDbContext db) => JsonSerializer.Serialize(new
     {
         receipts = await db.Receipts.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
         corrections = await db.ReceiptInventoryOverrides.AsNoTracking().OrderBy(x => x.Id).ToArrayAsync(),
@@ -384,9 +384,9 @@ public sealed class LegacyReceiptReclassificationOriginTests
         audits = await db.AuditLogs.AsNoTracking().Where(x => x.CreatedAt <= InventoryEvidenceCorpus.Start.AddMinutes(10)).OrderBy(x => x.Id).ToArrayAsync()
     });
 
-    internal static async Task<string?> Origin(CropQcDbContext db)
+    internal static async Task<string?> Origin(CropQcDbContext db, int room = 9002)
     {
-        var evidence = await new InventoryEvidenceLoader(db).LoadAsync(new(9001, [9002]), DateTimeOffset.UtcNow, default);
+        var evidence = await new InventoryEvidenceLoader(db).LoadAsync(new(9001, [room]), DateTimeOffset.UtcNow, default);
         var guard = typeof(InventoryEvidenceLoader).Assembly.GetType("CropQc.Data.Inventory.InventoryOriginGuard")!;
         return await (Task<string?>)guard.GetMethod("ValidateAsync", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [db, evidence.Positions, DateTimeOffset.UtcNow, CancellationToken.None, false])!;
