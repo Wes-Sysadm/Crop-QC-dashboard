@@ -1,0 +1,169 @@
+{
+  "initial": [
+    {
+      "baseline": {
+        "InterCrewTransfers": {
+          "hash": "dfdc8777c8b1d081ff058ae70f4edc3e",
+          "rows": 42
+        },
+        "InventoryCommands": {
+          "hash": "9f564a44dd721f5a2ecb9827641c9ca5",
+          "rows": 63
+        },
+        "InventoryIdentityCorrections": {
+          "hash": "58232b406ff7640bbc0d548095592eb6",
+          "rows": 71
+        },
+        "OutsideWarehouseTransfers": {
+          "hash": "5dc17d57483782d6848a1d2e2c99a0a3",
+          "rows": 43
+        },
+        "ReceiptInventoryOverrides": {
+          "hash": "a28cc74579e787064df31a2253ae7537",
+          "rows": 124
+        },
+        "ReceiptVarietyLines": {
+          "hash": "d41d8cd98f00b204e9800998ecf8427e",
+          "rows": 0
+        },
+        "Receipts": {
+          "hash": "10685333424ad1dfffe9155791878ad3",
+          "rows": 2509
+        },
+        "RoomInventoryAdjustments": {
+          "hash": "2b58e9e624091c6951c9cc3a0e518690",
+          "rows": 4140
+        },
+        "RoomInventoryLosses": {
+          "hash": "4507511b996d5327ba47d77348c9164e",
+          "rows": 8
+        },
+        "RoomTransfers": {
+          "hash": "b16e1740873cf43a76a2115806230a77",
+          "rows": 409
+        },
+        "RoomTreatmentApplicationSources": {
+          "hash": "b126db842cb9bf5b465fb4dccf20e0b4",
+          "rows": 37
+        },
+        "RoomTreatmentApplications": {
+          "hash": "eee54cf08f356b2d42c1d655fe88c1f0",
+          "rows": 26
+        },
+        "TreatmentLineageMovements": {
+          "hash": "a7494e55a0017339403c0a88622bb294",
+          "rows": 856
+        },
+        "TreatmentLineageSegmentApplications": {
+          "hash": "883900afbbce09dd00f8c8454e527e20",
+          "rows": 57
+        },
+        "TreatmentLineageSegments": {
+          "hash": "c9500af831eae2e9d3f206440a444362",
+          "rows": 784
+        },
+        "audits": {
+          "hash": "7bb07e345996703fcdf3ae0ed8910712",
+          "max_id": 175137,
+          "rows": 175132
+        },
+        "ledger_total": 72191,
+        "observed_at": "2026-10-08T03:10:00.288293+00:00"
+      }
+    }
+  ],
+  "final": [
+    {
+      "baseline": {
+        "InterCrewTransfers": {
+          "hash": "dfdc8777c8b1d081ff058ae70f4edc3e",
+          "rows": 42
+        },
+        "InventoryCommands": {
+          "hash": "9f564a44dd721f5a2ecb9827641c9ca5",
+          "rows": 63
+        },
+        "InventoryIdentityCorrections": {
+          "hash": "58232b406ff7640bbc0d548095592eb6",
+          "rows": 71
+        },
+        "OutsideWarehouseTransfers": {
+          "hash": "5dc17d57483782d6848a1d2e2c99a0a3",
+          "rows": 43
+        },
+        "ReceiptInventoryOverrides": {
+          "hash": "a28cc74579e787064df31a2253ae7537",
+          "rows": 124
+        },
+        "ReceiptVarietyLines": {
+          "hash": "d41d8cd98f00b204e9800998ecf8427e",
+          "rows": 0
+        },
+        "Receipts": {
+          "hash": "10685333424ad1dfffe9155791878ad3",
+          "rows": 2509
+        },
+        "RoomInventoryAdjustments": {
+          "hash": "2b58e9e624091c6951c9cc3a0e518690",
+          "rows": 4140
+        },
+        "RoomInventoryLosses": {
+          "hash": "4507511b996d5327ba47d77348c9164e",
+          "rows": 8
+        },
+        "RoomTransfers": {
+          "hash": "b16e1740873cf43a76a2115806230a77",
+          "rows": 409
+        },
+        "RoomTreatmentApplicationSources": {
+          "hash": "b126db842cb9bf5b465fb4dccf20e0b4",
+          "rows": 37
+        },
+        "RoomTreatmentApplications": {
+          "hash": "eee54cf08f356b2d42c1d655fe88c1f0",
+          "rows": 26
+        },
+        "TreatmentLineageMovements": {
+          "hash": "a7494e55a0017339403c0a88622bb294",
+          "rows": 856
+        },
+        "TreatmentLineageSegmentApplications": {
+          "hash": "883900afbbce09dd00f8c8454e527e20",
+          "rows": 57
+        },
+        "TreatmentLineageSegments": {
+          "hash": "c9500af831eae2e9d3f206440a444362",
+          "rows": 784
+        },
+        "audits": {
+          "hash": "952a26205d9bfd7c34f3564657529ee2",
+          "max_id": 175140,
+          "rows": 175135
+        },
+        "ledger_total": 72191,
+        "observed_at": "2026-10-08T03:36:18.520923+00:00"
+      }
+    }
+  ],
+  "auditDelta": {
+    "newIds": [
+      175138,
+      175139,
+      175140
+    ],
+    "entities": [
+      "Backup",
+      "BackupNotification",
+      "BackupNotification"
+    ],
+    "actions": [
+      "BackupCompleted",
+      "BackupNotificationQueued",
+      "BackupNotificationSent"
+    ],
+    "backupRun": 187,
+    "priorAuditRows": 175132,
+    "priorAuditHash": "7bb07e345996703fcdf3ae0ed8910712",
+    "explanation": "Only normal completion/notification audits of already-running backup187 were appended. Every prior audit and all 15 operational table fingerprints remain identical."
+  }
+}
