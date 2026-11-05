@@ -1,0 +1,45 @@
+@model DirectTransferDetail
+@{ ViewData["Title"] = $"Transfer #{Model.Transfer.Id}"; var t = Model.Transfer; }
+@if (TempData["Error"] is string error) { <p class="notice error" role="alert">@error</p> }
+@if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
+<section class="panel">
+    <h1>Transfer #@t.Id</h1>
+    <p>@t.SourceWarehouse.Code @t.SourceRoom.Code → @t.DestinationWarehouse.Code @t.DestinationRoom.Code</p>
+    <p>@t.BinCount bins · @t.GrowerName · @t.LotNumber · @t.VarietyCode</p>
+    <p>Recorded @t.CreatedAt.ToString("u") by @(t.CreatedByUser?.DisplayName ?? "Recorded operator"). @t.Reason</p>
+    @if (t.CorrectsRoomTransferId is long original)
+    { <p>Compensating correction of <a href="/Transfers/@original">transfer #@original</a>. The original history is retained.</p> }
+    @if (t.PhysicalLocationVerified == false)
+    { <p class="notice warning">Custody was assigned to the original source. Physical presence there was not independently verified.</p> }
+    @if (t.PhysicalLocationVerified == true) { <p>Physical location verified by the recorded operator evidence.</p> }
+    @if (t.LocationEvidence != null) { <p><strong>Evidence recorded:</strong> @t.LocationEvidence</p> }
+    @foreach (var correction in Model.Corrections)
+    { <p><a href="/Transfers/@correction.Id">Correction #@correction.Id</a>: @correction.BinCount bins, @(correction.PhysicalLocationVerified == true ? "verified location" : "unverified source assignment").</p> }
+    <a href="/Transfers?sourceRoomId=@t.DestinationRoomId">Transfer more inventory</a>
+</section>
+@if (Model.CanCorrect)
+{
+    <section class="panel">
+        <h2>Correct this transfer</h2>
+        <p>Missing quantities default back to @t.SourceWarehouse.Code @t.SourceRoom.Code as an unverified assignment. No receipt or physical count is created.</p>
+        <form method="post" action="/Transfers/Correct">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="TransferId" value="@t.Id" />
+            <input type="hidden" name="OperationKey" value="@Guid.NewGuid().ToString("N")" />
+            <input type="hidden" name="Fingerprint" value="@Model.Fingerprint" />
+            <label for="quantity">Affected bins (up to @Model.CorrectableQuantity)</label>
+            <input id="quantity" name="Quantity" type="number" min="1" max="@Model.CorrectableQuantity" step="1" required />
+            <label for="reason">Reason</label><input id="reason" name="Reason" maxlength="500" required />
+            <label for="evidence">Evidence actually available</label><textarea id="evidence" name="Evidence" maxlength="2000" required></textarea>
+            <label><input type="checkbox" name="PhysicallyVerified" value="true" /> The destination below has been physically verified for these bins</label>
+            <label for="verifiedDestination">Verified destination (only used when checked)</label>
+            <select id="verifiedDestination" name="VerifiedDestinationRoomId">
+                <option value="">Default: original source, unverified</option>
+                @foreach (var location in Model.Locations.Where(x => x.Id != t.DestinationRoomId))
+                { <option value="@location.Id">@location.Label</option> }
+            </select>
+            <button type="submit">Record compensating correction</button>
+        </form>
+    </section>
+}
+else { <p class="notice">A correction requires Transfer Admin access and remaining proven original allocations. Consumed or changed allocations cannot be recreated.</p> }

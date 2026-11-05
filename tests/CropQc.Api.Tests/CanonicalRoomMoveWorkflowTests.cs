@@ -40,8 +40,9 @@ public sealed class CanonicalRoomMoveWorkflowTests
         }
         Assert.Equal(38, await f.Physical());
         Assert.Equal(0, await f.Physical(9003));
-        Assert.Equal(2, await db.RoomTransfers.CountAsync(x => x.IsReversed));
-        Assert.Equal(2, await db.TreatmentLineageMovements.CountAsync(x => x.ReversesTreatmentLineageMovementId != null));
+        Assert.Equal(0, await db.RoomTransfers.CountAsync(x => x.IsReversed));
+        Assert.Equal(2, await db.RoomTransfers.CountAsync(x => x.CorrectsRoomTransferId != null && x.PhysicalLocationVerified == false));
+        Assert.Equal(4, await db.TreatmentLineageMovements.CountAsync(x => x.RoomTransferId != null));
         Assert.Equal(38, await db.TreatmentLineageSegments.Where(x => x.Disposition == "Current").SumAsync(x => x.CurrentBins));
     }
 }

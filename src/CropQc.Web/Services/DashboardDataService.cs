@@ -530,6 +530,7 @@ public sealed partial class DashboardDataService(
 
             return new RoomDetailViewModel
             {
+                UnverifiedTransferAssignments = await CropQc.Data.Inventory.DirectTransferAssignmentHistory.ForRoomAsync(dbContext, roomId, cancellationToken),
                 CanonicalInventoryEnabled = dbContext.CanonicalInventoryEnabled,
                 Summary = summary,
                 CurrentLots = activeLots,
@@ -6591,7 +6592,7 @@ public sealed partial class DashboardDataService(
             .ToListAsync(cancellationToken);
         var knownFacilities = warehouses
             .Select(x => new RoomTransferFacilityViewModel(x.Id, FacilityCode(x.Code, x.Name), x.Code, x.Name))
-            .Where(x => TransferFacilitySort(x.Label) < int.MaxValue)
+            .Where(x => dbContext.CanonicalInventoryEnabled || TransferFacilitySort(x.Label) < int.MaxValue)
             .OrderBy(x => TransferFacilitySort(x.Label))
             .ThenBy(x => x.WarehouseId)
             .ToList();
@@ -6614,7 +6615,7 @@ public sealed partial class DashboardDataService(
         var sourceWarehouseId = roomRows.SingleOrDefault(x => x.Id == currentRoomId)?.WarehouseId ?? 0;
         var sourceFacility = knownFacilities.SingleOrDefault(x => x.WarehouseId == sourceWarehouseId)?.Label;
         var immediateFacilities = knownFacilities
-            .Where(x => IsImmediateInternalTransferAllowed(sourceFacility, x.Label))
+            .Where(x => dbContext.CanonicalInventoryEnabled || IsImmediateInternalTransferAllowed(sourceFacility, x.Label))
             .ToList();
         var rooms = roomRows
             .Where(x => x.Id != currentRoomId && immediateFacilities.Any(facility => facility.WarehouseId == x.WarehouseId))

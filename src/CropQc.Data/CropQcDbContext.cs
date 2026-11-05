@@ -1854,6 +1854,14 @@ public sealed class CropQcDbContext(DbContextOptions<CropQcDbContext> options, I
 
         modelBuilder.Entity<RoomTransfer>(entity =>
         {
+            var directFalse = isPostgreSqlProvider ? "false" : "0";
+            var directTrue = isPostgreSqlProvider ? "true" : "1";
+            entity.ToTable(t => t.HasCheckConstraint("CK_RoomTransfers_DirectEvidence",
+                $"(\"IsDirectTransfer\" = {directFalse} AND \"CorrectsRoomTransferId\" IS NULL AND \"PhysicalLocationVerified\" IS NULL AND \"LocationEvidence\" IS NULL) OR " +
+                $"(\"IsDirectTransfer\" = {directTrue} AND \"BinCount\" > 0 AND ((\"CorrectsRoomTransferId\" IS NULL AND \"PhysicalLocationVerified\" IS NULL AND \"LocationEvidence\" IS NULL) OR " +
+                "(\"CorrectsRoomTransferId\" IS NOT NULL AND \"CorrectsRoomTransferId\" <> \"Id\" AND \"PhysicalLocationVerified\" IS NOT NULL AND \"LocationEvidence\" IS NOT NULL)))"));
+            entity.Property(x => x.LocationEvidence).HasMaxLength(2000);
+            entity.HasOne(x => x.CorrectsRoomTransfer).WithMany().HasForeignKey(x => x.CorrectsRoomTransferId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(x => x.OperationKey).HasMaxLength(150).IsRequired();
             entity.Property(x => x.GrowerName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.LotNumber).HasMaxLength(100).IsRequired();

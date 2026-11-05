@@ -67,8 +67,7 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
             "/BinsRun?Section=Actual",
             $"/BinsRun/ActualRuns/{actualRunId}",
             "/BinsRun?Section=RunTotals",
-            "/BinsRun?Section=Transfer",
-            "/BinsRun?Section=Transfer&Facility=EBS",
+            "/Transfers",
             "/ProcessorShipments",
             "/MasterData",
             "/MasterData/outside-warehouses",
@@ -89,18 +88,17 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
         foreach (var route in new[] { "/BinsRun?Section=Transfer", "/BinsRun?Section=Transfer&Facility=EBS" })
         {
             var response = await client.GetAsync(route);
-            var html = await response.Content.ReadAsStringAsync();
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Contains("Internal Room Transfer", html, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("TransferType=InterCrew", html, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("TransferType=Outside", html, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.StartsWith("/Transfers", response.Headers.Location!.ToString());
+            var html = await client.GetStringAsync(response.Headers.Location);
+            Assert.Contains("Transfer bins", html, StringComparison.OrdinalIgnoreCase);
             if (expectReady)
                 Assert.DoesNotContain("Treatment lineage requires review", html, StringComparison.OrdinalIgnoreCase);
         }
 
         await using var enabledFactory = new RestoreWebApplicationFactory(connectionString, transferCustodyEnabled: true);
         using var enabledClient = AuthenticatedClient(enabledFactory);
-        var enabledTransfer = await enabledClient.GetStringAsync("/BinsRun?Section=Transfer&Facility=EBS");
+        var enabledTransfer = await enabledClient.GetStringAsync("/Transfers");
         Assert.Contains("TransferType=InterCrew", enabledTransfer, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("TransferType=Outside", enabledTransfer, StringComparison.OrdinalIgnoreCase);
         var enabledOutside = await enabledClient.GetStringAsync("/BinsRun?Section=Transfer&TransferType=Outside&Facility=EBS");
@@ -215,34 +213,24 @@ public sealed class TreatmentLineage144RestoredPostgreSqlHttpTests
         Assert.Empty(room10.Inventory.Select(x => x.SourceKey).Intersect(room9.Inventory.Select(x => x.SourceKey)));
 
         var noRoomHtml = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3");
-        Assert.Contains("Select a source Facility and Room", noRoomHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("New direct transfer", noRoomHtml, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("data-inter-crew-form", noRoomHtml, StringComparison.OrdinalIgnoreCase);
 
         var room10Html = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3&RoomId=62");
-        var room10Form = FormHtml(room10Html);
-        Assert.Contains("Source inventory:</strong> McDougall / MCD-10", room10Html, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("name=\"SourceWarehouseId\" value=\"3\"", room10Form, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("name=\"SourceRoomId\" value=\"62\"", room10Form, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("McDougall / MCD-09", room10Form, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("data-inter-crew-form", room10Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/Transfers?sourceRoomId=62", room10Html, StringComparison.OrdinalIgnoreCase);
+        var direct10 = await client.GetStringAsync("/Transfers?sourceRoomId=62");
+        Assert.Contains("name=\"SourceRoomId\" value=\"62\"", direct10, StringComparison.OrdinalIgnoreCase);
 
         var room9Html = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=3&RoomId=61");
-        var room9Form = FormHtml(room9Html);
-        Assert.Contains("Source inventory:</strong> McDougall / MCD-09", room9Html, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("name=\"SourceRoomId\" value=\"61\"", room9Form, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("McDougall / MCD-10", room9Form, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("data-inter-crew-form", room9Html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/Transfers?sourceRoomId=61", room9Html, StringComparison.OrdinalIgnoreCase);
+        var direct9 = await client.GetStringAsync("/Transfers?sourceRoomId=61");
+        Assert.Contains("name=\"SourceRoomId\" value=\"61\"", direct9, StringComparison.OrdinalIgnoreCase);
 
         var room10Again = await service.GetPageAsync(new BinsRunFilterForm { WarehouseId = 3, RoomId = 62 }, default);
         Assert.Equal(room10.Inventory.Select(x => x.SourceKey), room10Again.Inventory.Select(x => x.SourceKey));
         Assert.Equal(before, await ProtectedCountsAsync(db));
-    }
-
-    private static string FormHtml(string html)
-    {
-        var start = html.IndexOf("<form", html.IndexOf("data-inter-crew-form", StringComparison.OrdinalIgnoreCase) - 200, StringComparison.OrdinalIgnoreCase);
-        Assert.True(start >= 0, "Expected the Inter-Crew dispatch form to render.");
-        var end = html.IndexOf("</form>", start, StringComparison.OrdinalIgnoreCase);
-        Assert.True(end > start, "Expected the Inter-Crew dispatch form to close.");
-        return html[start..(end + "</form>".Length)];
     }
 
     [Fact]

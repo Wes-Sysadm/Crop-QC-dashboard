@@ -31,7 +31,7 @@ public sealed class LegacyTransferEligibilityTests
         using var client = host.CreateClient(new() { AllowAutoRedirect = false });
         var before = await f.Snapshot();
         foreach (var path in new[] { "/BinsRun?Section=Transfer&TransferType=Outside&WarehouseId=9001&RoomId=9003",
-            "/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=9001&RoomId=9003", "/ProcessorShipments" })
+            "/ProcessorShipments" })
         {
             var html = await client.GetStringAsync(path);
             Assert.Contains("Needs Review", html);
@@ -44,6 +44,10 @@ public sealed class LegacyTransferEligibilityTests
             Assert.NotEmpty(controls);
             Assert.All(controls, x => Assert.Contains("disabled", x));
         }
+        var direct = await client.GetStringAsync("/Transfers?sourceRoomId=9003");
+        Assert.Contains("No inventory is currently available", direct);
+        Assert.Contains("not final transfer approval", direct);
+        Assert.DoesNotContain("name=\"Selections[0].Quantity\"", direct);
         Assert.Equal(before, await f.Snapshot());
     }
 

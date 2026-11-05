@@ -1,15 +1,15 @@
 [
   {
-    "Reason": "Conservation diagnostic uses AsNoTracking reads of complete location-correction parents, signed ledger pairs, snapshots and audit records. Add calls affect local ID/result collections only. No SaveChanges, SQL mutation, writer capability or new inventory origin; synthetic PostgreSQL report snapshots prove no writes.",
+    "Reason": "Reviewed read-only assignment evidence list. It neither adds inventory nor treats assigned quantity as a physical count; readiness conservation gates remain intact. Existing location correction diagnostics preserved.",
     "Path": "src/CropQc.Web/Services/InventoryConservationReportService.cs",
     "Classification": "Nonphysical or read-only",
-    "Sha256": "5C637044B1B144644D618AD14946C8799205774EC4EC50FB0513DC063AFA4CBE"
+    "Sha256": "3C39ACFCC49A88678635B16221854C87AB63A2654954C6D1CDA416F388AC41D7"
   },
   {
     "Path": "src/CropQc.Web/Services/InventoryConservationReportService.Compensation.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Report-only AsNoTracking validation of raw compensation, placement, acknowledgement, ledger, movement, treatment and command/audit evidence before opening-baseline filtering. Add calls construct local invalid-evidence findings; no writer capability, SaveChanges or SQL mutation. Synthetic PostgreSQL fingerprints prove both diagnostics leave every table unchanged.",
-    "Sha256": "AC19D16EFE5D00809577BD19481AEF931FD552A60681580DF62C69C36F0C794F"
+    "Reason": "Reviewed recognition of ConvertLegacyTransfer intent only where exact placement evidence is expected. All existing journal, audit, ledger, allocation, time and custody checks retained. Collection additions construct diagnostics only.",
+    "Sha256": "E2A5FE37251B602C3AA8BBEEE724DE9D138620BDB1DE4D107A94095C1E580B3F"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InterCrewTopologyReadiness.cs",
@@ -56,8 +56,8 @@
   {
     "Path": "src/CropQc.Data/CropQcDbContext.cs",
     "Classification": "Physical write boundary",
-    "Reason": "Tracked field guard and raw SQL interceptor; command-transaction capability internal to Data assembly.",
-    "Sha256": "E91D360E3ADE24585BFE91262F8466C93DA30CE3C15601CFF13D565277AE68D0"
+    "Reason": "Reviewed additive direct/correction parent metadata, evidence constraint and restrictive self-reference. Existing tracked and SQL write guards remain unchanged.",
+    "Sha256": "484F42A268AD54C8029A14B74D1B9BEF7D45E09447B03CF7C721CDD5DE4ED1E2"
   },
   {
     "Path": "src/CropQc.Data/Inventory/CanonicalBaselinePreview.cs",
@@ -92,8 +92,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Executor-owned Serializable transaction. Existing-receipt commands now validate live Receipts Admin before replay/commit; ordinary receiving and movement authority unchanged. Journal, custody fence, atomic effects and proof-based projection lifecycle retained.",
-    "Sha256": "340CED8ED8D2501CA67E00C1539387A3E784E371584498C784E46DBB3BAE80FE"
+    "Reason": "Reviewed routing of direct and legacy conversion intents within the existing serializable executor; transaction-local assignment-aware capability added. Origin, permission, journal replay, normalization, atomic commit and audit gates remain intact.",
+    "Sha256": "89660265FB1782BC025156EBB8E099B2343254E10CE40744AD2191D1D14FB70D"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandManualStock.cs",
@@ -104,8 +104,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOperations.cs",
     "Classification": "Canonical infrastructure",
-    "Reason": "Reviewed canonical writer: exact receipt origin credits use destination admission; untouched placement compensation uses independent cohort and origin proof; typed addition endpoints preserve lineage. Serializable, quantity, dependency and audit guards retained. See pr271-systemic-room-admission.md.",
-    "Sha256": "A04FFB4AC83BA3A0A4EB60F9A22C81DEAE216317AA3CA75A346D5E541C354F9B"
+    "Reason": "Reviewed ADR-009 direct and compensating transfer paths. Only direct kinds bypass the old Truck Receipt route prerequisite. Correction validates original ledger and movement links, bounds surviving allocations, records current-time compensation and evidence, and forbids unverified destinations other than the original source. Existing origin, treatment, funding and destination delta checks remain authoritative.",
+    "Sha256": "D26F2810E6A368106AA14E765527B8E984DF9A5491924C3785DAE0C646B3C0BF"
   },
   {
     "Path": "src/CropQc.Data/Inventory/InventoryCommandOrasDefinition.cs",
@@ -362,14 +362,14 @@
   {
     "Path": "src/CropQc.Web/Services/DashboardDataService.Canonical.cs",
     "Classification": "Canonical service adapter",
-    "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "79704772F3071C9518B5848B64E7C963EA5FD14093F88B9ADEFE080F86EC9973"
+    "Reason": "Reviewed typed direct/correction adapters and compatible-disable flag. Existing replay intent remains readable. No direct entity persistence; executor owns all physical effects.",
+    "Sha256": "D6A6EC5A50E8EC20A886DC5D9C1F370C0B73DC296364BD630F06358C1FEC182A"
   },
   {
     "Path": "src/CropQc.Web/Services/DashboardDataService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
-    "Reason": "Reviewed existing metadata adapter now requires Receipts Admin/reason/version and records entered reason. Transfer identity/custody changes reject before writes. Physical operations still dispatch on canonical gate; legacy physical writes remain fenced while ON.",
-    "Sha256": "86E5CD8466653D916D30C120A00598C66AD1487A0801CDD17FA63AAD076E2C59"
+    "Reason": "Reviewed all-active-facility destination selector and read-only assignment advisory. Existing canonical dispatch and fenced legacy OFF writes remain unchanged; no new physical writer.",
+    "Sha256": "AC6D1614C21A707A18425E471510C4F728DA762769F09EFC83BF70A4CA7B7729"
   },
   {
     "Path": "src/CropQc.Web/Services/DatabaseStartupDiagnostics.cs",
@@ -670,5 +670,17 @@
     "Classification": "Nonphysical or read-only",
     "Reason": "Reviewed bounded historical custody proof: validates immutable parent/debit/credit records and source replay; Add changes local evidence collections only. No SaveChanges, physical SQL, new origin, writer capability or readiness exemption.",
     "Sha256": "31CF809DBB20B59B85E247D1ED1699EEF5A220B96FAEBC6F8E6407FECFBF1787"
+  },
+  {
+    "Path": "src/CropQc.Web/Controllers/TransfersController.cs",
+    "Classification": "Canonical service adapter",
+    "Reason": "Reviewed authorization, antiforgery, active actor, whole-bin model validation, fresh canonical selection and full-intent replay. Add calls build local command lines/warnings only; all physical effects use the canonical executor.",
+    "Sha256": "6A40A0A71E279CF14B7ACC50563B38790F89C54E42866D6B9093C48A860C5CD8"
+  },
+  {
+    "Path": "src/CropQc.Data/Inventory/DirectTransferAssignmentHistory.cs",
+    "Classification": "Nonphysical or read-only",
+    "Reason": "Reviewed AsNoTracking immutable movement graph reads. HashSet additions maintain local traversal state only. Bounded conservative warnings carry unverified assignment history through later movements without quantity authority, receipt ownership or writes.",
+    "Sha256": "9C8929ED0CC1B0B81BEFA5387BB2CB672EBAE7026EB71E06A9246AC7448ACDB8"
   }
 ]

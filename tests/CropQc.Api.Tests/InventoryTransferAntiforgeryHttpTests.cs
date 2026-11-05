@@ -43,8 +43,8 @@ public sealed class InventoryTransferAntiforgeryHttpTests
             var token = Token(formHtml);
             Assert.NotEmpty(token);
             var payload = new Dictionary<string, string>(setup.Payload);
-            if (action == "room") payload["SourceLotKey"] = Option(formHtml, "SourceLotKey");
-            if (action is "outside" or "dispatch") payload["SourceKey"] = Option(formHtml, "SourceKey");
+
+            if (action == "outside") payload["SourceKey"] = Option(formHtml, "SourceKey");
             // Every negative request has a complete operation-shaped payload, not an empty form.
             Assert.True(payload.Count >= 3);
             var before = await f.Snapshot(); var commands = host.Commands.Calls;
@@ -111,29 +111,27 @@ public sealed class InventoryTransferAntiforgeryHttpTests
             using var client = host.Client(ApplicationAreas.OwnerEmail);
             var rendered = Form(await client.GetStringAsync(setup.Page), setup.RenderedAction);
             var payload = new Dictionary<string, string>(setup.Payload) { ["__RequestVerificationToken"] = Token(rendered) };
-            if (action == "room")
-            {
-                payload["SourceLotKey"] = Option(rendered, "SourceLotKey");
-                payload["TreatmentSignature"] = WebUtility.HtmlDecode(Regex.Match(rendered, "data-treatment-signature=\"([^\"]+)\"").Groups[1].Value);
-            }
-            if (action is "outside" or "dispatch") payload["SourceKey"] = Option(rendered, "SourceKey");
+
+            if (action == "outside") payload["SourceKey"] = Option(rendered, "SourceKey");
             await using var db = f.CreateDbContext();
             var originalReceipt = await db.Receipts.AsNoTracking().SingleAsync(x => x.Id == 100000);
             var history = await db.RoomInventoryAdjustments.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
             var applications = System.Text.Json.JsonSerializer.Serialize(await db.RoomTreatmentApplications.AsNoTracking().OrderBy(x => x.Id).ToListAsync());
+            var beforeSubmission = await f.Snapshot();
             var response = await client.PostAsync(setup.Path, new FormUrlEncodedContent(payload));
+            if (action == "dispatch")
+            {
+                Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+                Assert.StartsWith("/Transfers", response.Headers.Location!.ToString());
+                Assert.Equal(0, host.Commands.Calls);
+                Assert.Equal(beforeSubmission, await f.Snapshot());
+                continue;
+            }
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             Assert.True(host.Commands.Calls > 0, action + " did not invoke the canonical writer");
             var expectedSource = action.EndsWith("reverse", StringComparison.Ordinal) ? 19 : 14;
             Assert.True(expectedSource == await f.Physical(), action + ": " + host.Error(response) + " " + host.Commands.LastResult);
             if (action == "room") Assert.Equal(5, await f.Physical(9003));
-            if (action == "dispatch")
-            {
-                var parent = await db.InterCrewTransfers.AsNoTracking().SingleAsync();
-                Assert.True(parent.RequiresTruckReceipt);
-                Assert.Equal(5, parent.BinsLoaded);
-                Assert.Null(parent.ReceivingReceiptId);
-            }
             if (action == "receive")
             {
                 var parent = await db.InterCrewTransfers.AsNoTracking().SingleAsync(x => x.Id == setup.Parent);
@@ -204,7 +202,15 @@ public sealed class InventoryTransferAntiforgeryHttpTests
             payload["FromRoomId"] = "9002"; payload["DestinationWarehouseId"] = "9001"; payload["DestinationRoomId"] = "9003";
             payload["BinCount"] = "5"; payload["TreatmentSignature"] = "u"; payload["TransferAt"] = DateTimeOffset.UtcNow.ToString("O");
             if (action == "room-reverse") { parent = (await Commit(f, await f.Command(InventoryCommandKind.RoomMove, 5))).Effects[0].ParentId!.Value; path += $"/{parent}/Reverse"; }
-            return new(path, page, "/BinsRun/Transfer", parent, payload);
+            // Retained compatibility POSTs use the token rendered by the new UI;
+            // the retired room-transfer form no longer appears in Bins Run.
+            await using var selectionDb = f.CreateDbContext();
+            var selection = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(selectionDb))
+                .ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow)).Positions);
+            var ledger = Assert.Single(await new CropQc.Web.Services.RoomInventoryLedgerQueryService(selectionDb).GetSnapshotsAsync(9001, [9002], default));
+            payload["SourceLotKey"] = OperationalInventoryPosition.Key(ledger) + ":" + selection.Watermark.Fingerprint;
+            payload["TreatmentSignature"] = selection.TreatmentSlices.Single().Signature;
+            return new(path, "/Transfers?sourceRoomId=9002", "/Transfers", parent, payload);
         }
         if (action == "true-up")
         {
@@ -272,6 +278,7 @@ public sealed class InventoryTransferAntiforgeryHttpTests
             payload["DestinationRoomId"] = "9007"; payload["BinsReceived"] = "5"; payload["ReceivedAt"] = new CropQc.Shared.Time.PacificBusinessTimeService(new CropQc.Shared.Time.SystemClock()).NowPacific.ToString("yyyy-MM-ddTHH:mm:ss.fffffff");
             path = page + (action == "receive" ? "/Receive" : action == "review" ? "/Review" : "/Reverse");
         }
+        if (action == "dispatch") return new(path, "/BinsRun?Section=Transfer&TransferType=Outside", "/BinsRun/OutsideTransfers", parent, payload);
         return new(path, page, path, parent, payload);
     }
 
@@ -284,7 +291,7 @@ public sealed class InventoryTransferAntiforgeryHttpTests
     private static string Form(string html, string action)
     {
         var form = Regex.Matches(html, "<form\\b[^>]*>.*?</form>", RegexOptions.Singleline | RegexOptions.IgnoreCase)
-            .Select(x => x.Value).SingleOrDefault(x => x.Contains("action=\"" + action + "\"", StringComparison.Ordinal));
+            .Select(x => x.Value).SingleOrDefault(x => x.Contains("method=\"post\"", StringComparison.OrdinalIgnoreCase) && x.Contains("action=\"" + action + "\"", StringComparison.Ordinal));
         Assert.True(form != null, "Missing rendered form " + action);
         return form!;
     }

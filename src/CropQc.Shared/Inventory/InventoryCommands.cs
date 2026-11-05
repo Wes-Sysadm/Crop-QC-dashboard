@@ -9,7 +9,8 @@ public enum InventoryCommandKind
     ReceiveTransfer, Loss, TreatmentAssignment, TreatmentReversal, ReceiptCorrection, Return,
     TransferEdit, ReopenTransfer, BaselineAdjustment, ReceiveStock, ReverseRoomMove, ReverseLoss, CancelRun, ReverseRunEntry, ReviseRun, ReturnTransitAllocation, ReceiptTreatmentAssignment,
     LegacyDump, ReceiptDepletion, ReverseDepletion, ReviseLegacyDump, ManualStockAddition, CorrectReceiptQuantity, VoidReceipt, UpdateReceiptMetadata, ImportBaseline, CorrectReceiptLocation, CorrectReceiptIdentity, ActivateReceiptInventory, CorrectOrasDefinition,
-    AcknowledgeTransfer, PlaceReceiptCustody, ReverseReceiptAcknowledgment, ReverseReceiptPlacement
+    AcknowledgeTransfer, PlaceReceiptCustody, ReverseReceiptAcknowledgment, ReverseReceiptPlacement,
+    DirectTransfer, CorrectDirectTransfer, ConvertLegacyTransfer
 }
 public enum InventoryCommandStatus { Committed, Replayed, InvalidIntent, Blocked, Stale, Conflict, RetryRequired }
 public sealed record InventoryCommandSource(InventoryIdentity Identity, InventoryLocation Location,
@@ -30,7 +31,11 @@ public sealed record InventoryCommand(string OperationKey, InventoryCommandKind 
     InventoryReceiptMetadata? ReceiptMetadata = null, InventoryBaselineImport? Baseline = null, InventoryReceiptLocationChange? ReceiptLocation = null,
     InventoryReceiptIdentityChange? ReceiptIdentity = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryProductDefinitionChange? ProductDefinition = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptCustodyIntent? ReceiptCustody = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryReceiptCustodyIntent? ReceiptCustody = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryLocationVerification? LocationVerification = null);
+// An assignment is not a physical observation. Evidence is supplied by the operator,
+// retained verbatim in the intent and audited together with the compensating movement.
+public sealed record InventoryLocationVerification(bool PhysicallyVerified, string Evidence);
 public sealed record InventoryReceiptCustodyIntent(long TransferId, long ReceiptId, long TransferVersion, long ReceiptVersion,
     ImmutableArray<InventoryCustodyQuantity> Allocations, InventoryCommandDestination? Destination = null);
 // AcknowledgeTransfer uses dispatch movement IDs; PlaceReceiptCustody uses acknowledgement IDs.
@@ -78,7 +83,8 @@ public static class InventoryCommandPolicy
             AllowedCustody: line.Source.Location.Custody, ExpectedFingerprint: line.Source.ExpectedFingerprint)
         { AllowIndependentCohorts = !IsTreatment(kind) || kind == InventoryCommandKind.ReceiptTreatmentAssignment };
     public static bool IsRoomMove(InventoryCommandKind kind) => kind is InventoryCommandKind.RoomMove
-        or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove;
+        or InventoryCommandKind.WarehouseTransfer or InventoryCommandKind.ReverseRoomMove
+        or InventoryCommandKind.DirectTransfer or InventoryCommandKind.CorrectDirectTransfer;
     public static bool IsTreatment(InventoryCommandKind kind) => kind is InventoryCommandKind.TreatmentAssignment or InventoryCommandKind.TreatmentReversal or InventoryCommandKind.ReceiptTreatmentAssignment;
 }
 

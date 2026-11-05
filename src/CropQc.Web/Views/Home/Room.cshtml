@@ -7,6 +7,12 @@
 }
 
 <h1>Room Summary</h1>
+@if (Model.UnverifiedTransferAssignments.Count > 0)
+{
+    <p class="notice warning">This room's movement history includes unverified source assignments. Review the correction and subsequent activity; these records are not physical counts.
+    @foreach (var assignment in Model.UnverifiedTransferAssignments) { <a href="/Transfers/@assignment">Assignment #@assignment</a><text> </text> }
+    </p>
+}
 @await Html.PartialAsync("_PageRefreshControls")
 @if (TempData["Success"] is string success)
 {

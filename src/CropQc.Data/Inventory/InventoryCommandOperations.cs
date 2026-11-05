@@ -10,6 +10,14 @@ public sealed partial class InventoryCommandExecutor
 {
     private static void ValidateShape(InventoryCommand c)
     {
+        Require(c.Kind != InventoryCommandKind.DirectTransfer || c.Lines.Select(x => x.Source.Location.RoomId).Distinct().Count() == 1
+            && c.Lines.Select(x => x.Destination).Distinct().Count() == 1,
+            "A direct transfer requires one source and one destination location.");
+        Require(c.Kind != InventoryCommandKind.CorrectDirectTransfer || c.PhysicalParentId > 0 && c.Lines.Length == 1
+            && c.LocationVerification is { Evidence.Length: > 0 and <= 2000 } && !string.IsNullOrWhiteSpace(c.LocationVerification.Evidence),
+            "A correction requires the original transfer, affected quantity and the actual evidence available.");
+        Require(c.LocationVerification == null || c.Kind == InventoryCommandKind.CorrectDirectTransfer,
+            "Physical verification must be recorded through an audited transfer correction.");
         Require(c.Lines.All(x => x.Source.Location.Custody != InventoryCustody.ReceiptHeld),
             "Receipt-held custody requires an exact allocation placement command.");
         Require(c.Kind != InventoryCommandKind.ReverseRoomMove || c.PhysicalParentId > 0 && c.Lines.Length == 1,
@@ -62,6 +70,7 @@ public sealed partial class InventoryCommandExecutor
         InventoryCommand c, List<(InventoryCommandLine Line, InventoryPositionEvidence Evidence, InventoryAvailabilityResult Result)> inputs,
         DateTimeOffset now, int attempt, CancellationToken ct, ActualRun? existingRun = null, ActualRunRevision? existingRevision = null)
     {
+        if (c.Kind == InventoryCommandKind.CorrectDirectTransfer) c = c with { EffectiveAt = now };
         ActualRun? run = null;
         ActualRunRevision? revision = null;
         if (c.Kind == InventoryCommandKind.Dump)
@@ -121,10 +130,38 @@ public sealed partial class InventoryCommandExecutor
         var effects = ImmutableArray.CreateBuilder<InventoryCommandEffect>();
         RoomTransfer? originalRoomTransfer = null;
         List<TreatmentLineageMovement> originalRoomMoves = [];
+        RoomTransfer? correctedTransfer = null;
+        List<TreatmentLineageMovement> correctedMoves = [];
+        if (c.Kind == InventoryCommandKind.CorrectDirectTransfer)
+        {
+            correctedTransfer = await db.RoomTransfers.Include(x => x.InventoryAdjustments)
+                .SingleOrDefaultAsync(x => x.Id == c.PhysicalParentId, ct);
+            Require(correctedTransfer is { IsDirectTransfer: true, IsReversed: false },
+                "The original completed direct transfer is required.");
+            var old = correctedTransfer!;
+            var selected = c.Lines.Single();
+            var alreadyCorrected = await db.RoomTransfers.Where(x => x.CorrectsRoomTransferId == old.Id).SumAsync(x => x.BinCount, ct);
+            Require(selected.Quantity <= old.BinCount - alreadyCorrected,
+                "The correction exceeds the remaining original transfer quantity.");
+            Require(selected.Source.Location.RoomId == old.DestinationRoomId && selected.Source.Location.WarehouseId == old.DestinationWarehouseId,
+                "The correction must debit the original destination assignment.");
+            Require(c.LocationVerification!.PhysicallyVerified || selected.Destination == new InventoryCommandDestination(old.SourceWarehouseId, old.SourceRoomId),
+                "An unverified missing-quantity correction assigns custody back to the original source.");
+            Require(old.InventoryAdjustments.Count == 2 && old.InventoryAdjustments.Sum(x => x.ChangeAmount) == 0
+                && old.InventoryAdjustments.Any(x => x.RoomId == old.SourceRoomId && x.ChangeAmount == -old.BinCount)
+                && old.InventoryAdjustments.Any(x => x.RoomId == old.DestinationRoomId && x.ChangeAmount == old.BinCount),
+                "The original paired transfer evidence is incomplete.");
+            correctedMoves = await db.TreatmentLineageMovements.Where(x => x.RoomTransferId == old.Id).ToListAsync(ct);
+            Require(correctedMoves.Count > 0 && correctedMoves.Sum(x => x.BinCount) == old.BinCount
+                && correctedMoves.All(x => x.SourceRoomId == old.SourceRoomId && x.DestinationRoomId == old.DestinationRoomId
+                    && x.SourceSegmentId != null && x.DestinationSegmentId != null
+                    && InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == selected.Source.Identity.Key),
+                "The original movement identity and treatment allocations are not proven.");
+        }
         if (c.Kind == InventoryCommandKind.ReverseRoomMove)
         {
             originalRoomTransfer = await db.RoomTransfers.Include(x => x.InventoryAdjustments).SingleOrDefaultAsync(x => x.Id == c.PhysicalParentId, ct);
-            Require(originalRoomTransfer != null && !originalRoomTransfer.IsReversed && originalRoomTransfer.ReversesRoomTransferId == null,
+            Require(originalRoomTransfer != null && !originalRoomTransfer.IsDirectTransfer && !originalRoomTransfer.IsReversed && originalRoomTransfer.ReversesRoomTransferId == null,
                 "Transfer is missing, already reversed, or is itself a reversal.");
             var old = originalRoomTransfer!;
             var selected = c.Lines[0];
@@ -167,7 +204,8 @@ public sealed partial class InventoryCommandExecutor
                 foreach (var row in rows.Where(x => InventoryStatusIdentity.NormalizeLineageKey(x.IdentityKey) == i.Key
                     && (!r.UsesIndependentCohorts || r.TreatmentSlices.Where(s => s.Signature == line.TreatmentSignature).Any(s => s.ProjectionIds.Contains(x.Id)))
                     && (c.Kind is not (InventoryCommandKind.ReceiptCorrection or InventoryCommandKind.ReceiptTreatmentAssignment or InventoryCommandKind.ReceiptDepletion) || x.ReceiptId == line.ReceiptId)
-                    && (originalRoomTransfer == null || originalRoomMoves.Any(m => m.DestinationSegmentId == x.Id))))
+                    && (originalRoomTransfer == null || originalRoomMoves.Any(m => m.DestinationSegmentId == x.Id))
+                    && (correctedTransfer == null || correctedMoves.Any(m => m.DestinationSegmentId == x.Id))))
                 {
                     Require(row.IdentityKey == i.Key, "Status alias requires an exact normalization plan before consumption.");
                     var amount = originalRoomTransfer != null ? originalRoomMoves.Where(m => m.DestinationSegmentId == row.Id).Sum(m => m.BinCount)
@@ -227,11 +265,16 @@ public sealed partial class InventoryCommandExecutor
             {
                 var sourceCode = await db.Warehouses.Where(x => x.Id == loc.WarehouseId).Select(x => x.Code).SingleAsync(ct);
                 var destinationCode = await db.Warehouses.Where(x => x.Id == destination!.WarehouseId).Select(x => x.Code).SingleAsync(ct);
-                Require(!TruckReceiptRoutes.RequiresReceipt(sourceCode, destinationCode),
+                Require(c.Kind is InventoryCommandKind.DirectTransfer or InventoryCommandKind.CorrectDirectTransfer
+                    || !TruckReceiptRoutes.RequiresReceipt(sourceCode, destinationCode),
                     "This route requires an inter-company dispatch and matched Truck Receipt; a direct move cannot bypass reconciliation.");
                 var transfer = new RoomTransfer
                 {
                     OperationKey = partKey,
+                    IsDirectTransfer = c.Kind is InventoryCommandKind.DirectTransfer or InventoryCommandKind.CorrectDirectTransfer,
+                    CorrectsRoomTransfer = correctedTransfer,
+                    PhysicalLocationVerified = c.LocationVerification?.PhysicallyVerified,
+                    LocationEvidence = c.LocationVerification?.Evidence,
                     SourceWarehouseId = loc.WarehouseId,
                     SourceRoomId = loc.RoomId!.Value,
                     DestinationWarehouseId = destination!.WarehouseId,

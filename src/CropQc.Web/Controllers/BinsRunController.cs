@@ -28,6 +28,10 @@ public sealed class BinsRunController(
     [Authorize(Policy = AccessPolicyNames.BinsRunView)]
     public async Task<IActionResult> Index([FromQuery] BinsRunFilterForm filter, CancellationToken cancellationToken)
     {
+        if (string.Equals(filter.Section, "Transfer", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(filter.TransferType, "InterCrew", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(filter.TransferType, "Outside", StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction("Index", "Transfers", new { sourceRoomId = filter.RoomId });
         if (!TransferCustodyEnabled && (filter.TransferType.Equals("Outside", StringComparison.OrdinalIgnoreCase)
             || filter.TransferType.Equals("InterCrew", StringComparison.OrdinalIgnoreCase)))
         {
@@ -891,16 +895,10 @@ public sealed class BinsRunController(
     [HttpPost("InterCrewTransfers")]
     [ValidateAntiForgeryToken]
     [Authorize(Policy = AccessPolicyNames.TransfersCreate)]
-    public async Task<IActionResult> DispatchInterCrewTransfer(InterCrewDispatchForm form, CancellationToken cancellationToken)
+    public IActionResult DispatchInterCrewTransfer(InterCrewDispatchForm form, CancellationToken cancellationToken)
     {
-        if (!TransferCustodyEnabled) return NotFound();
-        var result = await interCrewTransferService.DispatchAsync(form, cancellationToken);
-        TempData[result.Success ? "Success" : "Error"] = result.Success
-            ? result.AlreadyApplied ? "Transfer was already dispatched." : "Transfer dispatched and is now In Transit."
-            : result.Error;
-        return result.Success && result.TransferId is long id
-            ? RedirectToAction(nameof(InterCrewTransferDetails), new { id })
-            : RedirectToAction(nameof(Index), new { Section = "Transfer", TransferType = "InterCrew", SourceKey = form.SourceKey });
+        TempData["Error"] = "New transfers complete directly. Select the destination location and confirm the quantities.";
+        return RedirectToAction("Index", "Transfers", new { sourceRoomId = form.SourceRoomId });
     }
 
     [HttpGet("InterCrewTransfers/{id:long}")]

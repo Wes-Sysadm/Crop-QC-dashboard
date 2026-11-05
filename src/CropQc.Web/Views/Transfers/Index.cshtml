@@ -1,0 +1,62 @@
+@model DirectTransferPage
+@{ ViewData["Title"] = "Direct transfers"; }
+@if (TempData["Error"] is string error) { <p class="notice error" role="alert">@error</p> }
+@if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
+<section class="panel">
+    <h1>Transfer bins</h1>
+    <p>Choose the source, destination and whole bins to move. Confirmation completes the transfer immediately.</p>
+    <p class="muted">Shown quantities are not final transfer approval. Confirmation checks inventory history, treatment and access before moving bins.</p>
+    @foreach (var warning in Model.Warnings) { <p class="notice warning">@warning</p> }
+    <form method="get" action="/Transfers">
+        <label for="sourceRoomId">Source location</label>
+        <select id="sourceRoomId" name="sourceRoomId" required>
+            <option value="">Choose source</option>
+            @foreach (var location in Model.Locations)
+            { <option value="@location.Id" selected="@(location.Id == Model.Form.SourceRoomId)">@location.Label</option> }
+        </select>
+        <button type="submit">Show inventory</button>
+    </form>
+    @if (Model.Form.SourceRoomId > 0)
+    {
+        <form method="post" action="/Transfers">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="OperationKey" value="@Model.Form.OperationKey" />
+            <input type="hidden" name="SourceRoomId" value="@Model.Form.SourceRoomId" />
+            <label for="destinationRoomId">Destination location</label>
+            <select id="destinationRoomId" name="DestinationRoomId" required>
+                <option value="">Choose destination</option>
+                @foreach (var location in Model.Locations.Where(x => x.Id != Model.Form.SourceRoomId))
+                { <option value="@location.Id">@location.Label</option> }
+            </select>
+            @if (Model.Inventory.Count == 0) { <p>No inventory is currently available to transfer from this location.</p> }
+            else
+            {
+                <table><thead><tr><th>Inventory</th><th>Available bins</th><th>Bins to transfer</th></tr></thead><tbody>
+                @for (var i = 0; i < Model.Inventory.Count; i++)
+                {
+                    var option = Model.Inventory[i];
+                    <tr><td>@option.Label
+                        <input type="hidden" name="Selections[@i].IdentityKey" value="@option.IdentityKey" />
+                        <input type="hidden" name="Selections[@i].Signature" value="@option.Signature" />
+                        <input type="hidden" name="Selections[@i].Fingerprint" value="@option.Fingerprint" />
+                    </td><td>@option.Available</td><td><input aria-label="Bins of @option.Label" type="number" name="Selections[@i].Quantity" min="0" max="@option.Available" step="1" value="0" /></td></tr>
+                }
+                </tbody></table>
+                <button type="submit">Confirm transfer</button>
+            }
+        </form>
+    }
+</section>
+<section class="panel">
+    <h2>Transfer history</h2>
+    <p><a href="/BinsRun?Section=Transfer&amp;TransferType=InterCrew">Outstanding historical transfers</a></p>
+    <p><a href="/BinsRun?Section=Transfer&amp;TransferType=Outside&amp;RoomId=@Model.Form.SourceRoomId">Outside-packing workflow</a></p>
+    <table><thead><tr><th>Transfer</th><th>From → To</th><th>Inventory</th><th>Bins</th><th>Evidence</th></tr></thead><tbody>
+    @foreach (var transfer in Model.History)
+    {
+        <tr><td><a href="/Transfers/@transfer.Id">#@transfer.Id</a></td><td>@transfer.SourceRoom.Code → @transfer.DestinationRoom.Code</td>
+            <td>@transfer.LotNumber @transfer.VarietyCode</td><td>@transfer.BinCount</td>
+            <td>@(transfer.PhysicalLocationVerified == false ? "Source assignment — physical location unverified" : transfer.PhysicalLocationVerified == true ? "Verified correction" : "Completed transfer")</td></tr>
+    }
+    </tbody></table>
+</section>

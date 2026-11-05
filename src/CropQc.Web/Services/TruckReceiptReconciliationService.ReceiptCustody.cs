@@ -15,6 +15,9 @@ public sealed partial class TruckReceiptReconciliationService
     public Task<string?> PlaceCustodyAsync(TruckReceiptActionForm form, CancellationToken ct) =>
         WriteReceiptCustodyAsync(form, InventoryCommandKind.PlaceReceiptCustody, ct);
 
+    public Task<string?> ConvertHeldTransferAsync(TruckReceiptActionForm form, CancellationToken ct) =>
+        WriteReceiptCustodyAsync(form, InventoryCommandKind.ConvertLegacyTransfer, ct);
+
     public Task<string?> ReverseAcknowledgmentAsync(TruckReceiptActionForm form, CancellationToken ct) =>
         WriteReceiptCustodyAsync(form, InventoryCommandKind.ReverseReceiptAcknowledgment, ct);
 
@@ -38,7 +41,7 @@ public sealed partial class TruckReceiptReconciliationService
             Require(form.Allocations.All(x => x.Quantity >= 0), "Allocation quantities cannot be negative.");
             var intent = new InventoryReceiptCustodyIntent(form.TransferId, form.ReceiptId, form.TransferVersion, form.ReceiptVersion,
                 form.Allocations.Where(x => x.Quantity > 0).Select(x => new InventoryCustodyQuantity(x.Id, x.Quantity)).ToImmutableArray(),
-                kind == InventoryCommandKind.PlaceReceiptCustody ? new(receipt!.WarehouseId, form.DestinationRoomId ?? receipt.RoomId) : null);
+                kind is InventoryCommandKind.PlaceReceiptCustody or InventoryCommandKind.ConvertLegacyTransfer ? new(receipt!.WarehouseId, form.DestinationRoomId ?? receipt.RoomId) : null);
             return CanonicalInventoryMessages.Result(await canonicalCommands!.ExecuteAsync(new(key, kind, actor.Id, time.UtcNow,
                 string.IsNullOrWhiteSpace(form.Reason) ? "Operator confirmed exact receipt custody allocations" : form.Reason,
                 [], ApplicationIntent: submission, ReceiptCustody: intent), ct));

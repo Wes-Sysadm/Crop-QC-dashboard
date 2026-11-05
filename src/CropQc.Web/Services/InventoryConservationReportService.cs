@@ -43,6 +43,9 @@ public sealed record InventoryConservationReport(
     long ReceiptHeldBins = 0)
 {
     public IReadOnlyList<InvalidLocationCorrection> InvalidLocationCorrections { get; init; } = [];
+    // These are recorded assignments awaiting follow-up evidence, not additional
+    // inventory or claimed physical counts. Conservation includes their paired ledger.
+    public IReadOnlyList<UnverifiedTransferAssignment> UnverifiedTransferAssignments { get; init; } = [];
     public IReadOnlyList<InvalidReceiptCompensation> InvalidReceiptCompensations { get; init; } = [];
     public long TreatmentIdentityDifference => TreatmentIdentityCredit - TreatmentIdentityDebit;
     public bool IsReady => Receiving.MismatchCount == 0 && Global.Difference == 0
@@ -53,6 +56,7 @@ public sealed record InventoryConservationReport(
 }
 
 public sealed record InvalidLocationCorrection(Guid? CorrectionId, IReadOnlyList<long> AdjustmentIds);
+public sealed record UnverifiedTransferAssignment(long TransferId, int AssignedRoomId, int RecordedQuantity, string Evidence);
 public sealed record InvalidReceiptCompensation(long? ReversalId, IReadOnlyList<long> AdjustmentIds, IReadOnlyList<long> MovementIds);
 
 /// <summary>Read-only quantity accounting. Unknown categories are reported and fail the release gate.</summary>
@@ -143,7 +147,14 @@ public sealed partial class InventoryConservationReportService(CropQcDbContext d
                 - (await db.ReceiptCustodyReversals.Where(x => x.PlacementId == null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 + (await db.ReceiptCustodyReversals.Where(x => x.PlacementId != null).SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0)
                 - (await db.ReceiptCustodyPlacements.SumAsync(x => (long?)x.Quantity, cancellationToken) ?? 0))
-        { InvalidLocationCorrections = invalidLocations, InvalidReceiptCompensations = invalidCompensations };
+        {
+            InvalidLocationCorrections = invalidLocations,
+            InvalidReceiptCompensations = invalidCompensations,
+            UnverifiedTransferAssignments = await db.RoomTransfers.AsNoTracking()
+                .Where(x => x.PhysicalLocationVerified == false && x.CropYear == cropYear
+                    && db.RoomTransfers.Where(c => c.CorrectsRoomTransferId == x.Id).Sum(c => c.BinCount) < x.BinCount)
+                .Select(x => new UnverifiedTransferAssignment(x.Id, x.DestinationRoomId, x.BinCount, x.LocationEvidence!)).ToListAsync(cancellationToken)
+        };
     }
 
     private static bool IsLocationMovement(string type) => type is "CorrectOriginalRoomOut" or "CorrectOriginalRoomIn";
