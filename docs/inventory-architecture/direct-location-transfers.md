@@ -173,3 +173,32 @@ retains a reason and actual evidence even when the source assignment is unverifi
 later verified corrections append evidence rather than rewriting that history.
 Traversal warnings are conservative at their graph-size/depth limit and never
 authorize inventory or veto an otherwise valid command.
+
+## Local validation record — November 5, 2026
+
+- Disposable PostgreSQL 18: all 11 new direct-transfer tests passed, zero skipped.
+  The final two HTTP cases also passed after adding visible success, invalid
+  quantity, stale-selection and correction-error assertions.
+- Affected existing movement, custody, treatment, outside/inter-crew and HTTP
+  selection: 49 passed initially; the two security cases that expected the retired
+  form both passed after updating their rendered-token setup. Permissions,
+  foreign-session/invalid-token rejection, quantities and replay assertions remain.
+- Mandatory governance selection: 334 executed, 332 passed initially and two
+  historical selector assertions failed on removed dispatch markup. Both passed
+  in the focused historical rerun; their quantity, treatment, origin rejection
+  and no-write assertions were retained. Final-head CI reruns the entire mandatory
+  selection. This is not a claim that the initial local run was wholly green.
+- Seven historical-selector, blocked-stock and receipt/conversion HTTP delta
+  cases passed. Both UI source contracts passed after replacing obsolete form
+  literals with the current direct-link/history contract. No skipped bodies are
+  counted in these results.
+- Restore, solution Release build, EF pending-model consistency, changed-source
+  formatting and diff whitespace checks passed. Existing package/compiler
+  warnings remain. Governance metadata and all 29 Node validation tests passed;
+  the PR disclosure was separately checked against the required fields.
+- No full application suite, protected restored-data execution, browser visual
+  pass, installer build or production action is claimed. Restored-data UI
+  expectations were updated without changing their historical data assertions;
+  those optional fixture bodies await the separately protected release rehearsal.
+
+The final commit and CI result are reported in PR #287 and the delivery message.

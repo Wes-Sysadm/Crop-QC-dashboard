@@ -33,22 +33,32 @@ public sealed class DirectTransferHttpTests
         denied.DefaultRequestHeaders.Add("X-Receipt-Test-User", "no-receiving-permission@example.invalid");
         Assert.Equal(HttpStatusCode.Forbidden, (await denied.PostAsync("/Transfers", new FormUrlEncodedContent(form))).StatusCode);
         form["Selections[0].Quantity"] = "1.5";
-        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/Transfers", new FormUrlEncodedContent(form))).StatusCode);
+        var invalid = await client.PostAsync("/Transfers", new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.Redirect, invalid.StatusCode);
+        Assert.Contains("Enter whole-bin quantities", await client.GetStringAsync(invalid.Headers.Location));
         Assert.Equal(before, await f.Snapshot());
         form["Selections[0].Quantity"] = "11";
         var response = await client.PostAsync("/Transfers", new FormUrlEncodedContent(form));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.StartsWith("/Transfers/", response.Headers.Location!.OriginalString);
+        var details = await client.GetStringAsync(response.Headers.Location);
+        Assert.Contains("Transfer completed. Inventory and custody updated.", details);
         var after = await f.Snapshot();
         Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/Transfers", new FormUrlEncodedContent(form))).StatusCode);
         Assert.Equal(after, await f.Snapshot());
         form["OperationKey"] = Guid.NewGuid().ToString("N");
-        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/Transfers", new FormUrlEncodedContent(form))).StatusCode);
+        var stale = await client.PostAsync("/Transfers", new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.Redirect, stale.StatusCode);
+        Assert.Contains("Source inventory changed", await client.GetStringAsync(stale.Headers.Location));
         Assert.Equal(after, await f.Snapshot());
         Assert.Equal(8, await f.Physical());
         Assert.Equal(11, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9008).SumAsync(x => x.ChangeAmount));
         Assert.Equal(0, await db.InterCrewTransfers.CountAsync());
-        Assert.Contains("Correct this transfer", await client.GetStringAsync(response.Headers.Location));
+        Assert.Contains("Correct this transfer", details);
+        var invalidCorrection = await client.PostAsync("/Transfers/Correct", new FormUrlEncodedContent(Form(details)));
+        Assert.Equal(HttpStatusCode.Redirect, invalidCorrection.StatusCode);
+        Assert.Contains("Enter a positive whole-bin quantity, reason and actual evidence", await client.GetStringAsync(invalidCorrection.Headers.Location));
+        Assert.Equal(after, await f.Snapshot());
     }
 
     [InventoryPostgresFact]

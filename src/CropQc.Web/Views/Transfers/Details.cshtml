@@ -1,5 +1,7 @@
 @model DirectTransferDetail
 @{ ViewData["Title"] = $"Transfer #{Model.Transfer.Id}"; var t = Model.Transfer; }
+@if (TempData["Error"] is string error) { <p class="notice error" role="alert">@error</p> }
+@if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
 <section class="panel">
     <h1>Transfer #@t.Id</h1>
     <p>@t.SourceWarehouse.Code @t.SourceRoom.Code → @t.DestinationWarehouse.Code @t.DestinationRoom.Code</p>

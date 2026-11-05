@@ -1,5 +1,7 @@
 @model DirectTransferPage
 @{ ViewData["Title"] = "Direct transfers"; }
+@if (TempData["Error"] is string error) { <p class="notice error" role="alert">@error</p> }
+@if (TempData["Success"] is string success) { <p class="notice success" role="status">@success</p> }
 <section class="panel">
     <h1>Transfer bins</h1>
     <p>Choose the source, destination and whole bins to move. Confirmation completes the transfer immediately.</p>
