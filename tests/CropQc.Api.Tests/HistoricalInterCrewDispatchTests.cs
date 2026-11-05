@@ -213,15 +213,18 @@ public sealed class HistoricalInterCrewDispatchTests
         using var client = host.CreateClient(new() { AllowAutoRedirect = false });
         var before = await f.Snapshot();
         var html = await client.GetStringAsync("/BinsRun?Section=Transfer&TransferType=InterCrew&WarehouseId=9001&RoomId=9003");
-        Assert.Contains("Position total / Treatment selection", html);
+        Assert.Contains("New direct transfer", html);
+        Assert.DoesNotContain("data-inter-crew-form", html);
+        html = await client.GetStringAsync("/Transfers?sourceRoomId=9003");
+        Assert.Contains("Available bins", html);
         Assert.Contains("not final transfer approval", html);
-        Assert.Contains("Origin, custody, permissions and current inventory are validated when submitted", html);
+        Assert.Contains("Confirmation checks inventory history, treatment and access before moving bins", html);
         Assert.DoesNotContain("Transferable", html);
-        Assert.Contains("286 / 286", html);
+        Assert.Contains("286", html);
         var input = Assert.Single(Regex.Matches(html, "<input\\b[^>]*>").Select(x => WebUtility.HtmlDecode(x.Value)),
-            x => x.Contains("name=\"SourceKey\"") && x.Contains(option.SourceKey));
+            x => x.Contains("name=\"Selections[0].Quantity\""));
         Assert.DoesNotContain("disabled", input);
-        Assert.Contains("data-allowed-destinations=\"WP_DH,EBS\"", input);
+        Assert.Contains($"max=\"{option.TreatmentSelectionBins}\"", input);
         Assert.Equal(before, await f.Snapshot());
     }
 

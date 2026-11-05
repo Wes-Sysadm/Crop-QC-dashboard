@@ -116,6 +116,7 @@ public sealed class RoomVarietyColorSegmentViewModel
 
 public sealed class RoomDetailViewModel
 {
+    public IReadOnlyList<long> UnverifiedTransferAssignments { get; set; } = [];
     public bool CanonicalInventoryEnabled { get; set; }
     public string? DataWarning { get; set; }
     public RoomSummaryItemViewModel? Summary { get; set; }

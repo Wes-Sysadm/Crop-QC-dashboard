@@ -157,7 +157,8 @@ public sealed partial class InventoryConservationReportService
                 var committed = JsonSerializer.Deserialize<InventoryCommandResult>(journal.ResultJson, options)!;
                 var audit = audits.Where(a => a.EntityKey == key).ToArray();
                 // Npgsql stores timestamps at microsecond precision; the immutable intent retains 100ns ticks.
-                if (intent.Kind != kind || intent.OperationKey != key || intent.ActorId != actor || intent.EffectiveAt.UtcTicks / 10 != row.AdjustmentAt.UtcTicks / 10 || intent.Reason != row.Reason
+                if (!(intent.Kind == kind || kind == InventoryCommandKind.PlaceReceiptCustody && intent.Kind == InventoryCommandKind.ConvertLegacyTransfer)
+                    || intent.OperationKey != key || intent.ActorId != actor || intent.EffectiveAt.UtcTicks / 10 != row.AdjustmentAt.UtcTicks / 10 || intent.Reason != row.Reason
                     || intent.ReceiptCustody is not { } custody || custody.TransferId != ack.InterCrewTransferId || custody.ReceiptId != ack.ReceiptId
                     || custody.Allocations.IsDefaultOrEmpty || custody.Allocations.Any(x => x.Quantity <= 0)
                     || custody.Allocations.Select(x => x.Id).Distinct().Count() != custody.Allocations.Length

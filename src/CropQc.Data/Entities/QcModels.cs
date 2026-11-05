@@ -215,6 +215,11 @@ public sealed class RoomInventoryLoss
 public sealed class RoomTransfer
 {
     public long Id { get; set; }
+    public bool IsDirectTransfer { get; set; }
+    public long? CorrectsRoomTransferId { get; set; }
+    public RoomTransfer? CorrectsRoomTransfer { get; set; }
+    public bool? PhysicalLocationVerified { get; set; }
+    public string? LocationEvidence { get; set; }
     public required string OperationKey { get; set; }
     public int SourceWarehouseId { get; set; }
     public Warehouse SourceWarehouse { get; set; } = null!;

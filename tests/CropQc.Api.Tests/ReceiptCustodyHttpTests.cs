@@ -8,8 +8,10 @@ namespace CropQc.Api.Tests;
 
 public sealed class ReceiptCustodyHttpTests
 {
-    [InventoryPostgresFact]
-    public async Task Exact_allocation_form_acknowledges_then_places_with_antiforgery_permission_and_replay_protection()
+    [InventoryPostgresTheory]
+    [InlineData("PlaceTransferCustody")]
+    [InlineData("ConvertHeldTransfer")]
+    public async Task Exact_allocation_form_acknowledges_then_places_with_antiforgery_permission_and_replay_protection(string completionAction)
     {
         await using var f = await Fixture.Create();
         var original = await f.ReceiveCommand(treated: true);
@@ -48,12 +50,16 @@ public sealed class ReceiptCustodyHttpTests
         Assert.Equal(0, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
         html = await client.GetStringAsync(url + "/MatchTransfer");
         Assert.Contains("18 receipt-held, 1 unresolved", html);
-        Assert.Contains("Place receipt-held bins", html);
+        Assert.Contains("Complete supported historical quantities", html);
         Assert.DoesNotContain("Return selected bins to source", html);
         var placement = await Form((await db.ReceiptCustodyAcknowledgments.SingleAsync()).Id, html);
-        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/PlaceTransferCustody", new FormUrlEncodedContent(placement))).StatusCode);
+        before = await f.Snapshot();
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync(url + "/" + completionAction, new FormUrlEncodedContent([]))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await denied.PostAsync(url + "/" + completionAction, new FormUrlEncodedContent(placement))).StatusCode);
+        Assert.Equal(before, await f.Snapshot());
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/" + completionAction, new FormUrlEncodedContent(placement))).StatusCode);
         var after = await f.Snapshot();
-        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/PlaceTransferCustody", new FormUrlEncodedContent(placement))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync(url + "/" + completionAction, new FormUrlEncodedContent(placement))).StatusCode);
         Assert.Equal(after, await f.Snapshot());
         Assert.Equal(18, await db.RoomInventoryAdjustments.Where(x => x.RoomId == 9007).SumAsync(x => x.ChangeAmount));
         Assert.Contains("0 receipt-held, 1 unresolved", await client.GetStringAsync(url + "/MatchTransfer"));

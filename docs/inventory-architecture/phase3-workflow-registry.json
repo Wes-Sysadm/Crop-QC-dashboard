@@ -7,16 +7,22 @@
     "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
     "OperationIntents": [
       "RoomMove",
-      "WarehouseTransfer"
+      "WarehouseTransfer",
+      "DirectTransfer"
     ],
-    "Reversal": "ReverseRoomMove",
-    "Evidence": "Current room authority; treatment; route; seal; fingerprint; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
+    "Reversal": "ReverseRoomMove for legacy parents; CorrectDirectTransfer for direct parents",
+    "Evidence": "Current room authority; treatment; route; seal; fingerprint; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas; ADR-009 permits immediate cross-company direct movements without receipts; one source/destination with multiple allocations",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs",
-      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs",
+      "tests/CropQc.Api.Tests/DirectTransferTests.cs",
+      "tests/CropQc.Api.Tests/DirectTransferHttpTests.cs"
     ],
-    "Readiness": "Implementation covered; final exit gates pending"
+    "Readiness": "Implementation covered; final exit gates pending",
+    "AdditionalAdapters": [
+      "src/CropQc.Web/Controllers/TransfersController.cs"
+    ]
   },
   {
     "Id": 2,
@@ -25,14 +31,17 @@
     "WritePath": "Canonical",
     "Source": "src/CropQc.Web/Services/DashboardDataService.cs",
     "OperationIntents": [
-      "ReverseRoomMove"
+      "ReverseRoomMove",
+      "CorrectDirectTransfer"
     ],
     "Reversal": "Preserve original forward",
-    "Evidence": "Exact unreversed paired movement and surviving destination; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas",
+    "Evidence": "Exact unreversed paired movement and surviving destination; isolated incoming cohorts; source origin chain; event-derived reconstruction; exact ledger/projection deltas; immutable original direct parent, bounded surviving original allocations, actual location evidence and explicit unverified source assignment",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalRoomMoveWorkflowTests.cs",
-      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs",
+      "tests/CropQc.Api.Tests/DirectTransferTests.cs",
+      "tests/CropQc.Api.Tests/DirectTransferHttpTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },
@@ -46,7 +55,7 @@
       "InterCompanyDispatch"
     ],
     "Reversal": "Return",
-    "Evidence": "Room availability plus authorized crew route",
+    "Evidence": "Room availability plus authorized crew route; historical service retained, ordinary dispatch POST retired in favor of DirectTransfer",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalInterCrewWorkflowTests.cs"
@@ -97,16 +106,18 @@
       "AcknowledgeTransfer",
       "PlaceReceiptCustody",
       "ReverseReceiptAcknowledgment",
-      "ReverseReceiptPlacement"
+      "ReverseReceiptPlacement",
+      "ConvertLegacyTransfer"
     ],
     "Reversal": "Immutable allocation-linked compensation; held acknowledgement returns to unresolved custody; proven untouched placement debits its current room to held custody. Downstream dependencies block reversal.",
-    "Evidence": "Exact dispatch allocation selection; receipt-held acknowledgements; independent room placement; original load = unresolved + held + placed",
+    "Evidence": "Exact dispatch allocation selection; receipt-held acknowledgements; independent room placement; original load = unresolved + held + placed; conversion consumes only proven held remainder and retains unresolved historical quantities",
     "TransactionOwner": "InventoryCommandExecutor (Serializable)",
     "Tests": [
       "tests/CropQc.Api.Tests/CanonicalTruckReceiptWorkflowTests.cs",
       "tests/CropQc.Api.Tests/ReceiptCustodyWorkflowTests.cs",
       "tests/CropQc.Api.Tests/ReceiptCustodyCorrectionTests.cs",
-      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs"
+      "tests/CropQc.Api.Tests/InventoryMovementDestinationTests.cs",
+      "tests/CropQc.Api.Tests/DirectTransferTests.cs"
     ],
     "Readiness": "Implementation covered; final exit gates pending"
   },

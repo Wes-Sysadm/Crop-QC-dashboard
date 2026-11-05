@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "specificationVersion": "1.2.0",
+  "specificationVersion": "1.3.0",
   "rules": [
     {
       "id": "INV-001",
@@ -149,6 +149,18 @@
           "member": "Historical_internal_dispatches_race_without_double_spend_and_replay_safely",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Missing_quantity_is_assigned_to_source_without_faking_verification_and_can_be_relocated_with_evidence",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Ordinary_movement_preserves_unverified_assignment_history_at_its_next_destination",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Receipt-held acknowledgement state and compensation are pending #271; main covers transit/complete/reopen, not all new custody states."
@@ -212,6 +224,18 @@
         {
           "type": "CropQc.Api.Tests.ReceiptCompensationConservationTests",
           "member": "Malformed_compensation_fails_both_reports_without_writing",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Concurrent_direct_transfers_and_same_key_retries_conserve_stock",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Direct_transfer_failure_rolls_back_all_allocations_history_and_audits",
           "kind": "postgres",
           "required": true
         }
@@ -501,6 +525,12 @@
           "member": "Mixed_compensation_preserves_treatment_unknown_ancestry_and_original_history",
           "kind": "postgres",
           "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Treated_and_untreated_allocations_keep_distinct_histories_in_one_direct_transfer",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Additional stock requires explicit known untreated evidence. Earlier or uncertain treatment attribution needs separate evidence review; correction reasons never establish membership."
@@ -682,7 +712,9 @@
         "src/CropQc.Data/Inventory/InventoryCommandExecutor.cs",
         "src/CropQc.Data/Inventory/InventoryCommandCustody.cs",
         "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
-        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs"
+        "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",
+        "src/CropQc.Web/Controllers/TransfersController.cs",
+        "src/CropQc.Data/Inventory/DirectTransferAssignmentHistory.cs"
       ],
       "tests": [
         {
@@ -756,6 +788,42 @@
           "member": "Concurrent_multi_allocation_placements_credit_once",
           "required": true,
           "kind": "postgres"
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Cross_company_direct_transfer_conserves_all_allocations_without_receiving_and_supports_later_use",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Overdraw_duplicate_correction_and_unverified_other_destination_are_rejected_without_writes",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferTests",
+          "member": "Conversion_moves_only_proven_held_remainder_and_retains_unresolved_history",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferHttpTests",
+          "member": "Operator_form_requires_whole_bins_permission_antiforgery_and_fresh_inventory_and_replays_exactly",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferHttpTests",
+          "member": "Candidate_compatible_recovery_profile_candidate_preserves_committed_corrections_and_continued_activity",
+          "kind": "postgres",
+          "required": true
+        },
+        {
+          "type": "CropQc.Api.Tests.DirectTransferMigrationTests",
+          "member": "Additive_schema_preserves_legacy_stock_and_used_history_refuses_destructive_or_incompatible_rollback",
+          "kind": "postgres",
+          "required": true
         }
       ],
       "gap": "Selected independent-session races are not exhaustive certification of all adapters."

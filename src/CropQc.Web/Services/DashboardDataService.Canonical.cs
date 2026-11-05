@@ -15,7 +15,8 @@ public sealed partial class DashboardDataService
         var actor = await GetCurrentUserAsync(ct);
         if (actor == null) return "The current active user could not be resolved.";
         var submission = JsonSerializer.Serialize(form);
-        var replay = await CanonicalApplicationReplay.TryAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id, InventoryCommandKind.ReverseRoomMove, submission, ct);
+        var replay = await CanonicalApplicationReplay.TryAnyAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id,
+            [InventoryCommandKind.ReverseRoomMove, InventoryCommandKind.CorrectDirectTransfer], submission, ct);
         if (replay != null) return CanonicalInventoryMessages.Result(replay);
         var old = await dbContext.RoomTransfers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == form.Id, ct);
         if (old == null || old.IsReversed) return "Transfer is missing or already reversed.";
@@ -26,9 +27,12 @@ public sealed partial class DashboardDataService
         var batch = await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(dbContext)).ResolveAsync(new(old.DestinationWarehouseId, [old.DestinationRoomId]), new() { AllowIndependentCohorts = true }, BusinessTime.UtcNow, ct);
         var position = batch.Positions.SingleOrDefault(x => x.Identity.Key == keys[0]);
         if (position == null || !position.IsOperable) return "Destination inventory cannot be proven for this reversal.";
-        return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.ReverseRoomMove,
+        if (old.IsDirectTransfer && !configuration.GetValue("DirectTransfers:Enabled", true)) return "Direct transfer corrections are disabled in the compatible rollback configuration.";
+        return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey,
+            old.IsDirectTransfer ? InventoryCommandKind.CorrectDirectTransfer : InventoryCommandKind.ReverseRoomMove,
             actor.Id, BusinessTime.UtcNow, form.Reason, [new(new(position.Identity, position.Location, position.Watermark.Fingerprint, position.Watermark.Versions),
-                old.BinCount, signatures[0], new(old.SourceWarehouseId, old.SourceRoomId))], ApplicationIntent: submission, PhysicalParentId: old.Id), ct));
+                old.BinCount, signatures[0], new(old.SourceWarehouseId, old.SourceRoomId))], ApplicationIntent: submission, PhysicalParentId: old.Id,
+            LocationVerification: old.IsDirectTransfer ? new(false, form.Reason) : null), ct));
     }
     private async Task<RoomTransferInventoryProjection> BuildCanonicalTransferProjectionAsync(int roomId, CancellationToken ct)
     {
@@ -61,8 +65,10 @@ public sealed partial class DashboardDataService
         var actor = await GetCurrentUserAsync(ct);
         if (actor == null) return "The current active user could not be resolved.";
         var submission = JsonSerializer.Serialize(form);
-        var replay = await CanonicalApplicationReplay.TryAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id, InventoryCommandKind.RoomMove, submission, ct);
+        var replay = await CanonicalApplicationReplay.TryAnyAsync(dbContext, canonicalCommands, form.OperationKey, actor.Id,
+            [InventoryCommandKind.DirectTransfer, InventoryCommandKind.RoomMove], submission, ct);
         if (replay != null) return CanonicalInventoryMessages.Result(replay);
+        if (!configuration.GetValue("DirectTransfers:Enabled", true)) return "New direct transfers are disabled in the compatible rollback configuration.";
         var projection = await BuildCanonicalTransferProjectionAsync(form.FromRoomId, ct);
         IReadOnlyList<RoomTransferInventoryEntry> selected;
         if (form.TransferAllEligible)
@@ -81,7 +87,7 @@ public sealed partial class DashboardDataService
             new(InventoryCustody.Room, x.Snapshot.WarehouseId, x.Snapshot.RoomId, x.Snapshot.Facility, x.Snapshot.Room),
             x.Option.LotKey[(x.Option.LotKey.LastIndexOf(':') + 1)..], []), form.TransferAllEligible ? x.Option.CurrentBins : form.BinCount,
             x.Option.TreatmentSignature, new(form.DestinationWarehouseId, form.DestinationRoomId))).ToImmutableArray();
-        return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.RoomMove,
+        return CanonicalInventoryMessages.Result(await canonicalCommands.ExecuteAsync(new(form.OperationKey, InventoryCommandKind.DirectTransfer,
             actor.Id, form.TransferAt, form.Reason.Trim(), lines, ApplicationIntent: submission, Dispatch: new(null, form.Notes)), ct));
     }
 }

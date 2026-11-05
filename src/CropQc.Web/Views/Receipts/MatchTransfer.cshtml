@@ -83,10 +83,10 @@
         </form>
         @if (Model.ReceiptHeldBins > 0)
         {
-            <h2>Place receipt-held bins</h2>
-            <p>Place only the selected held quantity in the receipt's destination room. Prior placements will not be repeated.</p>
+            <h2>Complete supported historical quantities</h2>
+            <p>Convert only the selected, proven held quantity to completed destination custody. Prior placements will not be repeated; unacknowledged quantities remain unresolved.</p>
             var held = Model.Acknowledgments.Where(x => x.HeldQuantity > 0).ToList();
-            <form method="post" action="/Receipts/@receipt.Id/PlaceTransferCustody">
+            <form method="post" action="/Receipts/@receipt.Id/ConvertHeldTransfer">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="TransferId" value="@transfer.Id" /><input type="hidden" name="TransferVersion" value="@transfer.ConcurrencyVersion" /><input type="hidden" name="ReceiptVersion" value="@receipt.ConcurrencyVersion" />
                 @for (var i = 0; i < held.Count; i++)
@@ -102,7 +102,7 @@
                     @foreach (var room in Model.PlacementRooms) { <option value="@room.Id" selected="@(room.Id == receipt.RoomId)">@room.Code</option> }
                 </select></label>
                 <label>Placement note<input name="Reason" required maxlength="1000" /></label>
-                <button type="submit">Place selected bins</button>
+                <button type="submit">Complete selected historical bins</button>
             </form>
         }
     }

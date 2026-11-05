@@ -84,7 +84,7 @@ public static class ApplicationAreas
         new(HistoricalInventoryCleanup, "EBS Historical Cleanup", "Admin/System", "/Admin/EbsInventoryCleanup", DataCleanup),
         new(Rooms, "Rooms", "Inventory", "/Rooms"),
         new(RoomTransactions, "Room Transactions", "Inventory", "/BinsRun"),
-        new(Transfers, "Transfers", "Inventory", "/BinsRun?Section=Transfer", RoomTransactions),
+        new(Transfers, "Transfers", "Inventory", "/Transfers", RoomTransactions),
         new(TrueUp, "True Up", "Inventory", "/BinsRun?Section=TrueUp", RoomTransactions),
         new(Inventory, "Inventory", "Inventory", "/Admin/RoomInventory", CurrentLots),
         new(GrowerLots, "Grower Lots", "Inventory", "/GrowerLots/Current"),

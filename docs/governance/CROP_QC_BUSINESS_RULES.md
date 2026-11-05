@@ -1,6 +1,6 @@
 # Crop QC business rules
 
-Specification version: **1.2.0**. ADR-008 records the owner-approved Admin receipt-edit policy requested on 2026-10-14; this revision becomes effective after normal adoption on main. The owner requested the single-approval workflow on 2026-10-09 and reviewed, approved and clarified its adoption on 2026-10-11. It is effective on approved main after normal adoption, not from an unmerged branch. Inventory policies and stable rule IDs remain unchanged. See the [approval and transition record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
+Specification version: **1.3.0**. ADR-009 records Wes's explicit owner-approved direct transfer and unverified source-assignment policy of 2026-11-05. This revision becomes effective after normal adoption on main; the development instruction authorizes no merge, deployment or production conversion. ADR-008's Admin receipt-edit policy and ADR-007's release safeguards remain unchanged. See the [direct-transfer approval and implementation record](../inventory-architecture/direct-location-transfers.md) and [release approval record](RELEASE_AUTHORIZATION.md). Changes follow [the change procedure](CHANGE_PROCEDURE.md). [Traceability](traceability.json) records implementation, executable evidence and gaps, not universal certification.
 
 This is the single normative business-rule catalog. Existing inventory phase documents remain detailed technical contracts and historical evidence, not competing business-policy owners. Their dated implementation/release status is not current production status. A more specific compatible constraint still applies; contradictions require resolution, not a silent override.
 
@@ -15,6 +15,15 @@ Every physical bin entering tracked inventory needs a recorded, authorized inven
 ## INV-002 — Authoritative containers and custody
 
 Ledger, committed transaction and custody evidence determine quantity and location. Account for each quantity exactly once across room-held, in-transit, receipt-held, unresolved, consumed or explicitly disposed states. A transfer evidence receipt is not a second ReceiptAdd. Room deductions into outside/processor/inter-crew custody are not automatically physical disappearance.
+
+For new direct transfers, confirmation atomically assigns custody to the destination;
+no transit, acknowledgement or receiving step intervenes. A missing-quantity
+correction defaults custody back to the original source even without independent
+confirmation of physical presence. Record that as an **unverified assignment**,
+separately from the actual evidence and any later physical verification. Assignment
+does not assert a physical count, invent receipt ancestry, or originate stock.
+Retain the original uncertainty when a later verified movement/correction resolves
+the assignment; never rewrite the earlier record as verified.
 
 ## INV-003 — Physical conservation
 
@@ -50,7 +59,32 @@ Dispatched, acknowledged, held, placed and unresolved quantities stay distinct. 
 
 ## MOV-001 — Transfer integrity
 
-Preserve source/destination custody, company boundaries, supported exact reconciliation and treatment lineage. Transfers never create bins. Retries bind the same complete intent, conflicting keys fail, and concurrent operations commit a valid serial order or roll back. Internal movement nets to zero globally. Existing route restrictions remain enforced.
+Direct transfers may occur between any valid Crop QC rooms, including across
+facilities and companies. Separate Outside Warehouse custody retains the existing
+outside-packing workflow, as clarified by the owner. Operators select source,
+destination, inventory and whole-bin
+quantities, then confirm immediate atomic completion. The committed transfer,
+paired quantity effects and applicable treatment movements replace mandatory
+separate Truck Receipt reconciliation for these new transfers. Preserve identity,
+shared quantity, source/destination custody, actor/time and correction links.
+Standard operator commands use whole bins; underlying allocation segmentation
+preserves treatment history. No partial historical quantity is rounded away.
+
+Corrections append audited compensating transactions with reason, actual evidence,
+affected quantity and physical-verification state. Preserve original transfers,
+conservation and treatment applicability. Default missing quantities to the original
+source as an unverified assignment under INV-002; later evidence may relocate them.
+Transfers and corrections never create bins or fabricate receipt ownership.
+Retries bind the complete intent, conflicting keys fail, and concurrent operations
+commit a valid serial order or roll back. Internal movement nets to zero globally.
+
+Historical dispatch/receiving/Truck Receipt rules continue to describe their
+original transactions. Convert only evidence-supported outstanding quantities
+through an audited, idempotent operation with original references. Exclude already
+placed quantities, preserve partial custody and leave unsupported quantities
+unresolved. Deployment/startup never performs conversion. This supersedes the
+previous blanket route restriction and required new cross-company dispatch/Truck
+Receipt workflow, not historical records or unrelated operation checks.
 
 ## ROOM-001 — Consistent room eligibility
 
