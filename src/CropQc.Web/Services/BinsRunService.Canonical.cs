@@ -94,7 +94,8 @@ public sealed partial class BinsRunService
                     distribution == null ? "No grade data" : FormatGradeSummary(distribution.GradePercentages), s.ReceiptDate,
                     s.FruitProfileId, s.FruitType, s.CanonicalOrchardBlockId, s.CropYear, s.ProductionType, s.Facility, s.Room,
                     s.GrowerLotId, s.ReceiptReference ?? "Room inventory", slice.Signature,
-                    slice.State == "Untreated" ? "Untreated" : "Confirmed treatment", s.GrowerNumber ?? "", sealedRooms.Contains(s.RoomId),
+                    slice.State switch { "Untreated" => "Untreated", "Confirmed" => "Confirmed treatment", _ => "Needs Review" },
+                    s.GrowerNumber ?? "", sealedRooms.Contains(s.RoomId),
                     null, null, r.IsOperable && correction?.Blocker == null && slice.Confidence == InventoryConfidence.Proven,
                     correction?.Blocker ?? CanonicalInventoryMessages.Blocker(r), r.Watermark.Fingerprint));
         }

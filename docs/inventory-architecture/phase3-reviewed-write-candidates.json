@@ -339,7 +339,7 @@
     "Path": "src/CropQc.Web/Services/BinsRunService.Canonical.cs",
     "Classification": "Canonical service adapter",
     "Reason": "Builds typed intent from canonical evidence and calls executor; metadata-only participants do not gain the physical capability.",
-    "Sha256": "1512EBC76883C49265808B63B62459C6EFC2B5898AD39FBCDAC2A1F032C8832F"
+    "Sha256": "0E488E3C546ADB611B5E4DF4CFECE14101AF77574A16EA3DFCD91300A728E1C8"
   },
   {
     "Path": "src/CropQc.Web/Services/BinsRunService.cs",
@@ -662,8 +662,8 @@
   {
     "Path": "src/CropQc.Data/Inventory/InventoryEvidenceLoader.RecordedCustody.cs",
     "Classification": "Nonphysical or read-only",
-    "Reason": "Reviewed read-only parent/custody proof, per-identity fingerprint dependencies, and malformed numeric snapshot rejection. No persistence, new origins or writer capability. See docs/investigations/transfer-eligibility-capability-review-2026-10-15.md.",
-    "Sha256": "8CD8CA9223F5C652C8F4C9603B400073D6867227D5E22E4671B99E03BBD97E7E"
+    "Reason": "Reviewed read-only parent/custody proof, audited legacy location movement linkage, per-identity fingerprint dependencies, and malformed snapshot rejection. No persistence, new origins or writer capability. See docs/investigations/lot9541-actual-run-2026-11-17.md and docs/investigations/transfer-eligibility-capability-review-2026-10-15.md.",
+    "Sha256": "BCAA0DB4FB443E6DCE2CA1E7ECC06CC4DF23312FC4933FE735065CC35B52B4BF"
   },
   {
     "Path": "src/CropQc.Shared/Inventory/InventoryRecordedCustodyReplay.cs",
