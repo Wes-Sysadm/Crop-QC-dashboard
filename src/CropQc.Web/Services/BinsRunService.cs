@@ -247,7 +247,7 @@ public sealed partial class BinsRunService(
                         .ToList();
                     var currentOption = ResolveTreatmentSelection(
                         matchingOptions,
-                        x.TreatmentSegmentId,
+                        dbContext.CanonicalInventoryEnabled ? null : x.TreatmentSegmentId,
                         x.TreatmentSignature,
                         y => y.TreatmentSegmentId,
                         y => y.TreatmentSignature);
@@ -255,7 +255,7 @@ public sealed partial class BinsRunService(
                     {
                         InventoryKey = currentOption?.InventoryKey ?? x.InventoryKey,
                         TreatmentSignature = currentOption?.TreatmentSignature ?? x.TreatmentSignature,
-                        TreatmentSegmentId = currentOption?.TreatmentSegmentId ?? x.TreatmentSegmentId,
+                        TreatmentSegmentId = dbContext.CanonicalInventoryEnabled ? null : currentOption?.TreatmentSegmentId ?? x.TreatmentSegmentId,
                         BinsRun = x.BinsRun,
                         ExpectedAvailableBins = currentOption?.CurrentBins ?? 0
                     };
@@ -329,6 +329,7 @@ public sealed partial class BinsRunService(
                 RunProjectionSourceId = filter.ProjectionSourceId
             },
             ActualRunForm = actualRunForm,
+            InventoryIncludesOwnRunRestoration = dbContext.CanonicalInventoryEnabled && editRun != null,
             Warehouses = await dbContext.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Code).ToListAsync(cancellationToken),
             Rooms = rooms,
             FruitProfiles = isActualSection

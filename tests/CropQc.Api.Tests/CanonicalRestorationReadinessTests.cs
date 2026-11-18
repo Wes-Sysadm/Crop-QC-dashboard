@@ -16,6 +16,70 @@ public sealed class CanonicalRestorationReadinessTests
 {
     [InventoryPostgresTheory]
     [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Restored_departure_accepts_redundant_production_status_but_rejects_distinct_status(bool loss, bool organic)
+    {
+        await using var f = await Fixture.Create();
+        var production = organic ? "Organic" : "Conventional";
+        await using (var seed = f.CreateDbContext())
+        {
+            seed.OutsideWarehouses.Add(new() { Id = 9005, Code = "STATUS", Name = "Outside status fixture" });
+            var profile = await seed.FruitProfiles.SingleAsync(x => x.Id == 9004);
+            profile.ProductionType = production; profile.IsOrganic = organic;
+            var segment = await seed.TreatmentLineageSegments.SingleAsync();
+            segment.CurrentBins = 19; segment.ProductionTypeSnapshot = production; segment.IsOrganicSnapshot = organic;
+            segment.InventoryStatusSnapshot = null;
+            segment.IdentityKey = new InventoryIdentity(segment.CropYear, segment.GrowerLotId, segment.FruitProfileId,
+                segment.LotNumberSnapshot, segment.GrowerNumberSnapshot, segment.VarietyCodeSnapshot, production, organic, "").Key;
+            (await seed.RoomInventoryAdjustments.SingleAsync()).InventoryStatus = production;
+            await seed.SaveChangesAsync();
+        }
+        var factory = new CanonicalActualRunWorkflowTests.EnabledFactory(f.Connection);
+        await using var db = factory.CreateDbContext();
+        var executor = new InventoryCommandExecutor(factory);
+        var source = Assert.Single((await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db))
+            .ResolveAsync(new(9001, [9002]), new(), DateTimeOffset.UtcNow)).Positions);
+        var departure = new InventoryCommand(Guid.NewGuid().ToString("N"), loss ? InventoryCommandKind.Loss : InventoryCommandKind.OutsideWarehouseTransfer,
+            8000, DateTimeOffset.UtcNow, "Status spelling departure", [Line(source, 7)], CounterpartyId: loss ? null : 9005);
+        var sent = await executor.ExecuteAsync(departure);
+        Assert.True(sent.Status == InventoryCommandStatus.Committed, sent.Detail);
+        var effect = Assert.Single(sent.Effects); var parent = effect.ParentId!.Value; var debitId = Assert.Single(effect.LedgerIds);
+        Assert.Equal(production, (await db.RoomInventoryAdjustments.AsNoTracking().SingleAsync(x => x.Id == debitId)).InventoryStatus);
+        var custody = loss ? null : await new InventoryAvailabilityResolver(new InventoryEvidenceLoader(db)).ResolveAsync(
+            new(9001, [], InventoryCustody.OutsideWarehouse, parent), new(AllowedCustody: InventoryCustody.OutsideWarehouse), DateTimeOffset.UtcNow);
+        var restore = new InventoryCommand(Guid.NewGuid().ToString("N"), loss ? InventoryCommandKind.ReverseLoss : InventoryCommandKind.Return,
+            8000, DateTimeOffset.UtcNow, "Restore original status identity", custody?.Positions.Select(x => Line(x, x.AuthoritativeQuantity)).ToImmutableArray() ?? [],
+            OriginalOperationKey: loss ? null : departure.OperationKey, PhysicalParentId: parent);
+        var restored = await executor.ExecuteAsync(restore);
+        Assert.True(restored.Status == InventoryCommandStatus.Committed, restored.Detail);
+        var before = await f.Snapshot();
+        var readiness = await Ready();
+        Assert.True(readiness.IsReady, JsonSerializer.Serialize(readiness.Issues));
+        Assert.Equal(before, await f.Snapshot());
+        Assert.Equal(19, await f.Physical());
+        foreach (var status in new[] { "Hold", organic ? "Conventional" : "Organic" })
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            // A distinct business status is not a production-type alias.
+            ProductionDatabaseSafety.RequireClearlyDisposableTestDatabase(f.Connection);
+            await using var corrupt = new NpgsqlCommand("UPDATE \"RoomInventoryAdjustments\" SET \"InventoryStatus\"=@status WHERE \"Id\"=@id",
+                (NpgsqlConnection)db.Database.GetDbConnection(), (NpgsqlTransaction)transaction.GetDbTransaction());
+            corrupt.Parameters.AddWithValue("status", status); corrupt.Parameters.AddWithValue("id", debitId);
+            await corrupt.ExecuteNonQueryAsync();
+            Assert.False((await Ready()).IsReady);
+            await transaction.RollbackAsync(); db.ChangeTracker.Clear();
+        }
+        Assert.Equal(before, await f.Snapshot());
+        async Task<InventoryDeductionReadinessResult> Ready() => await new InventoryDeductionInvariantService(db,
+            NullLogger<InventoryDeductionInvariantService>.Instance).VerifyReadinessAsync(default);
+        static InventoryCommandLine Line(InventoryAvailabilityResult r, int quantity) => new(
+            new(r.Identity, r.Location, r.Watermark.Fingerprint, r.Watermark.Versions), quantity, "u");
+    }
+
+    [InventoryPostgresTheory]
+    [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]

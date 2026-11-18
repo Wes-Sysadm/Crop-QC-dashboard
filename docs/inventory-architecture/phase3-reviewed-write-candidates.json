@@ -345,7 +345,7 @@
     "Path": "src/CropQc.Web/Services/BinsRunService.cs",
     "Classification": "Legacy OFF branch with canonical dispatcher",
     "Reason": "Ordinary physical entry points dispatch on the global gate. Retained legacy body cannot save physical effects while ON; registered adapter tests exercise the canonical path.",
-    "Sha256": "A362C1A44C4F083ECDCD8794F269FD20ECB3FE5A038536CC79A044AC2C189F89"
+    "Sha256": "88229A99A9C35BFB64F952B2DDBC6F5E3F3E0F5755FABA1B6FCE9ED81845940C"
   },
   {
     "Path": "src/CropQc.Web/Services/CanonicalQcFruitIdentity.cs",

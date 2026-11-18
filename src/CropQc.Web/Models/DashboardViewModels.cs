@@ -807,6 +807,7 @@ public sealed class RoomInventoryCurrentLotViewModel
 
 public sealed class BinsRunPageViewModel
 {
+    public bool InventoryIncludesOwnRunRestoration { get; set; }
     public BinsRunFilterForm Filter { get; set; } = new();
     public BinsRunForm Form { get; set; } = new();
     public ActualRunForm ActualRunForm { get; set; } = new();

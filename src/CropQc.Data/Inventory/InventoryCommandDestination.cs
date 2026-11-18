@@ -54,7 +54,9 @@ public sealed partial class InventoryCommandExecutor
                     && retained.Quantity >= 0 && retained.CohortKey == prior.CohortKey && retained.RawKey == prior.RawKey
                     && retained.ReceiptId == prior.ReceiptId && retained.State == prior.State && retained.Signature == prior.Signature
                     && retained.ApplicationIds.SequenceEqual(prior.ApplicationIds) && retained.CreatedAt == prior.CreatedAt
-                    && retained.UpdatedAt == now && retained.Version > prior.Version
+                    // PostgreSQL persists microseconds; the command clock can
+                    // carry sub-microsecond ticks that are lost on read-back.
+                    && retained.UpdatedAt.UtcTicks / 10 == now.UtcTicks / 10 && retained.Version > prior.Version
                     && (retained.Disposition == "Current" || retained.Quantity == 0 && retained.Disposition == "Historical");
                 Require(unchanged || exactConsumption,
                     "Destination cohort changed without exact recorded consumption or preserved incoming allocation evidence.");

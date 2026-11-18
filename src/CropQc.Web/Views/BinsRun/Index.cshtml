@@ -1455,14 +1455,14 @@ else
                     <div class="table-wrap wide">
                         <table class="actual-run-ledger-table">
                             <thead>
-                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Grower number / lot</th><th>Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>Current</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
+                                <tr><th>Use</th><th>Facility</th><th>Room</th><th>Grower number / lot</th><th>Grower</th><th>Variety</th><th>Production</th><th>Treatment</th><th>Crop year</th><th>@(Model.ActualRunForm.Id is null ? "Current" : "Available after reversal")</th><th>Source / trace</th><th>Bins pulled</th><th>Projected remaining</th><th>Shortage / override</th></tr>
                             </thead>
                             <tbody>
                             @for (var i = 0; i < Model.AvailableInventory.Count; i++)
                             {
                                 var option = Model.AvailableInventory[i];
                                 var isSelected = editLines.TryGetValue($"{option.InventoryKey}|{option.TreatmentSignature}|{option.TreatmentSegmentId}", out var editLine);
-                                var effectiveAvailable = option.CurrentBins + (isSelected ? editLine!.BinsRun : 0);
+                                var effectiveAvailable = option.CurrentBins + (isSelected && !Model.InventoryIncludesOwnRunRestoration ? editLine!.BinsRun : 0);
                                 <tr data-actual-run-row data-current-bins="@effectiveAvailable" class="@(option.IsRoomSealed || !option.IsAvailable ? "sealed-inventory-row" : "")">
                                     <td>
                                         <input type="checkbox" data-actual-line-toggle aria-label="Include @option.Room @option.Lot" checked="@isSelected" disabled="@(option.IsRoomSealed || !option.IsAvailable)" />

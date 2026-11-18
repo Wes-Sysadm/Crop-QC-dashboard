@@ -54,7 +54,7 @@ public static class CanonicalRestorationReadiness
             ? historical.CropYear == loss!.CropYear && historical.GrowerLotId == loss.GrowerLotId
                 && historical.FruitProfileId == loss.FruitProfileId && Same(historical.Lot, loss.LotNumber)
                 && Same(historical.GrowerNumber, loss.GrowerNumber) && Same(historical.Variety, loss.VarietyCode)
-                && Same(historical.Status, loss.InventoryStatus)
+                && SameStatus(historical.Status, loss.InventoryStatus, historical.ProductionType)
             : historical.Key == new InventoryIdentity(outside!.CropYear, outside.GrowerLotId, outside.FruitProfileId,
                 outside.LotNumberSnapshot, outside.GrowerNumberSnapshot, outside.VarietyCodeSnapshot,
                 outside.ProductionTypeSnapshot, outside.IsOrganicSnapshot, outside.InventoryStatusSnapshot ?? "").Key;
@@ -156,6 +156,11 @@ public static class CanonicalRestorationReadiness
 
     private static bool Matches(RoomInventoryAdjustment row, InventoryIdentity identity) => row.CropYear == identity.CropYear
         && row.GrowerLotId == identity.GrowerLotId && row.FruitProfileId == identity.FruitProfileId
-        && Same(row.LotNumber, identity.Lot) && Same(row.VarietyCode, identity.Variety) && Same(row.InventoryStatus, identity.Status);
+        && Same(row.LotNumber, identity.Lot) && Same(row.VarietyCode, identity.Variety)
+        && SameStatus(row.InventoryStatus, identity.Status, identity.ProductionType);
+    // Production type is already an identity field. Older ledger/parent records
+    // may repeat it in status while their exact source allocation leaves status empty.
+    private static bool SameStatus(string? a, string? b, string productionType) =>
+        InventoryStatusIdentity.Normalize(a, productionType) == InventoryStatusIdentity.Normalize(b, productionType);
     private static bool Same(string? a, string? b) => string.Equals(a?.Trim() ?? "", b?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 }
