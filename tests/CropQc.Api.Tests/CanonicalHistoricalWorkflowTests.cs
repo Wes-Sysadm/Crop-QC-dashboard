@@ -55,6 +55,16 @@ public sealed class CanonicalHistoricalWorkflowTests(ITestOutputHelper output)
         Assert.Equal(available, (await processor.GetPageAsync(null, false, null, null, null, null, default)).Inventory.Where(x => x.RoomId == 9002).Sum(x => x.AvailableBins));
         var runPage = await dump.GetPageAsync(new() { Section = "Actual", WarehouseId = 9001, RoomIds = [9002] }, http.HttpContext!.User, default);
         Assert.Equal(available, runPage.AvailableInventory.Where(x => x.IsAvailable).Sum(x => x.CurrentBins));
+        if (shape == "TreatmentAmbiguity")
+        {
+            var blocked = Assert.Single(runPage.AvailableInventory);
+            Assert.False(blocked.IsAvailable);
+            Assert.Equal(0, blocked.CurrentBins);
+            Assert.Equal("Needs Review", blocked.TreatmentLabel);
+            Assert.NotNull(blocked.UnavailableReason);
+        }
+        if (shape == "BalancedTreatments")
+            Assert.All(runPage.AvailableInventory, x => Assert.Equal("Confirmed treatment", x.TreatmentLabel));
         Assert.Equal(available, (await loss.GetRoomDataAsync(9002, default)).Options.Where(x => x.IsAvailable).Sum(x => x.CurrentBins));
         Assert.Equal(available, (await crew.GetPageAsync(new() { RoomId = 9002, WarehouseId = 9001 }, default)).Inventory.Where(x => x.IsAvailable).Sum(x => x.AvailableBins));
         Assert.Equal(available, (await dashboard.GetRoomDetailAsync(9002, default)).TransferAvailableBins);
